@@ -2,10 +2,11 @@
 
 namespace Groundhogg\Classes;
 
+use Groundhogg\Contact;
 use Groundhogg\Utils\DateTimeHelper;
 use function Groundhogg\get_date_time_format;
 use function Groundhogg\get_db;
-use function Groundhogg\is_a_contact;
+use function Groundhogg\isset_not_empty;
 use function Groundhogg\Ymd_His;
 
 class Task extends Note {
@@ -112,6 +113,30 @@ class Task extends Note {
 
 		$was_complete = $this->is_complete();
 
+		// snooze a task
+		if ( isset_not_empty( $data, 'snooze' ) ) {
+
+			// number of days to snooze
+			$snooze = absint( $data['snooze'] );
+
+			// set to tomorrow if overdue
+			if ( $this->is_overdue() ) {
+				// set the snooze by the number of days
+				$newDueDate = new DateTimeHelper( "+{$snooze} days" );
+			} else {
+				//
+				$newDueDate = $this->get_due_date();
+				$newDueDate->modify( "+{$snooze} days" );
+			}
+
+			// set the original time of day
+			$newDueDate->modify( $this->get_due_date()->format( 'H:i:s' ) );
+			// set the new due date in the data
+			$data['due_date'] = $newDueDate->ymdhis();
+			// Snooze is not a valid key
+			unset( $data['snooze'] );
+		}
+
 		$updated = parent::update( $data );
 
 		// If the task was not complete but was just completed following the update
@@ -165,17 +190,23 @@ class Task extends Note {
 		];
 
 		// Base functionality for contacts
-		if ( is_a_contact( $object ) ) {
+		if ( is_a( $object, Contact::class ) ) {
 			$associated['link'] = $object->admin_link() . '&_tab=tasks';
 			$associated['name'] = empty( trim( $object->get_full_name() ) ) ? $object->get_email() : $object->get_full_name();
 			$associated['type'] = $object->get_object_type();
+			$associated['img']  = $object->get_profile_picture( 40 );
 		}
 
 		$associated = apply_filters( 'groundhogg/task/associated_context', $associated, $object );
 
+		$diff = $dueDate->diff( new DateTimeHelper() );
+
+
 		return array_merge( parent::get_as_array(), [
 			'is_overdue'    => $this->is_overdue(),
 			'is_complete'   => $this->is_complete(),
+			'is_due_today'  => $dueDate->isToday(),
+			'days_till_due' => $diff->days,
 			'due_timestamp' => $dueDate->getTimestamp(),
 			'i18n'          => [
 				'time_diff'      => human_time_diff( $this->timestamp, time() ),
@@ -183,9 +214,6 @@ class Task extends Note {
 				'completed'      => human_time_diff( strtotime( $this->date_completed ), time() ),
 				'due_date'       => $dueDate->format( get_date_time_format() ),
 				'completed_date' => $this->is_complete() ? $this->get_date_completed()->format( get_date_time_format() ) : '',
-			],
-			'esc_html'      => [
-				'summary' => esc_html( $this->summary )
 			],
 			'associated'    => $associated
 		] );

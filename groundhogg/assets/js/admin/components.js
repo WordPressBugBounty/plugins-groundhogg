@@ -20,7 +20,8 @@
     loadingModal,
     textarea,
     spinner,
-
+    skeleton,
+    adminPageURL,
   } = Groundhogg.element
   const {
     contacts: ContactsStore,
@@ -49,118 +50,39 @@
   } = Groundhogg.formatting
   const { currentUser } = Groundhogg
 
+    const {
+    maybeCall,
+    debounce,
+    jsonCopy,
+  } = Groundhogg.functions
+
   const selectContactModal = ({
     onSelect = () => {},
+    onClose = () => {},
     exclude = [],
   }) => {
 
-    let search, timeout, results
+    Modal({
+        dialogClasses: 'no-padding',
+        width        : '400px',
+        onOpen       : e => {
+          document.getElementById('quick-search-input').focus()
+        },
 
-    const form = () => {
-      // language=HTML
-      return `
-          <div id="search-form">
-              ${ input({
-                  id         : 'contact-search',
-                  value      : search,
-                  type       : 'search',
-                  placeholder: __('Search by name or email', 'groundhogg'),
-              }) }
-          </div>
-          <div id="search-results">
-              <table>
-                  <tbody>
-                  <tr>
-                      <td>${ spinner() }</td>
-                  </tr>
-                  </tbody>
-              </table>
-          </div>`
-    }
-
-    const {
-      close,
-      setContent,
-    } = modal({
-      content      : form(),
-      dialogClasses: 'no-padding',
-    })
-
-    const renderResult = (contact) => {
-      // language=HTML
-      return `
-          <tr data-id="${ contact.ID }">
-              <td><img src="${ contact.data.gravatar }" alt="${ contact.data.full_name }"></td>
-              <td><b>${ contact.data.full_name }</b><br/>${ contact.data.email }</td>
-              <td>
-                  <button class="select-contact gh-button primary text" data-id="${ contact.ID }">${ __('Select') }
-                  </button>
-              </td>
-          </tr>`
-    }
-
-    const noResults = () => {
-      // language=HTML
-      return `
-          <tr>
-              <td colspan="3"><p>${ __('No contacts match that search...', 'groundhogg') }</p></td>
-          </tr>`
-    }
-
-    const onMount = () => {
-
-      const setSearchResults = (results) => {
-
-        if (!results.length) {
-          $('#search-results table tbody').html(noResults())
-          return
-        }
-
-        $('#search-results table tbody').html(results.map(r => renderResult(r)).join(''))
-
-        $('#search-results tr, .select-contact').on('click', (e) => {
-          close()
-          onSelect(ContactsStore.get(parseInt(e.currentTarget.dataset.id)))
-        })
-      }
-
-      const getResults = () => {
-
-        if (timeout) {
-          clearTimeout(timeout)
-        }
-
-        timeout = setTimeout(() => {
-
-          ContactsStore.fetchItems({
-            search,
-            exclude,
-            limit: 10,
-          }).then(items => {
-            results = items
-            setSearchResults(results)
-          })
-
-        }, 1000)
-      }
-
-      $('#contact-search').on('input change', (e) => {
-        search = e.target.value
-        getResults()
-      }).focus()
-
-      let results = ContactsStore.getItems().filter(c => !exclude.includes(c.ID))
-
-      if (results.length) {
-        setSearchResults(results)
-      }
-      else {
-        getResults()
-      }
-
-    }
-
-    onMount()
+      },
+      ({ close }) => QuickSearch({
+        itemProps     : contact => ( {
+          onClick: e => {
+            onSelect(contact)
+            close()
+          },
+        } ),
+        queryOverrides: {
+          limit: 15,
+          exclude,
+        },
+      }),
+    )
 
   }
 
@@ -955,6 +877,7 @@
           ])
 
           onSubmit(r.contact)
+          return
         }
 
         dialog({
@@ -1348,7 +1271,7 @@
           ...Groundhogg.filters.owners.filter(u => !email.bcc.includes(u.data.user_email)).
             map(u => ( {
               text: u.data.user_email,
-              id: u.data.user_email,
+              id  : u.data.user_email,
             } )),
         ],
         tags       : true,
@@ -1625,15 +1548,23 @@
 
   const {
     Div,
+    H2,
+    H4,
+    Toggle,
+    Img,
+    An,
+    Span,
     ModalFrame,
     Iframe,
     makeEl,
     Button,
     Modal,
     Dashicon,
+    ToolTip,
     Input,
     Label,
     Fragment,
+    Skeleton,
     Pg,
     Form,
     Textarea,
@@ -1773,33 +1704,33 @@
     value = '',
   }) => {
 
-    const handleChange = ( value, attachment ) => {
-      onChange( value, attachment )
-      morphdom( document.getElementById( id ), ImageInput({
+    const handleChange = (value, attachment) => {
+      onChange(value, attachment)
+      morphdom(document.getElementById(id), ImageInput({
         id,
         name,
         onChange,
-        value
-      }) )
+        value,
+      }))
     }
 
     return Div({
       id,
-      className: 'image-picker'
+      className: 'image-picker',
     }, [
       value ? Div({
-        id: `${id}-preview`,
+        id       : `${ id }-preview`,
         className: 'image-input-preview',
-        style: {
-          backgroundImage: `url(${value})`,
+        style    : {
+          backgroundImage: `url(${ value })`,
         },
-        onClick: e => {
+        onClick  : e => {
           e.preventDefault()
           ImagePicker({
             multiple: false,
-            onChange: attachment => handleChange( attachment.url, attachment ),
+            onChange: attachment => handleChange(attachment.url, attachment),
           })
-        }
+        },
       }) : null,
       InputGroup([
         Input({
@@ -1819,7 +1750,7 @@
               e.preventDefault()
               ImagePicker({
                 multiple: false,
-                onChange: attachment => handleChange( attachment.url, attachment ),
+                onChange: attachment => handleChange(attachment.url, attachment),
               })
             },
           },
@@ -1831,7 +1762,7 @@
   const FeedbackModal = ({
     subject = '',
     message = '',
-    onSubmit = r => {}
+    onSubmit = r => {},
   }) => {
 
     const State = Groundhogg.createState({
@@ -1841,10 +1772,13 @@
     })
 
     Modal({
-      width: '400px'
-    }, ({close, morph}) => Form({
+      width: '400px',
+    }, ({
+      close,
+      morph,
+    }) => Form({
       className: 'display-flex column gap-5',
-      onSubmit: e => {
+      onSubmit : e => {
         e.preventDefault()
 
         State.set({
@@ -1854,65 +1788,502 @@
         morph()
 
         Groundhogg.api.ajax({
-          action: 'gh_plugin_feedback',
+          action : 'gh_plugin_feedback',
           subject: State.subject,
-          message: State.message
-        }).then( r => {
-          onSubmit( r )
+          message: State.message,
+        }).then(r => {
+          onSubmit(r)
           dialog({
-            message: 'Thanks for your feedback!'
+            message: 'Thanks for your feedback!',
           })
           close()
         })
 
         return false
-      }
-    },[
+      },
+    }, [
 
       Label({
         for: 'feedback-subject',
-      }, ['What feature are you submitting feedback for?'] ),
+      }, ['What feature are you submitting feedback for?']),
       Input({
-        id: 'feedback-subject',
-        value: State.subject,
+        id      : 'feedback-subject',
+        value   : State.subject,
         required: true,
-        onInput: e => State.set({
-          subject: e.target.value
-        })
+        onInput : e => State.set({
+          subject: e.target.value,
+        }),
       }),
       Div(),
       Label({
-        for: 'feedback-message'
-      }, ['What is your feedback? Be as descriptive as possible.'] ),
+        for: 'feedback-message',
+      }, ['What is your feedback? Be as descriptive as possible.']),
       Textarea({
-        id: 'feedback-message',
-        value: State.message,
+        id      : 'feedback-message',
+        value   : State.message,
         required: true,
-        rows: 4,
-        onInput: e => State.set({
-          message: e.target.value
-        })
+        rows    : 4,
+        onInput : e => State.set({
+          message: e.target.value,
+        }),
       }),
       Button({
         className: 'gh-button primary',
-        type: 'submit',
-        disabled: State.submitting
+        type     : 'submit',
+        disabled : State.submitting,
       }, 'Send feedback'),
-      Pg({}, 'Your email address will be collected to validate your feedback, but will not be used beyond that.' ),
+      Pg({}, 'Your email address will be collected to validate your feedback, but will not be used beyond that.'),
     ]))
 
   }
 
   $(document).on('click', 'a.feedback-modal', e => {
     e.preventDefault()
-    const { subject = '', message = '' } = e.currentTarget.dataset
+    const {
+      subject = '',
+      message = '',
+    } = e.currentTarget.dataset
     FeedbackModal({
       subject,
-      message
+      message,
     })
+  })
+
+  const ContactPhone = (icon, number, extension = '') => number ? Span({
+    className: 'contact-phone',
+  }, [
+    icon,
+    An({ href: `tel:${ number }` }, number),
+    extension ? Span({
+      className: 'ext',
+    }, ` x${ extension }`) : null,
+  ]) : null
+
+  /**
+   *
+   * @param item
+   * @param extra
+   * @param props
+   * @returns {*}
+   * @constructor
+   */
+  const ContactListItem = (item, {
+    extra = item => null,
+    ...props
+  } = {}) => {
+
+    let allTags = jsonCopy(item.tags)
+    let showTags = allTags.splice(0, 10)
+
+    const {
+      ID,
+    } = item
+
+    const {
+      full_name,
+      gravatar,
+      date_created,
+      email,
+    } = item.data
+
+    const {
+      primary_phone = '',
+      primary_phone_extension = '',
+      mobile_phone = '',
+      company_phone = '',
+      company_phone_extension = '',
+    } = item.meta
+
+    // top level item container
+    return Div({
+      className: `contact-list-item`,
+      id       : `contact-list-item-${ ID }`,
+      dataId   : ID,
+      ...props,
+    }, [
+      // Contact info
+      Div({
+        className: 'display-flex gap-10',
+      }, [
+        Img({
+          className: 'avatar',
+          src      : gravatar,
+          alt      : 'avatar',
+        }),
+        Div({ className: 'display-flex column' }, [
+          Div({}, [
+            makeEl('h4', {
+              style: {
+                margin: 0,
+              },
+            }, full_name),
+            Span({
+              className: 'subscribed',
+            }, `&nbsp;— ${ sprintf(
+              __('Subscribed %s'),
+              `<abbr title="${ formatDateTime(date_created) }">${ sprintf(__('%s ago '),
+                item.i18n.created) }</abbr>`) }`),
+          ]),
+          Div({}, [
+            An({
+              href: `mailto: ${ email }`,
+            }, email),
+            Span({}, [
+              ' — ',
+              Span({
+                className: `gh-text ${ item.is_marketable ? 'green' : 'red' }`,
+              }, Groundhogg.filters.optin_status[item.data.optin_status])
+            ]),
+          ]),
+        ]),
+      ]),
+      Div({
+        className: 'show-on-hover',
+      }, [
+        // Phones
+        primary_phone || company_phone || mobile_phone ? Div({
+          className: 'contact-phones',
+        }, [
+          ContactPhone(icons.mobile, mobile_phone),
+          ContactPhone(icons.phone, primary_phone, primary_phone_extension),
+          ContactPhone(icons.phone, company_phone, company_phone_extension),
+        ]) : null,
+        // Tags
+        Div({ className: 'gh-tags' }, [
+          ...showTags.map(tag => Span({ className: 'gh-tag' }, tag.data.tag_name)),
+          allTags.length ? Span({}, sprintf('and %d more...', allTags.length)) : null,
+        ]),
+        maybeCall(extra,item),
+      ]),
+    ])
+  }
+
+  const ContactList = (contacts = [], {
+    noContacts = () => null,
+    itemProps = {},
+  } = {}) => {
+
+    if (!contacts.length) {
+      return maybeCall(noContacts)
+    }
+
+    return Div({
+      className: 'contact-list',
+    }, contacts.map(contact => ContactListItem(contact, maybeCall(itemProps, contact))))
+  }
+
+  const QuickSearch = ({
+    itemProps = {},
+    queryOverrides = {},
+  } = {}) => {
+
+    const State = Groundhogg.createState({
+      search  : '',
+      searched: false,
+      results : [],
+      loaded  : false,
+    })
+
+    const fetchResults = async () => {
+      let results = await ContactsStore.fetchItems({
+        search : State.search,
+        orderby: 'date_created',
+        order  : 'DESC',
+        limit  : 5,
+        ...queryOverrides,
+      })
+
+      State.set({
+        results,
+        searched: true,
+        loaded  : true,
+      })
+    }
+
+    return Div({
+      id: 'quick-search-wrap',
+    }, morph => {
+
+      if (!State.loaded) {
+        fetchResults().then(morph)
+      }
+
+      const updateResults = debounce(async () => {
+        await fetchResults()
+        morph()
+      }, 300)
+
+      return Fragment([
+        Form({
+          action: adminPageURL('gh_contacts'),
+        }, [
+          Input({
+            type : 'hidden',
+            name : 'page',
+            value: 'gh_contacts',
+          }),
+          Input({
+            id         : 'quick-search-input',
+            placeholder: __('Search by name or email...', 'groundhogg'),
+            type       : 'search',
+            name       : 's',
+            value      : State.search,
+            onInput    : e => {
+              State.set({
+                search: e.target.value,
+              })
+              updateResults()
+            },
+          }),
+        ]),
+        State.loaded ? null : Skeleton({}, [
+          'full',
+          'full',
+          'full',
+        ]),
+        State.results.length ? ContactList(State.results, {
+          itemProps: item => ( {
+            className: 'contact-list-item clickable',
+            onClick  : e => {
+              window.open(item.admin, '_self')
+            },
+            ...maybeCall(itemProps, item),
+          } ),
+        }) : null,
+        State.results.length === 0 && State.searched ? Pg({
+          style: {
+            textAlign: 'center',
+          },
+        }, __('No contacts found for the current search', 'groundhogg')) : null,
+      ])
+    })
+  }
+
+  const Panel = ({
+    id,
+    name,
+    collapsed = false,
+    hidden = false,
+    onCollapse = id => {},
+  }, content ) => {
+
+    if (hidden) {
+      return null
+    }
+
+    return Div({
+      id       : `${ id }-panel`,
+      className: `gh-panel ${ collapsed ? 'closed' : '' }`,
+    }, [
+      Div({ className: `gh-panel-header` }, [
+        H2({}, name),
+        Button({
+          className: 'toggle-indicator',
+          onClick  : e => {
+            onCollapse(id)
+          },
+        }),
+      ]),
+      collapsed ? null : maybeCall( content ),
+    ])
+  }
+
+  const Panels = (overrides) => ( {
+    ...Groundhogg.createRegistry({}),
+    storagePrefix: 'gh-panels',
+    collapse (id) {
+      if (!this.isCollapsed(id)) {
+        this.toggleCollapse(id)
+      }
+    },
+    expand (id) {
+      if (this.isCollapsed(id)) {
+        this.toggleCollapse(id)
+      }
+    },
+    hide (id) {
+      if (!this.isHidden(id)) {
+        this.toggleHidden(id)
+      }
+    },
+    show (id) {
+      if (this.isHidden(id)) {
+        this.toggleHidden(id)
+      }
+    },
+
+    togglePanel (id, suffix) {
+      let panels = this.getPanelIds(suffix)
+
+      if (panels.includes(id)) {
+        panels.splice(panels.indexOf(id), 1)
+      }
+      else {
+        panels.push(id)
+      }
+
+      localStorage.setItem(`${ this.storagePrefix }-${ suffix }`, JSON.stringify(panels))
+    },
+
+    toggleHidden (id) {
+      this.togglePanel(id, 'hidden')
+    },
+
+    toggleCollapse (id) {
+      this.togglePanel(id, 'collapsed')
+    },
+
+    getPanelIds (suffix) {
+      return JSON.parse(localStorage.getItem(`${ this.storagePrefix }-${ suffix }`)) || []
+    },
+
+    getHiddenPanelIds () {
+      return this.getPanelIds('hidden')
+    },
+    getCollapsedPanelIds () {
+      return this.getPanelIds('collapsed')
+    },
+    isHidden (id) {
+      return this.getHiddenPanelIds().includes(id)
+    },
+    isCollapsed (id) {
+      return this.getCollapsedPanelIds().includes(id)
+    },
+
+    PanelControls () {
+      return Div({}, [
+        ...this.map((item, id) => Div({
+          className: 'display-flex gap-10',
+          style    : {
+            marginBottom: '10px',
+          },
+        }, [
+          Toggle({
+            checked : !this.isHidden(id),
+            id      : `toggle-${ id }`,
+            onChange: e => {
+              this.toggleHidden(id)
+
+            },
+          }),
+          Label({
+            for: `toggle-${ id }`,
+          }, item.name),
+        ])),
+      ])
+    },
+
+    Panel( id ){
+
+      let { content, ...panel } = this.get(id)
+
+      return Panel({
+        id,
+        ...panel,
+        collapsed : this.isCollapsed(id),
+        hidden    : this.isHidden(id),
+        onCollapse: id => {
+          this.toggleCollapse(id)
+          morphdom( document.getElementById( `${id}-panel` ), this.Panel( id ) )
+        },
+      }, content )
+    },
+
+    Panels () {
+      return Div({
+        className: 'display-flex column gap-20',
+        id: this.storagePrefix,
+      }, this.keys().map( id => this.Panel( id ) ) )
+    },
+
+    ...overrides,
   } )
 
+
+  const Relationships = ({
+    title = '',
+    id,
+    store,
+    child_type = '',
+    parent_type = '',
+    renderItem = item => {},
+    onAddItem = (r,j) => {}
+  }) => {
+
+    const rel_type_key = child_type ? 'child_type' : 'parent_type'
+    const rel_type = child_type || parent_type
+    const rel_id_key = child_type ? 'child_id' : 'parent_id'
+
+    const State = Groundhogg.createState({
+      loaded: false,
+      items: []
+    })
+
+    const fetchRelationships = () => store.fetchRelationships( id, {
+      [rel_type_key]: rel_type
+    } ).then( items => State.set( { items, loaded: true } ) )
+
+    const deleteRelationship = itemId => store.deleteRelationships( id, {
+      [rel_type_key]: rel_type,
+      [rel_id_key]: itemId,
+    }).then( () => State.set({
+      items: State.items.filter( item => item.ID !== itemId )
+    }))
+
+    const createRelationship = item => store.createRelationships( id, {
+      [rel_type_key]: rel_type,
+      [rel_id_key]: item.ID,
+    }).then(() => State.set({
+      items: [ ...State.items, item ]
+    }))
+
+    return Div({
+      id: `${rel_type_key}-${rel_type}-rel-of-${id}`,
+      className: `display-flex column relationship-editor ${rel_type_key}-${rel_type}`,
+    }, morph => {
+
+      const handleDeleteRelationship = itemId => deleteRelationship( itemId ).then( morph )
+
+      if ( ! State.loaded ){
+
+        fetchRelationships().then( morph )
+
+        return Skeleton({}, [ 'full', 'full', 'full' ] )
+      }
+
+      const AddRelButton = () => Button({
+        id: `add-${rel_type_key}-${rel_type}-rel-for-${id}`,
+        className: 'gh-button secondary text icon',
+        onClick: e => {
+          let promise = new Promise((resolve, reject) => onAddItem(resolve, reject, State ))
+
+          promise.then( item => createRelationship( item ).then( morph ) )
+        }
+      }, [Dashicon('plus-alt2'), ToolTip(__('Add relationship', 'groundhogg'),'left')])
+
+      return Fragment([
+
+        title ? Div({ className: 'space-between' }, [
+          H4({}, title ),
+          AddRelButton()
+        ]) : null,
+
+        ...State.items.map( item => renderItem({
+          ...item,
+          onDelete: handleDeleteRelationship
+        }) ),
+        title ? null : Div({
+          className: 'display-flex flex-end'
+        }, AddRelButton() ),
+
+      ])
+
+    })
+
+  }
+
   Groundhogg.components = {
+    QuickSearch,
     addContactModal,
     internalForm,
     betterTagPicker,
@@ -1926,7 +2297,12 @@
     EmailPreviewModal,
     ImageInput,
     ImagePicker,
-    FeedbackModal
+    FeedbackModal,
+    ContactList,
+    ContactListItem,
+    Panel,
+    Panels,
+    Relationships
   }
 
 } )(jQuery)

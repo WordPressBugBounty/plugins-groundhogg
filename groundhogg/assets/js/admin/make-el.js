@@ -108,6 +108,9 @@
     let el = tagName === 'fragment' ? document.createDocumentFragment() : document.createElement(tagName)
 
     if (children !== null) {
+
+      const morph = () => morphdom( document.getElementById( el.id ), makeEl( tagName, attributes, children ) )
+
       if (!Array.isArray(children)) {
         if (children instanceof NodeList) {
           children = [...children]
@@ -123,7 +126,7 @@
           return
         }
 
-        child = maybeCall( child )
+        child = maybeCall( child, morph )
 
         // Template literals
         if (isString(child)) {
@@ -169,6 +172,9 @@
 
       el.setAttribute(attributeName, attributes[attributeName])
     }
+
+    // set a flag that the element was generated with makeEl
+    el.makeEl = true
 
     return el
   }
@@ -251,6 +257,10 @@
 
   const Div = (attributes = {}, children = []) => {
     return makeEl('div', attributes, children)
+  }
+
+  const Nav = (attributes = {}, children = []) => {
+    return makeEl('nav', attributes, children)
   }
 
   const Dashicon = (icon, children = null ) => {
@@ -1328,7 +1338,7 @@
   }) => {
 
     return Div({
-      className: `gh-progress-bar ${ error ? 'error' : '' } ${className}`,
+      className: `gh-progress-bar ${ error ? 'gh-error' : '' } ${className}`,
     }, Div({
       className: 'gh-progress-bar-fill',
       style: {
@@ -1342,6 +1352,7 @@
 
   const Img = (props) => makeEl( 'img', props )
   const Pg = (props, children) => makeEl( 'p', props, children )
+  const Bold = (props, children) => makeEl( 'b', props, children )
   const An = (props, children) => makeEl( 'a', props, children )
   const Ul = (props, children) => makeEl( 'ul', props, children )
   const Ol = (props, children) => makeEl( 'ol', props, children )
@@ -1349,8 +1360,21 @@
   const H1 = (props, children) => makeEl( 'h1', props, children )
   const H2 = (props, children) => makeEl( 'h2', props, children )
   const H3 = (props, children) => makeEl( 'h3', props, children )
+  const H4 = (props, children) => makeEl( 'h4', props, children )
+  const Hr = (props, children) => makeEl( 'hr', props, children )
+
+  const Skeleton = ( attributes, pieces ) => Div({
+    className: 'display-grid gap-10',
+    ...attributes
+  }, pieces.map( span => Div({
+    className: `${span} skeleton-loading`,
+    style: {
+      height: `40px`
+    }
+  })) )
 
   window.MakeEl = {
+    Skeleton,
     InputGroup,
     makeEl,
     Ellipses,
@@ -1385,6 +1409,7 @@
     Autocomplete,
     ProgressBar,
     Pg,
+    Bold,
     Img,
     An,
     Ul,
@@ -1393,6 +1418,9 @@
     H1,
     H2,
     H3,
+    H4,
+    Hr,
+    Nav,
     maybeCall
   }
 } )(jQuery ?? function () { throw new Error('jQuery was not loaded.') })

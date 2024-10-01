@@ -20,6 +20,7 @@ use function Groundhogg\get_request_var;
 use function Groundhogg\get_url_var;
 use function Groundhogg\html;
 use function Groundhogg\implode_in_quotes;
+use function Groundhogg\restore_missing_funnel_events;
 use function Groundhogg\verify_admin_ajax_nonce;
 
 // Exit if accessed directly
@@ -630,8 +631,20 @@ class Events_Page extends Tabbed_Admin_Page {
                 task: taskId,
                 gh_admin_ajax_nonce: Groundhogg.nonces._adminajax
               }).then( ({
-                data
+                data,
+                success
               }) => {
+
+                if ( success === false ){
+                  morphdom(row.querySelector('.gh-progress-bar'), SmallProgressBar({
+                    error: true
+                  }))
+                  Groundhogg.element.dialog({
+                    type: 'error',
+                    message: data[0].message
+                  })
+                  return
+                }
 
                 progress = data.progress
 
@@ -1020,6 +1033,23 @@ ORDER BY ID" );
 
 		return false;
 
+	}
+
+	/**
+	 * Restore missing funnel events
+	 *
+	 * @return string
+	 */
+	public function process_restore_funnel_events(){
+		if ( ! current_user_can( 'cancel_events' ) ) {
+			$this->wp_die_no_access();
+		}
+
+		restore_missing_funnel_events();
+
+		$this->add_notice( 'restored', 'Events restored!' );
+
+		return admin_page_url( 'gh_events' );
 	}
 
 	/**

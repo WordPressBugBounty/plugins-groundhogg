@@ -3,8 +3,11 @@
 namespace Groundhogg\Admin\Tools;
 
 use Groundhogg\Plugin;
+use Groundhogg\Preferences;
+use Groundhogg\Tag_Mapping;
 use function Groundhogg\action_url;
 use function Groundhogg\html;
+use function Groundhogg\is_option_enabled;
 
 ?>
 <p></p>
@@ -18,7 +21,7 @@ use function Groundhogg\html;
             <div class="display-flex gap-10">
 		        <?php echo html()->e( 'a', [
 			        'class' => 'button',
-			        'href'  => Plugin::instance()->bulk_jobs->sync_contacts->get_start_url(),
+			        'href'  => action_url( 'sync_users' ),
 		        ], __( 'Sync Users', 'groundhogg' ) ) ?></p>
 
 	            <?php echo html()->e( 'a', [
@@ -29,6 +32,7 @@ use function Groundhogg\html;
             </div>
         </div>
     </div>
+    <?php if ( Tag_Mapping::enabled() ): ?>
     <div class="gh-panel">
         <div class="gh-panel-header">
             <h2><?php _e( 'Refresh opt-in status tags', 'groundhogg' ); ?></h2>
@@ -41,18 +45,7 @@ use function Groundhogg\html;
 				], __( 'Process', 'groundhogg' ) ) ?></p>
         </div>
     </div>
-    <div class="gh-panel">
-        <div class="gh-panel-header">
-            <h2 class="hndle"><?php _e( 'Restore missing funnel events', 'groundhogg' ); ?></h2>
-        </div>
-        <div class="inside">
-            <p><?php _e( 'If funnel events get cancelled or deleted, this tool will restore contacts to their most recent position in any funnels they were active in within the last 30 days.', 'groundhogg' ); ?></p>
-            <p><?php echo html()->e( 'a', [
-					'class' => 'gh-button danger',
-					'href'  => action_url( 'restore_funnel_events' ),
-				], __( 'Restore', 'groundhogg' ) ) ?></p>
-        </div>
-    </div>
+    <?php endif; ?>
 
 	<?php do_action( 'groundhogg/tools/misc' ); ?>
 

@@ -883,6 +883,8 @@ ${ afterProgress() }`,
 
   const spinner = (color = 'white') => {
 
+    // return '';
+
     // No color when not white labelled
     if (!Groundhogg.isWhiteLabeled) {
       color = ''
@@ -896,6 +898,22 @@ ${ afterProgress() }`,
                     width="150"
                     height="150"/>
         </div>`
+  }
+
+  const skeleton = () => {
+    if ( typeof MakeEl !== 'undefined' ){
+
+      return MakeEl.Skeleton({
+        style: {
+          padding: '10px'
+        }
+      }, [
+        'full',
+        'full',
+        'full',
+      ]).outerHTML
+    }
+    return ''
   }
 
   const savingModal = () => {
@@ -2155,6 +2173,62 @@ ${ afterProgress() }`,
     $menu.focus()
   }
 
+  const moreMenuAbsolute = (selector, args) => {
+
+    let selectHandler = false
+    let items = []
+
+    if (Array.isArray(args)) {
+      items = args
+    }
+    else {
+      items = args.items ?? []
+      let onSelect = args.onSelect ?? false
+      if (onSelect !== false) {
+        selectHandler = onSelect
+      }
+    }
+
+    if (selectHandler === false) {
+      selectHandler = (key) => {
+        let item = items.find(i => i.key == key)
+        const { onSelect = () => {} } = item
+        onSelect()
+      }
+    }
+
+    // language=HTML
+    const menu = `
+        <div role="menu" class="gh-dropdown-menu absolute" tabindex="0">
+            ${ items.filter(i => i && true).
+                    map(({
+                        key,
+                        text,
+                    }) => `<div class="gh-dropdown-menu-item" data-key="${ key }">${ text }</div>`).
+                    join('') }
+        </div>`
+
+    const $menu = $(menu)
+
+    const close = () => {
+      $menu.remove()
+    }
+
+    $menu.on('click', '.gh-dropdown-menu-item', (e) => {
+      selectHandler(e.currentTarget.dataset.key)
+      close()
+    })
+
+    $menu.on('blur', () => {
+      close()
+    })
+
+    const $el = $(selector)
+
+    $el.append( $menu )
+    $menu.focus()
+  }
+
   const uniqid = () => {
     return Date.now()
   }
@@ -2890,6 +2964,7 @@ ${ afterProgress() }`,
     specialChars,
     uniqid,
     moreMenu,
+    moreMenuAbsolute,
     andList,
     orList,
     kebabize,
@@ -2941,6 +3016,7 @@ ${ afterProgress() }`,
     isString,
     replacementsWidget,
     escHTML,
+    skeleton
   }
 
 } )(jQuery)

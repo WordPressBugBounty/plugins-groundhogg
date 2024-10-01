@@ -3,310 +3,666 @@
   const { tasks: TasksStore } = Groundhogg.stores
   const {
     icons,
-    input,
-    select,
-    textarea,
-    bold,
     tinymceElement,
     addMediaToBasicTinyMCE,
     moreMenu,
-    tooltip,
     dangerConfirmationModal,
-    spinner,
     dialog,
+    escHTML,
   } = Groundhogg.element
-  const { post, get, patch, routes, ajax } = Groundhogg.api
-  const { userHasCap } = Groundhogg.user
-  const { formatNumber, formatTime, formatDate, formatDateTime } = Groundhogg.formatting
-  const { sprintf, __, _x, _n } = wp.i18n
+
+  const {
+    userHasCap,
+    getCurrentUser,
+  } = Groundhogg.user
+  const {
+    formatDateTime,
+  } = Groundhogg.formatting
+  const {
+    sprintf,
+    __,
+  } = wp.i18n
 
   const typeToIcon = {
-    call: icons.phone,
-    task: icons.tasks,
-    email: icons.email,
+    call   : icons.phone,
+    task   : icons.tasks,
+    email  : icons.email,
     meeting: icons.contact,
   }
 
   const taskTypes = {
-    task: __('Task', 'groundhogg'),
-    call: __('Call', 'groundhogg'),
-    email: __('Email', 'groundhogg'),
+    task   : __('Task', 'groundhogg'),
+    call   : __('Call', 'groundhogg'),
+    email  : __('Email', 'groundhogg'),
     meeting: __('Meeting', 'groundhogg'),
   }
 
+  const isOverdue = t => t.is_overdue && !t.is_complete
+  const isComplete = t => t.is_complete
+  const isPending = t => !t.is_complete
+  const isDueToday = t => t.is_due_today && !t.is_complete
+  const isDueSoon = t => t.days_till_due < 14 && !t.is_overdue && !t.is_due_today && !t.is_complete
+
   const dueBy = (task) => {
 
-    if (task.is_overdue) {
-      return `<span class="pill orange" title="${ task.i18n.due_date }">${ sprintf(__('%s overdue', 'groundhogg'),
+    if (isOverdue(task)) {
+      return `<span class="pill red" title="${ task.i18n.due_date }">${ sprintf(__('%s overdue', 'groundhogg'),
         task.i18n.due_in) }</span>`
     }
 
-    if (task.is_complete) {
+    if (isComplete(task)) {
       return `<span class="pill green" title="${ task.i18n.completed_date }">${ sprintf(__('%s ago', 'groundhogg'),
         task.i18n.completed) }</span>`
     }
 
-    return `<span class="pill" title="${ task.i18n.due_date }">${ sprintf(__('In %s', 'groundhogg'),
+    let color = ''
+
+    if (isDueToday(task)) {
+      color = 'orange'
+    }
+    else if (isDueSoon(task)) {
+      color = 'yellow'
+    }
+
+    return `<span class="pill ${ color }" title="${ task.i18n.due_date }">${ sprintf(__('In %s', 'groundhogg'),
       task.i18n.due_in) }</span>`
   }
 
-  const templates = {
+  const addedBy = (task) => {
 
-    tasks: (tasks, title, { adding = false, editing = false, filter = t => true }) => {
+    const {
+      context,
+      user_id,
+    } = task.data
 
-      tasks = tasks.sort((a, b) => a.due_timestamp - b.due_timestamp)
+    let date_created = `<abbr title="${ formatDateTime(task.data.date_created) }">${ task.i18n.time_diff }</abbr>`
 
-      let overdue = tasks.filter(t => t.is_overdue)
-      let complete = tasks.filter(t => t.is_complete)
-      let pending = tasks.filter(t => !t.is_complete)
+    switch (context) {
+      case 'user':
+        let user = Groundhogg.filters.owners.find(o => o.ID == user_id)
+        let username
 
-      // language=HTML
-      return `
-          <div class="tasks-widget">
-              <div class="tasks-header">
-                  ${ title ? `<h3>${ title }</h3>` : '' }
-                  <div class="display-flex gap-10">
-                      ${ pending.length ? `<span class="pill filter-tasks" data-filter="pending">${ sprintf(
-                              __('%d pending', 'groundhogg'),
-                              pending.length) }</span>` : '' }
-                      ${ overdue.length ? `<span class="pill orange filter-tasks" data-filter="overdue">${ sprintf(
-                              __('%d overdue', 'groundhogg'),
-                              overdue.length) }</span>` : '' }
-                      ${ complete.length ? `<span class="pill green filter-tasks" data-filter="complete">${ sprintf(
-                              __('%d complete', 'groundhogg'),
-                              complete.length) }</span>` : '' }
-                  </div>
-                  <button class="gh-button text icon secondary task-add">
-                      <span class="dashicons dashicons-plus-alt2"></span>
-                  </button>
-              </div>
-              <div class="tasks">
-                  ${ adding ? templates.addTask(tasks) : `` }
-                  ${ tasks.filter(filter).map(n => editing == n.ID ? templates.editTask(n) : templates.task(n)).
-                          join('') }
-              </div>
-          </div>`
-    },
-    editTask: (task) => {
+        if (!user) {
+          username = __('Unknown')
+        }
+        else {
+          username = user.ID == Groundhogg.currentUser.ID ? __('me') : user.data.display_name
+        }
 
-      let [due_date = '', due_time = ''] = task.data.due_date.split(' ')
+        return sprintf(__('Added by %s %s ago', 'groundhogg'), username, date_created)
 
-      // language=HTML
-      return `
-          <div class="add-task">
-              <div class="display-flex column gap-10">
-                  <div class="label-with-input">
-                      <label for="task-summary">${ __('Task summary') }</label>
-                      ${ input({
-                          name: 'summary',
-                          id: 'task-summary',
-                          className: 'full-width',
-                          value: task.data.summary,
-                      }) }
-                  </div>
-                  <div class="display-flex gap-20 stack-on-mobile">
-                      <div class="label-with-input">
-                          <label for="due-date">
-                              ${ __('Due date') }
-                          </label>
-                          <div class="gh-input-group">
-                              ${ input({
-                                  type: 'date',
-                                  className: '',
-                                  required: true,
-                                  name: 'due-date',
-                                  id: 'due-date',
-                                  value: due_date,
-                              }) }
-                              ${ input({
-                                  type: 'time',
-                                  className: '',
-                                  required: false,
-                                  name: 'due-time',
-                                  id: 'due-time',
-                                  value: due_time,
-                              }) }
-                          </div>
-                      </div>
-                      <div class="label-with-input">
-                          <label for="task-type">${ __('Type', 'groundhogg') }</label>
-                          ${ select({
-                              id: 'task-type',
-                              options: taskTypes,
-                              selected: task.data.type,
-                          }) }
-                      </div>
-                  </div>
-                  <div class="label-with-input">
-                      <label>${ __('Task details') }</label>
-                      ${ textarea({
-                          id: 'edit-task-editor',
-                          value: task.data.content,
-                      }) }
-                  </div>
-              </div>
-              <div class="display-flex flex-end space-above-10">
-                  <button class="gh-button danger text cancel">${ __('Cancel') }</button>
-                  <button class="gh-button primary save">${ __('Save') }</button>
-              </div>
-          </div>`
-    },
-    addTask: () => {
+      default:
+      case 'system':
+        return sprintf(__('Added by %s %s ago', 'groundhogg'), __('System'), date_created)
+      case 'funnel':
+        return sprintf(__('Added by %s %s ago', 'groundhogg'), __('Funnel'), date_created)
+    }
+  }
 
-      // language=HTML
-      return `
-          <div class="add-task">
-              <div class="display-flex column gap-10">
-                  <div class="label-with-input">
-                      <label for="task-summary">${ __('Task summary') }</label>
-                      ${ input({
-                          name: 'summary',
-                          id: 'task-summary',
-                          className: 'full-width',
-                      }) }
-                  </div>
-                  <div class="display-flex gap-20 stack-on-mobile">
-                      <div class="label-with-input">
-                          <label for="due-date">
-                              ${ __('Due date') }
-                          </label>
-                          <div class="gh-input-group">
-                              ${ input({
-                                  type: 'date',
-                                  className: '',
-                                  required: true,
-                                  name: 'due-date',
-                                  id: 'due-date',
-                              }) }
-                              ${ input({
-                                  type: 'time',
-                                  className: '',
-                                  required: false,
-                                  name: 'due-time',
-                                  id: 'due-time',
-                                  value: '17:00:00',
-                              }) }
-                          </div>
-                      </div>
-                      <div class="label-with-input">
-                          <label for="task-type">${ __('Type', 'groundhogg') }</label>
-                          ${ select({ id: 'task-type', options: taskTypes }) }
-                      </div>
-                  </div>
-                  <div class="label-with-input">
-                      <label>${ __('Task details') }</label>
-                      <textarea id="add-task-editor"></textarea>
-                  </div>
-              </div>
-              <div class="display-flex flex-end space-above-10">
-                  <button class="gh-button danger text cancel">${ __('Cancel') }</button>
-                  <button class="gh-button primary create">${ __('Create') }</button>
-              </div>
-          </div>`
-    },
-    task: (task) => {
+  const {
+    Div,
+    Form,
+    Span,
+    H2,
+    H3,
+    An,
+    Img,
+    Button,
+    Dashicon,
+    ToolTip,
+    Fragment,
+    Skeleton,
+    InputGroup,
+    Label,
+    Select,
+    Input,
+    Textarea,
+    Pg,
+  } = MakeEl
 
-      const { content, type, context, user_id } = task.data
-      const { summary } = task.esc_html
+  const BetterObjectTasks = ({
+    object_type = '',
+    object_id = 0,
+    title = __('Tasks', 'groundhogg'),
+    ...props
+  } = {}) => {
 
+    const State = Groundhogg.createState({
+      adding      : false,
+      editing     : false,
+      filter      : isPending,
+      tasks       : [],
+      loaded      : false,
+      edit_summary: '',
+      edit_date   : '',
+      edit_time   : '',
+      edit_content: '',
+      edit_type   : 'task',
+      myTasks     : !( object_id && object_type ),
+    })
 
-      const addedBy = () => {
+    const clearEditState = () => State.set({
+      edit_summary: '',
+      edit_date   : '',
+      edit_time   : '',
+      edit_content: '',
+      edit_type   : 'task',
+      editing     : false,
+    })
 
-        let date_created = `<abbr title="${ formatDateTime(task.data.date_created) }">${ task.i18n.time_diff }</abbr>`
+    const fetchTasks = () => {
 
-        switch (context) {
-          case 'user':
-            let user = Groundhogg.filters.owners.find(o => o.ID == user_id)
-            let username
+      let query = {
+        limit  : 99,
+        orderby: 'due_date',
+        order  : 'ASC',
+      }
 
-            if (!user) {
-              username = __('Unknown')
-            }
-            else {
-              username = user.ID == Groundhogg.currentUser.ID ? __('me') : user.data.display_name
-            }
-
-            return sprintf(__('Added by %s %s ago', 'groundhogg'), username, date_created)
-
-          default:
-          case 'system':
-            return sprintf(__('Added by %s %s ago', 'groundhogg'), __('System'), date_created)
-          case 'funnel':
-            return sprintf(__('Added by %s %s ago', 'groundhogg'), __('Funnel'), date_created)
+      // tasks for anything, but only assigned to the current user
+      if (!object_type && !object_id) {
+        query = {
+          user_id   : getCurrentUser().ID,
+          incomplete: true,
+          ...query,
+        }
+      }
+      else {
+        query = {
+          object_id,
+          object_type,
+          ...query,
         }
       }
 
-      // language=HTML
-      return `
-          <div class="task ${ task.is_complete ? 'complete' : '' }" data-id="${ task.ID }">
-              <div class="icon">
-                  ${ typeToIcon[type] }
-              </div>
-              <div style="width: 100%">
-                  <div class="task-header">
-                      <div class="display-flex gap-10 align-center wrap">
-                          ${ summary ? `<span class="summary"><b>${ summary }</b></span>` : '' }
-                          ${ dueBy(task) }
-                          <span class="added-by">${ addedBy() }</span>
-                      </div>
-                      <div class="actions display-flex">
-                          ${ task.is_complete
-                                  ? ''
-                                  : `<button class="gh-button text icon primary mark-complete" data-id="${ task.ID }">
-                              <span class="dashicons dashicons-thumbs-up"></span>
-                          </button>` }
-                          <button class="gh-button text icon secondary task-more" data-id="${ task.ID }">
-                              ${ icons.verticalDots }
-                          </button>
-                      </div>
-                  </div>
-                  <div class="task-content space-above-10">
-                      ${ content }
-                  </div>
-              </div>
+      return TasksStore.fetchItems(query).then(tasks => {
 
-          </div>`
-    },
-    myTasks: (tasks) => {
+        State.set({
+          loaded: true,
+          tasks : tasks.map(({ ID }) => ID),
+        })
 
-      tasks = tasks.sort((a, b) => a.due_timestamp - b.due_timestamp).slice(0, 10)
+        return tasks
 
-      // language=HTML
-      return `
-          <div class="my-tasks">
-              ${ tasks.map(n => templates.myTask(n)).join('') }
-          </div>`
-    },
-    myTask: (task) => {
+      })
+    }
 
-      const { content, type } = task.data
-      const { associated, ID } = task
-      const { summary } = task.esc_html
+    return Div({
+      ...props,
 
-      // language=HTML
-      return `
-          <div class="task" data-id="${ ID }">
-              <div class="icon">
-                  ${ typeToIcon[type] }
-              </div>
-              <div style="width: 100%">
-                  <div class="task-header">
-                      <div class="display-flex gap-10 align-center">
-                          ${ summary ? `<span class="summary"><b>${ summary }</b></span>` : '' }
-                          ${ dueBy(task) }—<a class="name" href="${ associated.link }">${ associated.name }</a>
-                      </div>
-                      <div class="actions display-flex">
-                          <button class="gh-button text icon primary mark-complete" data-id="${ task.ID }">
-                              <span class="dashicons dashicons-thumbs-up"></span>
-                          </button>
-                      </div>
-                  </div>
-                  <div class="task-content">
-                      ${ content }
-                  </div>
-              </div>
-          </div>`
-    },
+      id       : 'my-tasks',
+      className: 'tasks-widget',
+    }, morph => {
+
+      if (!State.loaded) {
+
+        fetchTasks().then(morph)
+
+        return Skeleton({}, [
+          'full',
+          'full',
+          'full',
+        ])
+
+      }
+
+      /**
+       * The form for adding/editing the task details
+       *
+       * @returns {*}
+       * @constructor
+       */
+      const TaskDetails = () => {
+
+        return Form({
+          className: 'task display-grid gap-10',
+          onSubmit : e => {
+            e.preventDefault()
+
+            if (State.adding) {
+
+              TasksStore.post({
+                data: {
+                  object_id,
+                  object_type,
+                  summary : State.edit_summary,
+                  content : State.edit_content,
+                  type    : State.edit_type,
+                  due_date: `${ State.edit_date } ${ State.edit_time }`,
+                },
+              }).then(task => {
+
+                State.set({
+                  adding: false,
+                  tasks : [
+                    ...State.tasks,
+                    task.ID,
+                  ], // add the new task ID
+                })
+
+                clearEditState()
+
+                morph()
+              })
+
+            }
+            else {
+
+              TasksStore.patch(State.editing, {
+                data: {
+                  summary : State.edit_summary,
+                  content : State.edit_content,
+                  type    : State.edit_type,
+                  due_date: `${ State.edit_date } ${ State.edit_time }`,
+                },
+              }).then(() => {
+
+                clearEditState()
+
+                morph()
+
+              })
+            }
+
+          },
+        }, [
+          Div({
+            className: 'full',
+          }, [
+            Label({
+              for: 'task-summary',
+            }, __('Task summary')),
+            Input({
+              className: 'full-width',
+              id       : 'task-summary',
+              name     : 'summary',
+              required : true,
+              value    : State.edit_summary,
+              onChange : e => State.set({
+                edit_summary: e.target.value,
+              }),
+            }),
+          ]),
+          Div({
+            className: 'three-quarters',
+          }, [
+            Label({
+              for: 'task-date',
+            }, __('Due Date')),
+            InputGroup([
+              Input({
+                type     : 'date',
+                id       : 'task-date',
+                className: 'full-width',
+                value    : State.edit_date,
+                onChange : e => State.set({
+                  edit_date: e.target.value,
+                }),
+              }),
+              Input({
+                type     : 'time',
+                id       : 'task-time',
+                name     : 'time',
+                className: 'full-width',
+                value    : State.edit_time,
+                onChange : e => State.set({
+                  edit_time: e.target.value,
+                }),
+              }),
+            ]),
+          ]),
+          Div({
+            className: 'quarter',
+          }, [
+            Label({
+              for: 'task-type',
+            }, __('Type')),
+            `<br>`,
+            Select({
+              id      : 'task-type',
+              options : taskTypes,
+              selected: State.edit_type,
+              onChange: e => State.set({
+                edit_type: e.target.value,
+              }),
+            }),
+          ]),
+          Div({
+            className: 'full',
+          }, [
+            Label({
+              for: 'edit-task-content',
+            }, __('Details')),
+            Textarea({
+              id       : 'edit-task-content',
+              className: 'full-width',
+              value    : State.edit_content,
+              onCreate : el => {
+                try {
+                  wp.editor.remove('edit-task-content')
+                }
+                catch (err) {
+
+                }
+
+                setTimeout(() => {
+                  addMediaToBasicTinyMCE()
+                  tinymceElement('edit-task-content', {
+                    quicktags: false,
+                  }, content => {
+                    State.set({
+                      edit_content: content,
+                    })
+                  })
+                }, 10)
+              },
+            }),
+          ]),
+          Div({
+            className: 'full display-flex flex-end gap-5',
+          }, [
+            Button({
+              className: 'gh-button danger text',
+              id       : 'cancel-task-changes',
+              type     : 'button',
+              onClick  : e => {
+                clearEditState()
+                State.set({
+                  adding : false,
+                  editing: false,
+                })
+
+                morph()
+              },
+            }, 'Cancel'),
+            Button({
+              className: 'gh-button primary',
+              id       : 'update-task',
+              type     : 'submit',
+            }, State.adding ? 'Create Task' : 'Update Task'),
+          ]),
+        ])
+      }
+
+      /**
+       * The task itself
+       *
+       * @param task
+       * @returns {*}
+       * @constructor
+       */
+      const Task = task => {
+
+        const {
+          content,
+          type,
+          due_date,
+          context,
+          user_id,
+          summary,
+        } = task.data
+
+        /**
+         * If the task belongs to the current user
+         *
+         * @returns {boolean}
+         */
+        const belongsToMe = () => user_id == Groundhogg.currentUser.ID
+
+        let assocIcon = null
+
+        if (task.associated.img) {
+          assocIcon = Img({
+            src: task.associated.img,
+          })
+        }
+        else if (task.associated.icon) {
+          assocIcon = Dashicon(task.associated.icon)
+        }
+
+        return Div({
+          className: `task ${ task.is_complete ? 'complete' : 'pending' } ${ task.is_overdue ? 'overdue' : '' }`,
+          id       : `task-item-${ task.ID }`,
+          dataId   : task.ID,
+        }, [
+
+          Div({
+            className: 'task-header',
+          }, [
+            typeToIcon[type],
+            summary ? Span({ className: 'summary' }, escHTML(summary)) : null,
+            Div({
+              className: 'display-flex',
+              style    : {
+                marginLeft: 'auto',
+              },
+            }, [
+              task.is_complete ? null : Button({
+                id       : `task-mark-complete-${ task.ID }`,
+                className: 'gh-button text icon primary mark-complete',
+                onClick  : e => {
+                  document.getElementById(`task-item-${ task.ID }`).classList.add('completing')
+                  TasksStore.complete(task.ID).then(task => {
+                    dialog({
+                      message: __('Task completed!'),
+                    })
+
+                    morph()
+                  })
+                },
+              }, [
+                Dashicon('thumbs-up'),
+                ToolTip(__('Mark complete', 'groundhogg'), 'left'),
+              ]),
+              Button({
+                id       : `task-actions-${ task.ID }`,
+                className: 'gh-button text icon secondary task-more',
+                onClick  : e => {
+
+                  let items = [
+                    {
+                      key     : 'edit',
+                      cap     : belongsToMe() ? 'edit_tasks' : 'edit_others_tasks',
+                      text    : __('Edit'),
+                      onSelect: () => {
+                        State.set({
+                          editing     : task.ID,
+                          edit_summary: summary,
+                          edit_date   : due_date.split(' ')[0],
+                          edit_time   : due_date.split(' ')[1],
+                          edit_content: content,
+                          edit_type   : type,
+                        })
+                        morph()
+                      },
+                    },
+                    {
+                      key     : 'delete',
+                      cap     : belongsToMe() ? 'delete_tasks' : 'delete_others_tasks',
+                      text    : `<span class="gh-text danger">${ __('Delete') }</span>`,
+                      onSelect: () => {
+                        dangerConfirmationModal({
+                          alert    : `<p>${ __('Are you sure you want to delete this task?', 'groundhogg') }</p>`,
+                          onConfirm: () => {
+                            TasksStore.delete(task.ID).then(() => {
+                              // also remove from state
+                              State.tasks.splice(State.tasks.indexOf(task.ID), 1)
+                              morph()
+                            })
+                          },
+                        })
+                      },
+                    },
+                  ]
+
+                  if (isDueSoon(task) || isDueToday(task) || isOverdue(task)) {
+                    items.unshift({
+                      key     : 'incomplete',
+                      cap     : belongsToMe() ? 'edit_tasks' : 'edit_others_tasks',
+                      text    : __('Snooze'),
+                      onSelect: () => {
+                        TasksStore.patch(task.ID, {
+                          data: { snooze: 1 },
+                        }).then(() => {
+                          morph()
+                        })
+                      },
+                    })
+                  }
+
+                  if (task.is_complete) {
+                    items.unshift({
+                      key     : 'incomplete',
+                      cap     : belongsToMe() ? 'edit_tasks' : 'edit_others_tasks',
+                      text    : __('Mark incomplete'),
+                      onSelect: () => {
+                        TasksStore.incomplete(task.ID).then(() => {
+                          morph()
+                        })
+                      },
+                    })
+                  }
+
+                  moreMenu(e.currentTarget, items.filter(i => userHasCap(i.cap)))
+
+                },
+              }, icons.verticalDots),
+            ]),
+          ]),
+          !object_id ? An({
+            className: 'associated-object',
+            href     : task.associated.link,
+            style    : {
+              width: 'fit-content',
+            },
+          }, [
+            assocIcon,
+            task.associated.name,
+          ]) : null,
+          Div({
+              className: 'display-flex gap-5 align-center details flex-wrap',
+            }, [
+              dueBy(task),
+              Span({ className: 'added-by' }, addedBy(task)),
+            ],
+          ),
+          Div({
+            className: 'task-content space-above-10',
+          }, content),
+
+        ])
+
+      }
+
+      let tasks = State.tasks.map(id => TasksStore.get(id))
+
+      tasks = tasks.sort((a, b) => a.due_timestamp - b.due_timestamp)
+
+      let filteredTasks = tasks.filter(State.filter)
+
+      /**
+       * Update the current filter on the tasks
+       *
+       * @param filter
+       */
+      const setFilter = filter => {
+        State.set({
+          filter,
+          adding : false,
+          editing: false,
+        })
+        morph()
+      }
+
+      const FilterPill = ({
+        id = '',
+        text = '',
+        color = '',
+        filter = isPending,
+      }) => {
+
+        let num = tasks.filter(filter).length
+
+        if (!num) {
+          return null
+        }
+
+        return Span({
+          id: `filter-${id || color}`,
+          className: `pill ${ color } clickable ${ State.filter === filter ? 'bold' : '' }`,
+          onClick  : e => setFilter(filter),
+        }, sprintf(text, num))
+      }
+
+      return Fragment([
+        title ? H3({}, title) : null,
+
+        object_id || tasks.length ? Div({
+          className: 'tasks-header',
+        }, [
+          FilterPill({
+            id: 'overdue',
+            text  : __('%d overdue', 'groundhogg'),
+            color : 'red',
+            filter: isOverdue,
+          }),
+
+          FilterPill({
+            id: 'due-today',
+            text  : __('%d due today', 'groundhogg'),
+            color : 'orange',
+            filter: isDueToday,
+          }),
+
+          FilterPill({
+            id: 'due-soon',
+            text  : __('%d due soon', 'groundhogg'),
+            color : 'yellow',
+            filter: isDueSoon,
+          }),
+
+          FilterPill({
+            id: 'pending',
+            text  : __('%d pending', 'groundhogg'),
+            filter: isPending,
+          }),
+
+          FilterPill({
+            id: 'complete',
+            text  : __('%d complete', 'groundhogg'),
+            color : 'green',
+            filter: isComplete,
+          }),
+
+          userHasCap('add_tasks') && object_id ? Button({
+            id       : 'add-tasks',
+            className: 'gh-button secondary text icon',
+            onClick  : e => {
+
+              if (State.editing) {
+                clearEditState()
+              }
+
+              State.set({
+                adding: true,
+              })
+
+              morph()
+            },
+          }, [
+            Dashicon('plus-alt2'),
+            ToolTip('Add Task', 'left'),
+          ]) : null,
+        ]) : null,
+        State.adding ? TaskDetails() : null,
+        ...filteredTasks.map(task => State.editing == task.ID ? TaskDetails(task) : Task(task)),
+        tasks.length || State.adding ? null : Pg({
+          style: {
+            textAlign: 'center',
+          },
+        }, __('🎉 No pending tasks!', 'groundhogg')),
+      ])
+    })
+
   }
 
   const ObjectTasks = (selector, {
@@ -315,362 +671,21 @@
     title = __('Tasks', 'groundhogg'),
   }) => {
 
-    let state = {
-      adding: false,
-      editing: false,
-      filter: t => !t.is_complete,
-    }
-
-    const $el = $(selector)
-
-    const render = () => {
-
-      wp.editor.remove('edit-task-editor')
-      wp.editor.remove('add-task-editor')
-
-      const tasks = TasksStore.filter(({ data }) => data.object_type == object_type && data.object_id == object_id).
-        sort((a, b) => a.due_timestamp - b.due_timestamp)
-
-      $el.html(templates.tasks(tasks, title, state))
-      onMount()
-    }
-
-    const onMount = () => {
-
-      $(`${ selector } .filter-tasks`).on('click', (e) => {
-        state.adding = false
-        state.editing = false
-
-        switch (e.currentTarget.dataset.filter) {
-          case 'complete':
-            state.filter = t => t.is_complete
-            break
-          case 'pending':
-            state.filter = t => !t.is_complete
-            break
-          case 'overdue':
-            state.filter = t => t.is_overdue
-            break
-        }
-
-        render()
-      })
-
-      const addTask = () => {
-        if (state.editing) {
-          wp.editor.remove('edit-task-editor')
-          state.editing = false
-        }
-
-        state.adding = true
-
-        render()
-      }
-
-      const editTask = (id) => {
-
-        if (state.adding) {
-          wp.editor.remove('add-task-editor')
-          state.adding = false
-        }
-
-        if (state.editing) {
-          wp.editor.remove('edit-task-editor')
-        }
-
-        state.editing = id
-
-        render()
-      }
-
-      $(`${ selector } .task-add`).on('click', () => {
-
-        if (this.adding) {
-          return
-        }
-
-        addTask()
-      })
-
-      if (!userHasCap('add_tasks')) {
-        $('.task-add').remove()
-      }
-
-      tooltip(`${ selector } .task-add`, {
-        content: __('Add Task', 'groundhogg'),
-        position: 'left',
-      })
-
-      let due_date, due_time
-
-      if (state.adding) {
-
-        const newTask = {
-          object_id,
-          object_type,
-          summary: '',
-          content: '',
-          type: 'task',
-          due_date: '',
-        }
-
-        addMediaToBasicTinyMCE()
-
-        let editor = tinymceElement('add-task-editor', {
-          quicktags: false,
-        }, (content) => {
-          newTask.content = content
-        })
-
-        $(`${ selector } #due-date`).on('change', (e) => {
-          due_date = e.target.value
-          newTask.due_date = `${ due_date } ${ due_time }`
-        })
-
-        $(`${ selector } #due-time`).on('change', (e) => {
-          due_time = e.target.value
-          newTask.due_date = `${ due_date } ${ due_time }`
-        })
-
-        $(`${ selector } #task-summary`).on('input', (e) => {
-          newTask.summary = e.target.value
-        })
-
-        $(`${ selector } #task-type`).on('change', (e) => {
-          newTask.type = e.target.value
-        })
-
-        $(`${ selector } .cancel`).on('click', () => {
-          state.adding = false
-          render()
-        })
-
-        $(`${ selector } .create`).on('click', () => {
-          state.adding = false
-          state.editing = false
-          state.filter = t => !t.is_complete
-
-          TasksStore.post({
-            data: {
-              ...newTask,
-              content: editor.getContent({ format: 'raw' }),
-            },
-          }).then(() => {
-            render()
-          })
-        })
-      }
-      else if (state.editing) {
-
-        const editedTask = TasksStore.get(state.editing)
-
-        const updateTask = {
-          content: editedTask.data.content,
-          type: editedTask.data.type,
-          due_date: editedTask.data.due_date,
-        }
-
-        let [due_date = '', due_time = ''] = updateTask.due_date.split(' ')
-
-        let editor = tinymceElement('edit-task-editor', {
-          quicktags: false,
-        }, (content) => {
-          updateTask.content = content
-        })
-
-        $(`${ selector } #task-summary`).on('input', (e) => {
-          updateTask.summary = e.target.value
-        })
-
-        $(`${ selector } #task-type`).on('change', (e) => {
-          updateTask.type = e.target.value
-        })
-
-        $(`${ selector } #due-date`).on('change', (e) => {
-          due_date = e.target.value
-          updateTask.due_date = `${ due_date } ${ due_time }`
-        })
-
-        $(`${ selector } #due-time`).on('change', (e) => {
-          due_time = e.target.value
-          updateTask.due_date = `${ due_date } ${ due_time }`
-        })
-
-        $(`${ selector } .cancel`).on('click', () => {
-          state.editing = false
-          render()
-        })
-
-        $(`${ selector } .save`).on('click', () => {
-          state.adding = false
-
-          TasksStore.patch(state.editing, {
-            data: {
-              ...updateTask,
-              content: editor.getContent({ format: 'raw' }),
-            },
-          }).then(() => {
-            state.editing = false
-            render()
-          })
-        })
-      }
-
-      let curTask
-
-      const task = () => TasksStore.get(curTask)
-      const belongsToMe = () => task().data.user_id == Groundhogg.currentUser.ID
-
-      tooltip(`${ selector } .mark-complete`, {
-        content: __('Mark complete'),
-        position: 'left',
-      })
-
-      $(`${ selector } .mark-complete`).on('click', (e) => {
-        curTask = parseInt(e.currentTarget.dataset.id)
-
-        $el.find(`.task[data-id="${ curTask }"]`).addClass('completing')
-
-        TasksStore.complete(curTask).then(task => {
-          dialog({
-            message: __('Task completed!'),
-          })
-
-          render()
-        })
-
-      })
-
-      $(`${ selector } .task-more`).on('click', (e) => {
-
-        curTask = parseInt(e.currentTarget.dataset.id)
-
-        let items = [
-          {
-            key: 'edit',
-            cap: belongsToMe() ? 'edit_tasks' : 'edit_others_tasks',
-            text: __('Edit'),
-            onSelect: () => {
-              editTask(curTask)
-            },
-          },
-          {
-            key: 'delete',
-            cap: belongsToMe() ? 'delete_tasks' : 'delete_others_tasks',
-            text: `<span class="gh-text danger">${ __('Delete') }</span>`,
-            onSelect: () => {
-              dangerConfirmationModal({
-                alert: `<p>${ __('Are you sure you want to delete this task?', 'groundhogg') }</p>`,
-                onConfirm: () => {
-                  TasksStore.delete(curTask).then(() => render())
-                },
-              })
-            },
-          },
-        ]
-
-        if (task().is_complete) {
-          items.unshift({
-            key: 'incomplete',
-            cap: belongsToMe() ? 'edit_tasks' : 'edit_others_tasks',
-            text: __('Mark incomplete'),
-            onSelect: () => {
-              TasksStore.incomplete(curTask).then(() => {
-                render()
-              })
-            },
-          })
-        }
-
-        moreMenu(e.currentTarget, items.filter(i => userHasCap(i.cap)))
-      })
-    }
-
-    if (!TasksStore.filter(n => n.data.object_type == object_type && n.data.object_id == object_id).length) {
-      $el.html(spinner('gray'))
-      TasksStore.fetchItems({
-        object_id,
-        object_type,
-        limit: 9999,
-      }).then(() => {
-        render()
-      })
-    }
-    else {
-      render()
-    }
+    document.querySelector(selector).append(BetterObjectTasks({
+      object_type,
+      object_id,
+      title,
+    }))
   }
 
-  let fetchedMyTasks = false
-
-  const fetchMyTasks = () => {
-    return TasksStore.fetchItems({
-      orderby: 'due_date',
-      order: 'ASC',
-      limit: 30,
-      // Only fetch incomplete tasks
-      incomplete: true,
-      user_id: Groundhogg.currentUser.ID,
-    }).then(tasks => {
-      fetchedMyTasks = true
-      return tasks
-    })
-  }
-
-  const MyTasks = (selector, {}) => {
-
-    const $el = $(selector)
-
-    const mount = () => {
-
-      let tasks = TasksStore.getItems().filter(t => !t.is_complete)
-      $el.html(templates.myTasks(tasks))
-      onMount()
-    }
-
-    const onMount = () => {
-
-      tooltip(`${ selector } .mark-complete`, {
-        content: __('Mark complete'),
-        position: 'left',
-      })
-
-      let curTask
-
-      $(`${ selector } .mark-complete`).on('click', (e) => {
-        curTask = parseInt(e.currentTarget.dataset.id)
-
-        $el.find(`.task[data-id="${ curTask }"]`).addClass('completing')
-
-        TasksStore.complete(curTask).then(task => {
-          dialog({
-            message: __('Task completed!'),
-          })
-
-          mount()
-        }).catch(err => {
-          dialog({
-            message: err.message,
-            type: 'error',
-          })
-
-          mount()
-        })
-
-      })
-
-    }
-
-    if (fetchedMyTasks) {
-      mount()
-    }
-    else {
-      $el.html(spinner('gray'))
-      fetchMyTasks().then(mount)
-    }
+  const MyTasks = (selector, props) => {
+    document.querySelector(selector).append(BetterObjectTasks({
+      title: false,
+    }))
   }
 
   Groundhogg.taskEditor = ObjectTasks
+  Groundhogg.ObjectTasks = BetterObjectTasks
   Groundhogg.myTasks = MyTasks
 
 } )(jQuery)

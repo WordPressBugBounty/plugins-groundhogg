@@ -2,8 +2,6 @@
 
   const {
     searchOptionsWidget,
-    loadingDots,
-    adminPageURL,
     bold,
     uuid,
     regexp,
@@ -155,7 +153,9 @@
     'today': __('Today', 'groundhogg'),
     'yesterday': __('Yesterday', 'groundhogg'),
     'this_week': __('This week', 'groundhogg'),
+    'last_week': __('Last week', 'groundhogg'),
     'this_month': __('This month', 'groundhogg'),
+    'last_month': __('Last month', 'groundhogg'),
     'this_year': __('This year', 'groundhogg'),
     '24_hours': __('In the last 24 hours', 'groundhogg'),
     '7_days': __('In the last 7 days', 'groundhogg'),
@@ -363,7 +363,7 @@
       ]),
       display: ({ compare, value, ...rest }) => {
         return Fragment(
-          ComparisonsTitleGenerators[compare](bold(name), bold(value)))
+          ComparisonsTitleGenerators[compare](bold(name), bold(formatNumber(value))))
       },
       preload,
     },
@@ -417,7 +417,7 @@
       ]),
       display: ({ compare, value, ...rest }) => {
         return Fragment(
-          ComparisonsTitleGenerators[compare](bold(name), bold(value)))
+          ComparisonsTitleGenerators[compare](bold(name), bold(formatTime(value))))
       },
       preload,
     },

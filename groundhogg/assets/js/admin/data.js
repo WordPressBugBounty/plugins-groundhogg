@@ -921,6 +921,12 @@
     return store
   }
 
+  /**
+   * Create a manageable state object
+   *
+   * @param initialState
+   * @returns {{set(*): void, initial: {}, get(string=): (*|boolean|{}), clear(): void, reset(): void, state: {}, has(string=): boolean}}
+   */
   const createState = (initialState = {}) => new Proxy({
 
     initial: {
@@ -1012,6 +1018,32 @@
     },
   })
 
+  const stateMap = new WeakMap();
+
+  /**
+   * Like createState, but with memory
+   *
+   * @param initialState
+   * @param caller
+   * @returns {any}
+   */
+  function useState(initialState, caller = false) {
+
+    if ( ! caller ){
+      // Get the current function that is calling useState
+      caller = useState.caller;
+    }
+
+    // Check if this function already has state in the map
+    if (!stateMap.has(caller)) {
+      // If not, initialize the state and store it in the WeakMap
+      stateMap.set(caller, createState(initialState));
+    }
+
+    // Return the stored state for this function
+    return stateMap.get(caller);
+  }
+
   /**
    * Create a registry that contacts items based on IDs
    *
@@ -1059,6 +1091,10 @@
       return Object.keys(this.items)
     },
 
+    filter( func ) {
+      return this.keys().filter( key => func( this[key], key ) )
+    },
+
     map( func ) {
       return this.keys().map( key => func( this[key], key ) )
     },
@@ -1102,6 +1138,7 @@
   })
 
   Groundhogg.createState = createState
+  Groundhogg.useState = useState
   Groundhogg.createRegistry = createRegistry
 
 } )(jQuery)

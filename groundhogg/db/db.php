@@ -603,6 +603,9 @@ abstract class DB {
 		$this->batch_inserts = [];
 
 		if ( ! $wpdb->rows_affected ) {
+
+			$this->last_error = $wpdb->last_error;
+
 			return false;
 		}
 
@@ -1075,12 +1078,38 @@ abstract class DB {
 				case 'after':
 					$where[] = [ 'col' => $this->get_date_key(), 'val' => $val, 'compare' => '>=' ];
 					break;
+				case 'child' :
 				case 'related' :
+
+					$val = swap_array_keys( $val, [
+						'child_id' => 'ID',
+						'child_type' => 'type',
+						'object_id' => 'ID',
+						'object_type' => 'type',
+					]);
+
 					$relationships = get_db( 'object_relationships' );
 					$where[]       = [
 						'col'     => $this->get_primary_key(),
 						'compare' => 'IN',
 						'val'     => $wpdb->prepare( "SELECT primary_object_id FROM {$relationships->table_name} WHERE secondary_object_id = %d AND secondary_object_type = '%s' AND primary_object_type = '%s'", $val['ID'], $val['type'], $this->get_object_type() )
+					];
+
+					break;
+				case 'parent' :
+
+					$val = swap_array_keys( $val, [
+						'parent_id' => 'ID',
+						'parent_type' => 'type',
+						'object_id' => 'ID',
+						'object_type' => 'type',
+					]);
+
+					$relationships = get_db( 'object_relationships' );
+					$where[]       = [
+						'col'     => $this->get_primary_key(),
+						'compare' => 'IN',
+						'val'     => $wpdb->prepare( "SELECT secondary_object_id FROM {$relationships->table_name} WHERE primary_object_id = %d AND primary_object_type = '%s' AND secondary_object_type = '%s'", $val['ID'], $val['type'], $this->get_object_type() )
 					];
 					break;
 				case 'count':
@@ -1218,7 +1247,6 @@ abstract class DB {
 					} );
 					break;
 			}
-
 		}
 
 		// Campaigns filter
@@ -1350,16 +1378,89 @@ abstract class DB {
 				case 'after':
 					$query->where()->greaterThanEqualTo( $this->get_date_key(), $val );
 					break;
-				case 'related' :
+				case 'child' : // if it has a child
+				case 'related' : // if it has a child
+
+					$val = swap_array_keys( $val, [
+						'ID' => 'id',
+						'child_id' => 'id',
+						'child_type' => 'type',
+						'object_id' => 'id',
+						'object_type' => 'type',
+					]);
 
 					$join = $query->addJoin( 'LEFT', 'object_relationships' );
 					$join->onColumn( 'primary_object_id' );
 
-					$query->where( "$join->alias.secondary_object_id", $val['ID'] );
+					// checking child through
+					if ( is_array( $val['id'] ) && isset_not_empty( $val['id'], 'type' ) ) {
+
+						$subVal = $val['id'];
+						$subVal = swap_array_keys( $subVal, [
+							'ID' => 'id',
+							'child_id' => 'id',
+							'child_type' => 'type',
+							'object_id' => 'id',
+							'object_type' => 'type',
+						]);
+
+						$relQuery = new Table_Query( 'object_relationships' );
+						$relQuery->setSelect( 'secondary_object_id' )
+						         ->where()
+						         ->equals( 'secondary_object_type', $val['type'] )
+						         ->equals( 'primary_object_type', $subVal[ 'type' ] )
+						         ->equals( 'primary_object_id', $subVal[ 'id' ] );
+
+						$val['id'] = $relQuery;
+					}
+
+					$query->where()->in( "$join->alias.secondary_object_id", $val['id'] );
 					$query->where( "$join->alias.secondary_object_type", $val['type'] );
 					$query->where( "$join->alias.primary_object_type", $this->get_object_type() );
 
 					break;
+				case 'parent' : // if it has a parent
+
+					$val = swap_array_keys( $val, [
+						'ID' => 'id',
+						'parent_id' => 'id',
+						'parent_type' => 'type',
+						'object_id' => 'id',
+						'object_type' => 'type',
+					]);
+
+					$join = $query->addJoin( 'LEFT', 'object_relationships' );
+					$join->onColumn( 'secondary_object_id' );
+
+					// checking child through
+					if ( is_array( $val['id'] ) && isset_not_empty( $val['id'], 'type' ) ) {
+
+						$subVal = $val['id'];
+						$subVal = swap_array_keys( $subVal, [
+							'ID' => 'id',
+							'child_id' => 'id',
+							'child_type' => 'type',
+							'object_id' => 'id',
+							'object_type' => 'type',
+						]);
+
+						$relQuery = new Table_Query( 'object_relationships' );
+						$relQuery->setSelect( 'primary_object_id' )
+						         ->where()
+						         ->equals( 'primary_object_type', $val['type'] )
+						         ->equals( 'secondary_object_type', $subVal[ 'type' ] )
+						         ->equals( 'secondary_object_id', $subVal[ 'id' ] );
+
+						$val['id'] = $relQuery;
+					}
+
+					$query->where()->in( "$join->alias.primary_object_id", $val['id'] );
+					$query->where( "$join->alias.primary_object_type", $val['type'] );
+					$query->where( "$join->alias.secondary_object_type", $this->get_object_type() );
+
+					break;
+
+
 				case 'count':
 					$operation = 'COUNT';
 					break;

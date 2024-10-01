@@ -2,14 +2,17 @@
 
 namespace Groundhogg\Api\V4;
 
+use Elementor\Tracker;
 use Groundhogg\Broadcast;
 use Groundhogg\Campaign;
 use Groundhogg\Email;
+use Groundhogg\Utils\Micro_Time_Tracker;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 use function Groundhogg\create_object_from_type;
+use function Groundhogg\db;
 use function Groundhogg\get_db;
 
 // Exit if accessed directly
@@ -73,9 +76,9 @@ class Broadcasts_Api extends Base_Object_Api {
 
 		$date = new \DateTime( $time_string, wp_timezone() );
 
-		/* convert to UTC */
-		$segment_type = $request->get_param( 'segment_type' ) ?: 'fixed' ;
+		$segment_type = $request->get_param( 'segment_type' ) ?: 'fixed';
 
+		/* convert to UTC */
 		if ( $request->get_param( 'send_now' ) ) {
 			$meta['send_now'] = true;
 			$date->setTimestamp( time() + 10 );
@@ -85,6 +88,14 @@ class Broadcasts_Api extends Base_Object_Api {
 		}
 
 		$meta['segment_type'] = $segment_type;
+
+		// Save batching meta
+		if ( $request->get_param( 'batching' ) ) {
+			$meta['batch_interval']        = sanitize_text_field( $request->get_param( 'batch_interval' ) );
+			$meta['batch_interval_length'] = absint( $request->get_param( 'batch_interval_length' ) );
+			$meta['batch_amount']          = absint( $request->get_param( 'batch_amount' ) );
+			$meta['batch_delay']          = 0; // initialize batch offset at 0
+		}
 
 		if ( $date->getTimestamp() < time() ) {
 			return self::ERROR_401( 'invalid_date', __( 'Please select a time in the future', 'groundhogg' ) );
@@ -137,23 +148,30 @@ class Broadcasts_Api extends Base_Object_Api {
 		do_action( 'groundhogg/admin/broadcast/scheduled', $broadcast->get_id(), $meta, $broadcast );
 
 		// We can jumpstart the process if the segment is fixed
-		if ( $segment_type === 'fixed' ){
+		if ( $segment_type === 'fixed' ) {
 
 			// Sets up the initial state for the scheduler
 			$items_scheduled = $broadcast->enqueue_batch();
 
 			// Something is wrong scheduling the broadcast
-			if ( ! $items_scheduled ){
+			if ( ! $items_scheduled ) {
 
 				$broadcast->cancel();
 				$broadcast->delete();
 
-				return self::ERROR_500();
+				return self::ERROR_500( 'db_error', 'Unable to schedule events', $broadcast );
+			}
+
+			$tracker = new Micro_Time_Tracker();
+
+			// schedule 5 seconds worth. Should cover most small broadcasts
+			while ( $broadcast->is_pending() && $tracker->time_elapsed() < 5 ){
+				$broadcast->enqueue_batch();
 			}
 		}
 
 		// If the broadcast is still pending, create a background task
-		$broadcast->schedule_in_background();
+		$broadcast->maybe_schedule_in_background();
 
 		return self::SUCCESS_RESPONSE( [
 			'item' => $broadcast
@@ -191,7 +209,7 @@ class Broadcasts_Api extends Base_Object_Api {
 	 *
 	 * @return WP_Error|WP_REST_Response
 	 */
-	public function cancel_broadcast( WP_REST_Request $request ){
+	public function cancel_broadcast( WP_REST_Request $request ) {
 
 		$broadcast = new Broadcast( $request->get_param( $this->get_primary_key() ) );
 
@@ -199,7 +217,7 @@ class Broadcasts_Api extends Base_Object_Api {
 			return self::ERROR_RESOURCE_NOT_FOUND();
 		}
 
-		if ( ! $broadcast->cancel() ){
+		if ( ! $broadcast->cancel() ) {
 			return self::ERROR_400( 'error', 'The broadcast could not be cancelled.' );
 		}
 

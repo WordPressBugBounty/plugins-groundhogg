@@ -25,60 +25,72 @@ $action-green-50: rgba(158, 206, 56, 0.5);
 $box-shadow: 5px 5px 30px 0 rgba(24, 45, 70, 0.05);
 $background-color: #F6F9FB;
 
-.wrap * {
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-}
+body.gh_reporting {
 
-.display-grid {
-  .gh-panel {
-    position: relative;
+  .number-total,
+  .groundhogg-quick-stat-number, {
+    font-family: "Helvetica Neue", Helvetica, Arial, Lucida Grande, sans-serif;
   }
-}
 
-.wrap.blurred {
-  filter: blur(3px);
-}
+  .gh-panel {
+    .notice {
+      margin: 10px;
+      border-radius: 5px;
+    }
+  }
 
-.gh-loader-overlay {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: -20px;
-  bottom: 0;
-  background: #FFF;
-  opacity: 0.5;
-  z-index: 9999;
-}
+  .display-grid {
+    .gh-panel {
+      position: relative;
+    }
+  }
 
-.gh-tooltip {
-  max-width: 200px;
-}
+  .wrap.blurred {
+    filter: blur(3px);
+  }
 
-.gh-loader {
-  top: 50vh;
-  margin: 0 !important;
-  left: 50%;
-  font-size: 40px !important;
-  position: absolute !important;
-  z-index: 99999;
-}
+  .gh-loader-overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: -20px;
+    bottom: 0;
+    background: #FFF;
+    opacity: 0.5;
+    z-index: 9999;
+  }
 
-img {
-  max-width: 100%;
+  .gh-tooltip {
+    max-width: 200px;
+  }
+
+  .gh-loader {
+    top: 50vh;
+    margin: 0 !important;
+    left: 50%;
+    font-size: 40px !important;
+    position: absolute !important;
+    z-index: 99999;
+  }
+
+  img {
+    max-width: 100%;
+  }
+
+  #screen-meta-links {
+    display: none;
+  }
+
+  .nav-tab-wrapper {
+    margin-bottom: 20px !important;
+  }
+
 }
 
 #groundhogg-datepicker-wrap {
   max-width: 450px;
   float: right;
   margin-top: 25px;
-}
-
-#screen-meta-links {
-  display: none;
-}
-
-.nav-tab-wrapper {
-  margin-bottom: 20px !important;
 }
 
 .big-chart-wrap {
@@ -91,19 +103,6 @@ img {
   background: #FFF;
   border: 1px solid #ccd0d4;
   box-shadow: 0 1px 1px rgba(0, 0, 0, .04);
-}
-
-.groundhogg-report h2.title {
-  padding: 0 20px;
-  font-size: 18px;
-  /*border-bottom: 1px solid #ccd0d4;*/
-
-
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre;
-  line-height: 1.2;
-  font-weight: bold;
 }
 
 .groundhogg-report .inside {
@@ -137,19 +136,22 @@ img {
 
 .groundhogg-quick-stat .groundhogg-quick-stat-number {
   font-size: 40px;
-  display: inline-block;
-  float: left;
-  margin-top: 10px;
+  line-height: 1;
+  //display: inline-block;
+  //float: left;
+  //margin-top: 10px;
 
   a {
     text-decoration: none;
+    line-height: 1;
   }
 }
 
 .groundhogg-quick-stat .groundhogg-quick-stat-previous {
   /*margin: 10px 0 0 0;*/
   font-size: 16px;
-  float: right;
+  //float: right;
+  text-align: right;
 }
 
 .groundhogg-quick-stat .groundhogg-quick-stat-previous.red {
@@ -176,8 +178,9 @@ img {
 }
 
 .groundhogg-quick-stat .groundhogg-quick-stat-compare {
-  clear: right;
-  float: right;
+  //clear: right;
+  //float: right;
+  text-align: right;
   font-size: 12px;
   color: #acbdc9;
   display: inline-block;
@@ -210,31 +213,6 @@ img {
   margin: 0 !important;
 }
 
-.groundhogg-chart-no-padding h2.title,
-.groundhogg-chart h2.title {
-  margin-top: 15px;
-  margin-bottom: 20px;
-  padding-left: 15px;
-
-  font-size: 18px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre;
-  line-height: 1.2;
-  font-weight: bold;
-}
-
-.groundhogg-chart h2.title {
-  margin-top: 0;
-  padding-left: 0;
-}
-
-h2.title {
-  .dashicons, .dashicons-before:before {
-    font-family: dashicons;
-  }
-}
-
 .groundhogg-chart-no-padding .notice {
   margin: 10px;
 }
@@ -254,23 +232,21 @@ h2.title {
   border-radius: 5px;
 }
 
-.percentage-change.bad{
+.percentage-change.bad {
   color: #ff0000;
 }
 
-.percentage-change.good{
+.percentage-change.good {
   color: #99cc00;
 }
 
-@media only screen and (max-width: 480px) {
-  .groundhogg-quick-stat .groundhogg-quick-stat-number,
-  .groundhogg-quick-stat .groundhogg-quick-stat-previous,
-  .groundhogg-quick-stat .groundhogg-quick-stat-compare {
-    //float: none;
-  }
-}
-
 .gh-panel {
+
+  h2.title:has(.dashicons) {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
 
   #table_funnel_stats {
     td:first-child {
@@ -300,15 +276,19 @@ h2.title {
         &.great {
           background-color: #d3e6cb;
         }
+
         &.good {
           background-color: #eef7e3;
         }
+
         &.fair {
           background-color: #fef8e3;
         }
+
         &.poor {
           background-color: #ffe6dd;
         }
+
         &.bad {
           background-color: #F4CCCC;
         }
@@ -378,7 +358,7 @@ table.groundhogg-report-table th {
   line-height: 1.2;
   display: table-cell;
   padding: 15px;
-  font-weight: bold;
+  font-weight: 500;
   font-size: 15px;
   vertical-align: top;
 }
@@ -509,36 +489,30 @@ table.groundhogg-report-table td:last-child {
   box-sizing: border-box;
 }
 
-.broadcast-type{
+.broadcast-type {
   font-size: 10px;
   font-weight: 600;
   margin-right: 10px;
   opacity: 0.7;
 }
 
-#groundhogg-datepicker{
-  .dr-preset-list{
+#groundhogg-datepicker {
+  .dr-preset-list {
     left: 0;
   }
-  .dr-selections{
+
+  .dr-selections {
     right: 0;
   }
 }
 
 @media only screen and (max-width: 700px) {
-  .groundhogg-quick-stats .groundhogg-report {
-    display: inherit;
-  }
 
   .groundhogg-chart-wrapper {
     display: inline-block;
     margin-bottom: 0px;
     margin-top: 0px;
     width: 100%;
-
-  }
-  .groundhogg-quick-stats .groundhogg-quick-stat {
-    width: 90%;
   }
 
   .groundhogg-chart-no-padding {
@@ -565,19 +539,14 @@ table.groundhogg-report-table td:last-child {
     float: left;
   }
 
-  .groundhogg-chart > h2.title {
-    padding-left: 15px;
-  }
-
   #groundhogg-datepicker-wrap {
     width: 100%;
     float: unset;
     margin-top: 0px;
   }
 
-
-  div:not(#table_broadcast_stats){
-    >  table.groundhogg-report-table {
+  div:not(#table_broadcast_stats) {
+    > table.groundhogg-report-table {
 
       tr {
         position: relative;
@@ -619,7 +588,7 @@ table.groundhogg-report-table td:last-child {
   }
 
 
-  #edit-funnel{
+  #edit-funnel {
     display: none;
   }
 
