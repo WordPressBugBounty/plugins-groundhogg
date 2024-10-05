@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.6
 Requires PHP: 7.1
-Stable tag: 3.7
+Stable tag: 3.7.0.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -349,7 +349,11 @@ You can purchase a premium plan for access to support and our premium extensions
 
 == Changelog ==
 
-= 3.7 (2024-19-24) =
+= 3.7.0.1 (2024-10-04) =
+* IMPROVED Table filter config for addons.
+* FIXED Issue with before/after date range filters not working
+
+= 3.7 (2024-10-01) =
 * ADDED New personalized dashboard experience to replace the welcome page.
  * New *My Tasks* widget
  * New *Summary* widget
