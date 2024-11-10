@@ -556,9 +556,17 @@ class Replacements implements \JsonSerializable {
 				'code'         => 'ul',
 				'group'        => 'formatting',
 				'default_args' => 'meta_key',
-				'callback'     => [ $this, 'replacement_ol' ],
+				'callback'     => [ $this, 'replacement_ul' ],
 				'name'         => __( 'Unordered List', 'groundhogg' ),
 				'description'  => _x( 'Formats a custom field like checkboxes as an unordered list.', 'replacement', 'groundhogg' ),
+			],
+			[
+				'code'         => 'substr',
+				'group'        => 'formatting',
+				'default_args' => '{replacement}',
+				'callback'     => [ $this, 'replacement_substring' ],
+				'name'         => __( 'Sub string', 'groundhogg' ),
+				'description'  => _x( 'Returns a substring of the inner replacement code.', 'replacement', 'groundhogg' ),
 			],
 		];
 
@@ -1035,6 +1043,11 @@ class Replacements implements \JsonSerializable {
 
 	/**
 	 * Return the contact meta
+     *
+     * usage is {meta.meta_key}
+     * or for serialized date you can do {meta.some_array.key}
+     *
+     * Additionally add a format function like {meta.some_array|ol}
 	 *
 	 * @param $contact_id int
 	 * @param $arg        string the meta key
@@ -1046,11 +1059,19 @@ class Replacements implements \JsonSerializable {
 			return '';
 		}
 
-		$parts    = explode( '|', $arg );
-		$meta_key = get_array_var( $parts, 0 );
-		$format   = get_array_var( $parts, 1 );
+		$parts  = explode( '|', $arg );
+		$format = get_array_var( $parts, 1 );
 
-		$value = $this->get_current_contact()->get_meta( $meta_key );
+		// support for serialized objects
+		$nested_keys = explode( '.', get_array_var( $parts, 0 ) );
+		$root_key    = array_shift( $nested_keys );
+
+		$value = $this->get_current_contact()->get_meta( $root_key );
+
+		while ( ! empty( $nested_keys ) && is_iterable( $value ) ) {
+			$key   = array_shift( $nested_keys );
+			$value = $value[ $key ];
+		}
 
 		switch ( $format ) {
 			default:
@@ -2579,6 +2600,18 @@ class Replacements implements \JsonSerializable {
 	public function replacement_ul( $arg, $contact_id ) {
 		return $this->replacement_meta( "$arg|ul", $contact_id );
 	}
+
+	/**
+     * Substring format of inner replacement code
+     *
+	 * @param $arg
+	 *
+	 * @return false|string
+	 */
+    public function replacement_substring( $arg ) {
+        $args = split_last( $arg, ',', 2 );
+	    return substr( $args[1], $args[1], $args[2] );
+    }
 
 	/**
 	 * We don't want this to be serialized
