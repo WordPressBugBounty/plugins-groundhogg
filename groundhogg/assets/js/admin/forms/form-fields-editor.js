@@ -1,8 +1,9 @@
-( () => {
+( ($) => {
 
   const {
     Div,
     Input,
+    Textarea,
     Fragment,
     Toggle,
     Label,
@@ -10,13 +11,19 @@
     makeEl,
     Span,
     Dashicon,
+    Modal,
+    ToolTip,
   } = MakeEl
 
   const {
     searchOptionsWidget,
   } = Groundhogg.element
 
-  const { sprintf, __, _x } = wp.i18n
+  const {
+    sprintf,
+    __,
+    _x,
+  } = wp.i18n
 
   // More basic version of the form builder
 
@@ -39,9 +46,9 @@
     label = '',
     stacked = false,
   }, input) => Div({
-    className: 'space-between',
+    className: stacked ? 'display-flex column gap-5' : 'space-between',
   }, [
-    Label({ for: input.id }, label),
+    Label({ for: Div({}, input).querySelector('input,textarea,select')?.id }, label),
     input,
   ])
 
@@ -49,23 +56,48 @@
    * Field settings
    *
    * @param label
+   * @param description
    * @param required
    * @param updateField
    * @returns {*}
    * @constructor
    */
-  const FieldSettings = ({ label, required, updateField }) => Fragment([
+  const FieldSettings = ({
+    label = '',
+    description = '',
+    required,
+    updateField,
+  }) => Fragment([
     FieldSetting({
-      label: 'Label',
+      label  : 'Label',
+      stacked: true,
     }, Input({
-      value: label,
+      value  : label,
+      id     : 'field-label',
+      name   : 'field_label',
       onInput: e => updateField({ label: e.target.value }),
+    })),
+    FieldSetting({
+      stacked: true,
+      label  : 'Description',
+    }, Textarea({
+      style  : {
+        width: '100%',
+      },
+      id     : 'field-description',
+      name   : 'field_description',
+      value  : description,
+      onInput: e => updateField({ description: e.target.value }),
     })),
     FieldSetting({
       label: 'Is required?',
     }, Toggle({
       checked: required,
-      onChange: e => updateField({ required: e.target.checked }),
+      id     : 'field-is-required',
+      // name    : 'field_is_required',
+      onChange: e => {
+        updateField({ required: e.target.checked })
+      },
     })),
   ])
 
@@ -75,16 +107,23 @@
    * Field edit box
    *
    * @param id
+   * @param index
    * @param label
+   * @param description
+   * @param name
    * @param required
    * @param onUpdate
    * @param onDelete
+   * @param isOpen
+   * @param onOpen
    * @returns {*}
    * @constructor
    */
   const Field = ({
     id,
-    label,
+    index,
+    label = '',
+    description = '',
     name,
     required,
     onUpdate,
@@ -94,34 +133,60 @@
   }) => {
 
     return Div({
-      id: `field-${ id }`,
+      id       : `field-${ id }`,
       className: `gh-panel outlined ${ isOpen ? 'open' : 'closed' }`,
+      dataId   : id,
+      dataIndex: index,
+      style    : {
+        cursor: 'grab',
+      },
     }, [
-      Div({ className: 'gh-panel-header' }, [
-        makeEl('h2', {
-          onClick: onOpen,
-          className: 'display-flex gap-10 align-center',
-        }, [name, isOpen ? null : Dashicon('edit')]),
-        Button({
-          className: 'gh-button icon secondary text',
-          onClick: onDelete,
-        }, Dashicon('no-alt')),
-      ]),
       Div({
+        className: 'gh-panel-header',
+      }, [
+        makeEl('h2', {
+          id: `header-${id}`,
+          onClick  : onOpen,
+          className: 'display-flex gap-10 align-center',
+          style    : {
+            cursor: 'pointer',
+          },
+        }, [
+          name,
+          isOpen ? null : Dashicon('edit'),
+          ToolTip('Click to edit', 'left'),
+        ]),
+        Button({
+          id       : `delete-${ id }`,
+          type     : 'button',
+          className: 'gh-button icon danger text',
+          onClick  : onDelete,
+          style    : {
+            cursor: 'pointer',
+            margin: '3px',
+          },
+        }, [
+          Dashicon('no-alt'),
+          ToolTip('Delete', 'right'),
+        ]),
+      ]),
+      isOpen ? Div({
         className: 'inside display-flex gap-10 column',
       }, [
         FieldSettings({
           label,
           required,
+          description,
           updateField: onUpdate,
         }),
-      ]),
+      ]) : null,
     ])
   }
 
   /**
    * The form field editor
    *
+   * @param id
    * @param form
    * @param fields
    * @param fieldGroups
@@ -130,13 +195,17 @@
    * @constructor
    */
   const FormFieldsEditor = ({
+    id = 'form-fields-editor',
     form = [],
     fields = [],
     fieldGroups = {},
     onChange = ([form, map]) => {},
   }) => {
 
-    let currField = ''
+    const State = Groundhogg.createState({
+      form,
+      currField: '',
+    })
 
     /**
      * Open the settings for a field
@@ -144,21 +213,30 @@
      * @param id
      */
     const openField = id => {
-      currField = id
+      State.set({
+        currField: id === State.currField ? null : id,
+      })
       morph()
     }
 
-    const morph = () => morphdom(document.getElementById('form-fields-editor'), render())
+    const morph = () => morphdom(document.getElementById(id), render())
 
     const handleOnChange = () => {
 
       const map = {}
 
-      form.forEach(({ mapFrom, mapTo, id = '' }) => {
+      State.form.forEach(({
+        mapFrom,
+        mapTo,
+        id = '',
+      }) => {
         map[mapFrom ?? id] = mapTo ?? id
       })
 
-      onChange([form, map])
+      onChange([
+        State.form,
+        map,
+      ])
     }
 
     /**
@@ -168,7 +246,13 @@
      * @param newSettings
      */
     const updateField = (id, newSettings) => {
-      form = form.map(field => field.id === id ? { ...field, ...newSettings } : field)
+
+      console.log(id, newSettings)
+
+      State.set({
+        form: State.form.map(field => field.id === id ? { ...field, ...newSettings } : field),
+      })
+
       handleOnChange()
       morph()
     }
@@ -179,7 +263,7 @@
      * @param settings
      */
     const addField = (settings) => {
-      form.push(settings)
+      State.form.push(settings)
       handleOnChange()
       morph()
     }
@@ -190,7 +274,9 @@
      * @param id
      */
     const deleteField = (id) => {
-      form = form.filter(field => field.id !== id)
+      State.set({
+        form: State.form.filter(field => field.id !== id),
+      })
       handleOnChange()
       morph()
     }
@@ -198,41 +284,65 @@
     const render = () => {
 
       return Div({
-        id: 'form-fields-editor',
+        id,
       }, [
 
         // Fields
         Div({
           className: 'display-flex column',
-        }, form.map(field => Field({
+          onCreate : el => {
+            $(el).sortable({
+              handle: '.gh-panel-header',
+              start : (e, ui) => {
+                ui.helper.css('cursor', 'grabbing')
+              },
+              update: (e, ui) => {
+
+                State.set({
+                  form: [...el.querySelectorAll('.gh-panel')].map(node => {
+                    return State.form.find(field => field.id === node.dataset.id)
+                  }),
+                })
+
+                handleOnChange()
+                morph()
+              },
+            })
+          },
+        }, State.form.map((field, index) => Field({
           ...field,
-          isOpen: field.id === currField,
-          onUpdate: settings => updateField(field.id, settings),
+          index,
+          isOpen  : field.id === State.currField,
+          onUpdate: settings => updateField(State.currField, settings),
           onDelete: () => deleteField(field.id),
-          onOpen: () => openField(field.id),
+          onOpen  : () => openField(field.id),
         }))),
 
         // Add Field
         Button({
-          id: `add-form-field`,
+          type     : 'button',
+          id       : `add-form-field`,
           className: 'gh-button secondary',
-          style: {
+          style    : {
             marginTop: '20px',
           },
-          onClick: e => {
+          onClick  : e => {
 
             // only show fields that have not been added to the form already
-            let options = fields.filter(field => !form.some(f => f.id === field.id))
+            let options = fields.filter(field => !State.form.some(f => f.id === field.id))
 
             let groups = fieldGroups
 
             searchOptionsWidget({
               // selector: '.add-filter-wrap',
-              position: 'fixed',
-              target: e.currentTarget,
+              position    : 'fixed',
+              target      : e.currentTarget,
               options,
               groups,
-              onSelect: ({ group, ...field }) => {
+              onSelect    : ({
+                group,
+                ...field
+              }) => {
                 // Easy, just add the whole field :)
                 addField({
                   ...field,
@@ -243,11 +353,14 @@
                 return option.name.match(new RegExp(search, 'i'))
               },
               renderOption: (option) => option.name,
-              noOptions: __('No matching fields...', 'groundhogg'),
+              noOptions   : __('No matching fields...', 'groundhogg'),
             }).mount()
 
           },
-        }, [Dashicon('plus-alt2'), Span({}, __('Add field', 'groundhogg'))]),
+        }, [
+          Dashicon('plus-alt2'),
+          Span({}, __('Add field', 'groundhogg')),
+        ]),
       ])
     }
 
@@ -257,27 +370,29 @@
   /**
    * Field editor for contact fields
    *
+   * @param id
    * @param form
    * @param onChange
    * @returns {*}
    * @constructor
    */
   const ContactFormFieldsEditor = ({
+    id = 'contact-form-fields-editor',
     form,
     onChange = form => {},
   }) => {
 
     const {
-      tabs: customTabs,
+      tabs  : customTabs,
       fields: customFields,
       groups: customGroups,
     } = Groundhogg.filters.gh_contact_custom_properties
 
     const fieldGroups = {
-      contact: __('Contact Info'),
-      address: __('Address'),
+      contact   : __('Contact Info'),
+      address   : __('Address'),
       compliance: __('Compliance'),
-      special: __('Special'),
+      special   : __('Special'),
     }
 
     Object.values(customTabs).forEach(tab => {
@@ -291,83 +406,83 @@
 
       // Contact Fields
       {
-        id: 'first_name',
-        name: 'First Name',
-        group: 'contact',
+        id      : 'first_name',
+        name    : 'First Name',
+        group   : 'contact',
         required: true,
       }, // First Name
       {
-        id: 'last_name',
-        name: 'Last Name',
-        group: 'contact',
+        id      : 'last_name',
+        name    : 'Last Name',
+        group   : 'contact',
         required: true,
       },  // Last Name
       {
-        id: 'full_name',
-        name: 'Full Name',
-        group: 'contact',
+        id      : 'full_name',
+        name    : 'Full Name',
+        group   : 'contact',
         required: true,
       },  // Full Name
       {
-        id: 'email',
-        name: 'Email Address',
-        group: 'contact',
+        id      : 'email',
+        name    : 'Email Address',
+        group   : 'contact',
         required: true,
       },
       {
-        id: 'primary_phone',
-        name: 'Phone',
-        group: 'contact',
+        id      : 'primary_phone',
+        name    : 'Phone',
+        group   : 'contact',
         required: false,
       },
       {
-        id: 'mobile_phone',
-        name: 'Mobile Phone',
-        group: 'contact',
+        id      : 'mobile_phone',
+        name    : 'Mobile Phone',
+        group   : 'contact',
         required: false,
       },
       {
-        id: 'birthday',
-        name: 'Birthday',
-        group: 'contact',
+        id      : 'birthday',
+        name    : 'Birthday',
+        group   : 'contact',
         required: false,
       },
 
       // Address Fields
       {
-        id: 'street_address_1',
-        name: 'Line 1',
-        group: 'address',
+        id      : 'street_address_1',
+        name    : 'Line 1',
+        group   : 'address',
         required: false,
       },
       {
-        id: 'street_address_2',
-        name: 'Line 2',
-        group: 'address',
+        id      : 'street_address_2',
+        name    : 'Line 2',
+        group   : 'address',
         required: false,
       },
       {
-        id: 'city',
-        name: 'City',
-        group: 'address',
+        id      : 'city',
+        name    : 'City',
+        group   : 'address',
         required: false,
       },
       {
-        id: 'region',
-        name: 'State',
-        group: 'address',
+        id      : 'region',
+        name    : 'State',
+        group   : 'address',
         required: false,
       },
       {
-        id: 'postal_zip',
-        name: 'Zip Code',
-        group: 'address',
+        id      : 'postal_zip',
+        name    : 'Zip Code',
+        group   : 'address',
         required: false,
       },
       {
-        id: 'country',
-        name: 'Country',
-        group: 'address',
+        id      : 'country',
+        name    : 'Country',
+        group   : 'address',
         required: false,
       },
 
@@ -376,17 +491,24 @@
       // Special Fields
 
       // Custom Fields
-      ...Object.values(customFields).map(({ id, label, group, name }) => ( {
-        id,
-        name: label,
-        group,
-        required: false,
-        mapFrom: name,
-        mapTo: id,
-      } )),
+      ...Object.values(customFields).
+        map(({
+          id,
+          label,
+          group,
+          name,
+        }) => ( {
+          id,
+          name    : label,
+          group,
+          required: false,
+          mapFrom : name,
+          mapTo   : id,
+        } )),
     ]
 
     return FormFieldsEditor({
+      id,
       fields,
       fieldGroups,
       form,
@@ -400,4 +522,61 @@
     ContactFormFieldsEditor,
   }
 
-} )()
+  const doOptionsForm = (option) => {
+
+    const State = Groundhogg.createState({
+      form      : CustomFields[option] ?? [],
+      submitted : false,
+      hasChanges: false,
+    })
+
+    window.addEventListener('load', () => {
+
+      const el = document.getElementById(option)
+
+      if (!el) {
+        return
+      }
+
+      morphdom(el, ContactFormFieldsEditor({
+        id      : option,
+        form    : State.form[0] ?? [],
+        onChange: (form) => {
+
+          State.set({
+            form,
+            hasChanges: true,
+          })
+        },
+      }))
+
+      const form = document.querySelector(`form[action="options.php"]`)
+
+      form.addEventListener('submit', async e => {
+
+        if (State.submitted || !State.hasChanges) {
+          return
+        }
+
+        e.preventDefault()
+
+        await Groundhogg.stores.options.patch({
+          [option]: State.form,
+        })
+
+        State.set({
+          submitted: true,
+        })
+
+        form.submit()
+      })
+    })
+
+  }
+
+  if (typeof CustomFields !== 'undefined') {
+    doOptionsForm('gh_custom_profile_fields')
+    doOptionsForm('gh_custom_preference_fields')
+  }
+
+} )(jQuery)

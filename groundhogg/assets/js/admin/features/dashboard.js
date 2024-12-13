@@ -180,7 +180,7 @@
     id       : 'dashboard-header',
     className: 'gh-header sticky no-padding display-flex flex-start',
   }, [
-    Groundhogg.isWhiteLabeled ? Span() : icons.groundhogg,
+    Groundhogg.isWhiteLabeled ? Span({ className: 'white-label-icon'}, Groundhogg.whiteLabelName ) : icons.groundhogg,
     H1({}, `👋 Hey ${ Groundhogg.currentUser.data.display_name }!`),
     Button({
       className: 'gh-button primary more-nav small',
@@ -907,7 +907,7 @@
           ],
         ].map(([icon, text, href]) => ( [
           Img({
-            src   : `/wp-content/plugins/groundhogg/assets/images/social-icons/brand-boxed/${ icon }.png`,
+            src   : `${ Groundhogg.assets.images }/social-icons/brand-boxed/${ icon }.png`,
             height: '16',
             width : '16',
           }),

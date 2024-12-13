@@ -4,9 +4,9 @@ Contributors: trainingbusinesspros, Groundhogg
 Tags: wordpress crm, marketing automation, crm, email marketing, email automation
 Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
-Tested up to: 6.6
+Tested up to: 6.7
 Requires PHP: 7.1
-Stable tag: 3.7.2
+Stable tag: 3.7.3
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -348,6 +348,26 @@ Well, that's up to you! We'll never say Groundhogg is better than anyone, but it
 You can purchase a premium plan for access to support and our premium extensions & integrations on our [pricing page](https://www.groundhogg.io/pricing/).
 
 == Changelog ==
+
+= 3.7.3 (2024-12-04) =
+* NEW Add custom fields to the profile update form in the preferences center.
+* ADDED Step flow preview to the funnels table.
+* ADDED Hooks and methods for `Groundhogg_Sending_Services` for more customization opportunities.
+* ADDED Sticky admin header to all Groundhogg pages.
+* ADDED Name of white labeled CRM to admin headers when white label is enabled.
+* TWEAKED When search filters are empty, show the filter icon instead of the plus icon.
+* TWEAKED Don't show table views for empty statuses.
+* TWEAKED Save the plain text version of emails into the email log so they are sent if emails are retried.
+* FIXED UI clipping when hover over IF conditionals in the funnel editor.
+* FIXED Prevent accidental method call on contact records from replacements.
+* FIXED Email performance reports going to some unauthorized users.
+* FIXED SVG assets not included correctly when not using default `/wp-content/` folder.
+* FIXED Prevent secrets from being exposed on the settings page when using `add_constant_support()`.
+* FIXED Constants showing in settings if similarly named even when constant support was not explicitly added.
+* FIXED `{substring}` replacement code not working if 3 arguments were not explicitly defined.
+* FIXED Contact table views not showing as current when selected.
+* FIXED Proper sanitization for custom fields.
+* FIXED Several PHP notices.
 
 = 3.7.2 (2024-11-14) =
 * ADDED Submission records will now be kept for a variety of user and contact initiated updates including...

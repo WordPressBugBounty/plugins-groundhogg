@@ -2,9 +2,14 @@
 
 namespace Groundhogg\Form;
 
+use Groundhogg\Contact;
 use Groundhogg\Properties;
+use function Groundhogg\array_apply_callbacks;
+use function Groundhogg\array_filter_by_keys;
+use function Groundhogg\array_map_keys;
 use function Groundhogg\get_array_var;
 use function Groundhogg\html;
+use function Groundhogg\maybe_explode;
 use function Groundhogg\utils;
 
 /**
@@ -12,7 +17,94 @@ use function Groundhogg\utils;
  */
 class Form_Fields {
 
+	/**
+	 * Provide a contact to prefill info
+	 *
+	 * @var mixed|null
+	 */
+	protected $contact = null;
+
+	/**
+	 *
+	 *
+	 * @param array        $form
+	 * @param Contact|null $contact
+	 */
+	public function __construct( array $form = [], $contact = null ) {
+		$this->form = $form;
+
+		if ( $contact ) {
+			$this->form = array_map( function ( $field ) use ( $contact ) {
+
+				$id       = $field['id'];
+				$property = Properties::instance()->get_field( $id );
+
+				if ( $property ) {
+					$field['value'] = $contact->get_meta( $property['name'] );
+				} else if ( property_exists( $contact, $id ) ) {
+					$field['value'] = $contact->$id;
+				} else if ( method_exists( $contact, 'get_' . $id ) ) {
+					$field['value'] = call_user_func( [ $contact, 'get_' . $id ] );
+				}
+
+				return $field;
+
+			}, $this->form );
+		}
+	}
+
 	protected static array $field_templates = [];
+
+	/**
+	 * Given a form and map array, sanitize it
+	 *
+	 * @param array $form_and_map
+	 *
+	 * @return array
+	 */
+	public static function sanitize_form_and_map( $form_and_map ) {
+
+		$form = $form_and_map[0];
+		$map  = $form_and_map[1];
+
+		$form = array_map( [ __CLASS__, 'sanitize_field' ], $form );
+
+		// Sanitize the map
+		$map = array_map_keys( $map, 'sanitize_key' );
+		$map = array_map( 'sanitize_key', $map );
+
+		$form_and_map[0] = $form;
+		$form_and_map[1] = $map;
+
+		return $form_and_map;
+	}
+
+	/**
+	 * Sanitize an individual field's settings
+	 *
+	 * @param $field
+	 *
+	 * @return array
+	 */
+	protected static function sanitize_field( $field ) {
+
+		/** @var callable[] $callbacks */
+		$callbacks = [
+			'id'          => 'sanitize_key',
+			'name'        => 'sanitize_text_field',
+			'label'       => 'sanitize_text_field',
+			'description' => 'wp_kses_post',
+			'required'    => 'boolval',
+			'type'        => 'sanitize_text_field',
+			'mapFrom'     => 'sanitize_key',
+			'mapTo'       => 'sanitize_key',
+		];
+
+		$field = array_intersect_key( $field, $callbacks );
+		$field = array_apply_callbacks( $field, $callbacks );
+
+		return $field;
+	}
 
 	/**
 	 * Basic field template
@@ -24,6 +116,11 @@ class Form_Fields {
 	 */
 	protected static function field_template( $props, $input ): string {
 
+		$props = wp_parse_args( $props, [
+			'label'       => '',
+			'description' => ''
+		] );
+
 		$label = $props['label'];
 
 		if ( $props['required'] ) {
@@ -33,8 +130,14 @@ class Form_Fields {
 		return html()->e( 'div', [
 			'class' => 'form-field-row'
 		], [
-			html()->e( 'label', [ 'id' => $props['id'] ], $label ),
-			$input
+			html()->e( 'label', [
+				'for'   => $props['id'],
+				'class' => 'form-field-label'
+			], $label ),
+			$props['description'] ? html()->e( 'p', [
+				'class' => 'form-field-description'
+			], $props['description'] ) : '',
+			$input,
 		] );
 	}
 
@@ -48,6 +151,7 @@ class Form_Fields {
 	protected static function input_field_template( $props, $type = 'text' ) {
 		$props = wp_parse_args( $props, [
 			'id'       => '',
+			'value'    => false,
 			'required' => false,
 		] );
 
@@ -56,29 +160,44 @@ class Form_Fields {
 			'name'     => $props['id'],
 			'id'       => $props['id'],
 			'required' => $props['required'],
+			'value'    => $props['value'],
 		] ) );
 	}
 
 	/**
 	 * Handle inputs for custom fields
 	 *
-	 * @param $props
-	 * @param $field
+	 * @param array        $props
+	 * @param array        $field
+	 * @param Contact|null $contact
 	 *
 	 * @return string
 	 */
 	protected static function handle_custom_field( $props, $field ): string {
 
+		$props = wp_parse_args( $props, [
+			'value' => false
+		] );
+
 		$name = $field['name'];
+
+		$id          = 'f-' . $field['id'];
+		$props['id'] = $id;
+
+		/**
+		 * Allow filtering of the default value of custom fields
+		 */
+		$value = apply_filters( 'groundhogg/form_fields/custom_field_value', $props['value'], $name, $field );
 
 		switch ( $field['type'] ):
 			default:
 			case 'custom_email':
 				$input = html()->input( [
 					'type'     => 'email',
-					'id'       => $name,
+					'id'       => $id,
 					'name'     => $name,
-					'required' => $props['required']
+					'required' => $props['required'],
+					'value'    => $value
 				] );
 				break;
 			case 'email':
@@ -90,36 +209,40 @@ class Form_Fields {
 			case 'number':
 				$input = html()->input( [
 					'type'     => $field['type'],
-					'id'       => $name,
+					'id'       => $id,
 					'name'     => $name,
-					'required' => $props['required']
+					'required' => $props['required'],
+					'value'    => $value
 				] );
 				break;
 			case 'datetime':
 				$input = html()->input( [
 					'type'     => 'datetime-local',
-					'id'       => $name,
+					'id'       => $id,
 					'name'     => $name,
-					'required' => $props['required']
+					'required' => $props['required'],
+					'value'    => $value
 				] );
 				break;
 			case 'html':
 			case 'textarea':
 				$input = html()->textarea( [
-					'id'       => $name,
+					'id'       => $id,
 					'name'     => $name,
-					'required' => $props['required']
+					'required' => $props['required'],
+					'value'    => $value
 				] );
 				break;
 			case 'dropdown':
 				$options = $field['options'];
 
 				$input = html()->dropdown( [
-					'id'       => $name,
+					'id'       => $id,
 					'name'     => $name,
 					'options'  => array_combine( $options, $options ),
 					'multiple' => get_array_var( $field, 'multiple' ),
-					'required' => $props['required']
+					'required' => $props['required'],
+					'selected' => $value
 				] );
 				break;
 			case 'radio':
@@ -127,12 +250,13 @@ class Form_Fields {
 
 				$input = html()->e( 'div', [
 					'class' => 'radio-buttons'
-				], array_map( function ( $option ) use ( $field ) {
+				], array_map( function ( $option ) use ( $field, $value ) {
 					return html()->e( 'label', [], [
 						html()->input( [
-							'type'  => 'radio',
-							'name'  => $field['name'],
-							'value' => $option
+							'type'    => 'radio',
+							'name'    => $field['name'],
+							'value'   => $option,
+							'checked' => $value === $option,
 						] ),
 						' ',
 						$option
@@ -143,14 +267,20 @@ class Form_Fields {
 			case 'checkboxes':
 				$options = $field['options'];
 
+				// ensure array for checkboxes
+				if ( ! is_array( $value ) ) {
+					$value = maybe_explode( $value );
+				}
+
 				$input = html()->e( 'div', [
 					'class' => 'checkboxes'
-				], array_map( function ( $option ) use ( $field ) {
+				], array_map( function ( $option ) use ( $field, $value ) {
 					return html()->e( 'label', [], [
 						html()->input( [
-							'type'  => 'checkbox',
-							'name'  => $field['name'] . '[]',
-							'value' => $option
+							'type'    => 'checkbox',
+							'name'    => $field['name'] . '[]',
+							'value'   => $option,
+							'checked' => in_array( $option, $value ),
 						] ),
 						' ',
 						$option
@@ -175,11 +305,13 @@ class Form_Fields {
 			'first_name'       => [ __CLASS__, 'input_field_template' ],
 			'last_name'        => [ __CLASS__, 'input_field_template' ],
 			'email'            => function ( $props ) {
+
 				return Form_Fields::field_template( $props, html()->input( [
 					'type'     => 'email',
 					'name'     => 'email',
 					'id'       => 'email',
 					'required' => true,
+					'value'    => get_array_var( $props, 'value' )
 				] ) );
 			},
 			'primary_phone'    => function ( $props ) {
@@ -194,6 +326,7 @@ class Form_Fields {
 					'name'     => 'birthday',
 					'id'       => 'birthday',
 					'required' => $props['required'],
+					'value'    => get_array_var( $props, 'value' )
 				] ) );
 			},
 			'street_address_1' => [ __CLASS__, 'input_field_template' ],
@@ -206,7 +339,8 @@ class Form_Fields {
 					'name'     => 'country',
 					'id'       => 'country',
 					'required' => $props['required'],
-					'options'  => utils()->location->get_countries_list()
+					'options'  => utils()->location->get_countries_list(),
+					'selected' => get_array_var( $props, 'value' )
 				] ) );
 			},
 		];
@@ -253,15 +387,6 @@ class Form_Fields {
 	}
 
 	protected array $form;
-
-	/**
-	 * Initialize
-	 *
-	 * @param array $form
-	 */
-	public function __construct( array $form = [] ) {
-		$this->form = $form;
-	}
 
 	/**
 	 * Output the field HTML
