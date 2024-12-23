@@ -4,11 +4,14 @@ namespace Groundhogg;
 
 use Groundhogg\Classes\Activity;
 use Groundhogg\Classes\Page_Visit;
+use Groundhogg\DB\Query\Filters;
 use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\Lib\Mobile\Mobile_Validator;
 use Groundhogg\Queue\Event_Queue;
 use Groundhogg\Queue\Process_Contact_Events;
+use Groundhogg\Templates\Notifications\Notification_Builder;
 use Groundhogg\Utils\DateTimeHelper;
+use Groundhogg\Utils\Replacer;
 use WP_Error;
 
 
@@ -611,7 +614,7 @@ function alias_from_filter( $filter ) {
  * @return array|string
  */
 function get_request_query( $default = [], $force = [], $accepted_keys = [] ) {
-	$query = $_GET;
+	$query = wp_unslash( $_GET );
 
 	$ignore = apply_filters( 'groundhogg/get_request_query/ignore', [
 		'page',
@@ -633,7 +636,7 @@ function get_request_query( $default = [], $force = [], $accepted_keys = [] ) {
 	$query = urldecode_deep( $query );
 
 	if ( $search = get_request_var( 's' ) ) {
-		$query['search'] = $search;
+		$query['search'] = sanitize_text_field( $search );
 	}
 
 	$query = array_merge( $query, $force );
@@ -651,19 +654,19 @@ function get_request_query( $default = [], $force = [], $accepted_keys = [] ) {
 		$query = $new_query;
 	}
 
-	$query = map_deep( $query, 'sanitize_text_field' );
-
 	if ( isset_not_empty( $query, 'filters' ) && is_string( $query['filters'] ) ) {
-		$query['filters'] = base64_json_decode( $query['filters'] );
+		$query['filters'] = Filters::sanitize( base64_json_decode( $query['filters'] ) );
 	}
 	if ( isset_not_empty( $query, 'include_filters' ) && is_string( $query['include_filters'] ) ) {
-		$query['include_filters'] = base64_json_decode( $query['include_filters'] );
+		$query['include_filters'] = Filters::sanitize( base64_json_decode( $query['include_filters'] ) );
 	}
 	if ( isset_not_empty( $query, 'exclude_filters' ) && is_string( $query['exclude_filters'] ) ) {
-		$query['exclude_filters'] = base64_json_decode( $query['exclude_filters'] );
+		$query['exclude_filters'] = Filters::sanitize( base64_json_decode( $query['exclude_filters'] ) );
 	}
 
-	return wp_unslash( array_filter( $query ) );
+	$query = sanitize_payload( $query );
+
+	return array_filter( $query );
 }
 
 /**
@@ -1832,35 +1835,83 @@ function email_is_same_domain( $email ) {
 /**
  * Send event failure notification.
  *
- * @param $event Event
+ * @return void
  */
-function send_event_failure_notification( $event ) {
-	if ( ! is_option_enabled( 'gh_send_notifications_on_event_failure' ) || get_transient( 'gh_hold_failed_event_notification' ) ) {
+function send_event_failure_notification() {
+
+	if ( ! is_option_enabled( 'gh_send_notifications_on_event_failure' ) ) {
 		return;
 	}
 
-	// Ensure contact and event are existing
-	if ( ! $event->exists() || ! is_a_contact( $event->get_contact() ) ) {
+	// ignore some errors
+	$ignore_errors = array_map( function ( $error ) {
+		return sanitize_key( trim( $error, " \n\r\t\v\0," ) );
+	}, explode( PHP_EOL, get_option( 'gh_ignore_event_errors', '' ) ) );
+
+	$errorQuery = new Table_Query( 'events' );
+	$errorQuery->where()->equals( 'status', Event::FAILED );
+
+	if ( ! empty( $ignore_errors ) ) {
+		$errorQuery->where()->notIn( 'error_code', $ignore_errors );
+	}
+
+	$failed_count = $errorQuery->count();
+
+	// no failed emails
+	if ( $failed_count === 0 ) {
 		return;
 	}
 
-	$subject = sprintf( "Event (%s) failed for %s on %s", $event->get_step_title(), $event->get_contact()->get_email(), esc_html( get_bloginfo( 'title' ) ) );
-	$message = sprintf( "This is to let you know that an event \"%s\" in funnel \"%s\" has failed for \"%s (%s)\"", $event->get_step_title(), $event->get_funnel_title(), $event->get_contact()->get_full_name(), $event->get_contact()->get_email() );
-	$message .= sprintf( "\nFailure Reason: %s", $event->get_failure_reason() );
-	$message .= sprintf( "\nManage Failed Events: %s", admin_url( 'admin.php?page=gh_events&view=status&status=failed' ) );
-	$to      = Plugin::$instance->settings->get_option( 'event_failure_notification_email', get_option( 'admin_email' ) );
+	$recipient = get_option( 'gh_event_failure_notification_email' ) ?: get_bloginfo( 'admin_email' );
 
-	do_action( 'groundhogg/send_event_failure_notification/before' );
-
-	if ( \Groundhogg_Email_Services::send_wordpress( $to, $subject, $message ) ) {
-		set_transient( 'gh_hold_failed_event_notification', true, MINUTE_IN_SECONDS );
+	if ( ! is_email( $recipient ) ) {
+		return;
 	}
 
-	do_action( 'groundhogg/send_event_failure_notification/after' );
+	$subject = sprintf( '[%s] %s failed events on %s', white_labeled_name(), _nf( $failed_count ), get_hostname() );
+
+	$eventQuery = new Table_Query( 'events' );
+	$eventQuery->setSelect( 'error_code', 'error_message', [ 'count(ID)', 'total' ] )
+               ->setLimit( 20 ) // up to 20 different errors
+	           ->setGroupby( 'error_code', 'error_message' )
+	           ->where( 'status', Event::FAILED )->notEmpty( 'error_code' );
+
+	if ( ! empty( $ignore_errors ) ) {
+		$eventQuery->where()->notIn( 'error_code', $ignore_errors );
+	}
+
+	$errors = $eventQuery->get_results();
+
+	// format the results
+	foreach ( $errors as &$error ) {
+		$error->total      = html()->a( admin_page_url( 'gh_events', [ 'status' => Event::FAILED, 'error_code' => $error->error_code ] ), _nf( $error->total ) );
+		$error->error_code = code_it( $error->error_code );
+		$error             = (array) $error; // format to array
+	}
+
+	$table = Notification_Builder::generate_list_table_html( [
+		__( 'Error Code' ),
+		__( 'Error Message' ),
+		__( 'Events' ),
+	], $errors );
+
+	$replacer = new Replacer( [
+		'failed_events_count'   => _nf( $failed_count ),
+		'errors_table'          => $table,
+		'all_failed_events_url' => admin_page_url( 'gh_events', [ 'status' => Event::FAILED ] )
+	] );
+
+	$email_content = Notification_Builder::get_general_notification_template_html( 'failed-events', [
+		'the_footer'        => Notification_Builder::get_template_part( 'settings-footer' ),
+		'misc_settings_url' => admin_page_url( 'gh_settings', [ 'tab' => 'misc' ] )
+	] );
+
+	$email_content = $replacer->replace( $email_content );
+
+	\Groundhogg_Email_Services::send_wordpress( $recipient, $subject, $email_content, [
+		'Content-Type: text/html',
+	] );
 }
-
-add_action( 'groundhogg/event/failed', __NAMESPACE__ . '\send_event_failure_notification' );
-
 
 /**
  * Split a name into first and last.
@@ -2882,7 +2933,7 @@ function generate_contact_with_map( $fields, $map = [], $submission = [], $conta
 				$tags = array_merge( $tags, $value );
 				break;
 			case 'meta':
-                $key = get_key_from_column_label( $column );
+				$key          = get_key_from_column_label( $column );
 				$meta[ $key ] = sanitize_object_meta( $value, $key, 'contact' );
 				break;
 			case 'files':
@@ -5910,9 +5961,9 @@ function sanitize_object_meta( $meta_value, $meta_key = '', $object_type = '' ) 
 		$meta_value = sanitize_textarea_field( $meta_value );
 	} else if ( is_string( $meta_value ) ) {
 		$meta_value = sanitize_text_field( $meta_value );
-	} else if ( is_array( $meta_value ) ){
-        $meta_value = sanitize_payload( $meta_value );
-    } else if ( is_numeric( $meta_value ) ) {
+	} else if ( is_array( $meta_value ) ) {
+		$meta_value = sanitize_payload( $meta_value );
+	} else if ( is_numeric( $meta_value ) ) {
 
 		// No sanitization needed
 		if ( is_int( $meta_value ) || is_float( $meta_value ) ) {
@@ -5966,6 +6017,32 @@ function sanitize_payload( array $payload ): array {
 		// Everything else
 		return sanitize_text_field( $param );
 	} );
+}
+
+/**
+ * Include only allowed keys in the URL
+ *
+ * @param array $query
+ *
+ * @return array
+ */
+function sanitize_query_url_params( array $query ) {
+
+	$query = array_apply_callbacks( $query, [
+		'include'         => 'wp_parse_id_list',
+		'includes'        => 'wp_parse_id_list',
+		'exclude'         => 'wp_parse_id_list',
+		'excludes'        => 'wp_parse_id_list',
+		'limit'           => 'absint',
+		'offset'          => 'absint',
+		'page'            => 'absint',
+		'paged'           => 'absint',
+		'filters'         => [ Filters::class, 'sanitize' ],
+		'include_filters' => [ Filters::class, 'sanitize' ],
+		'exclude_filters' => [ Filters::class, 'sanitize' ]
+	] );
+
+	return sanitize_payload( $query );
 }
 
 /**
@@ -6142,8 +6219,8 @@ function array_filter_by_keys( array $associative_array, array $keys_to_keep ) {
 /**
  * Given an associative array apply a list of callbacks provided by the callbacks array
  *
- * @param array            $array
- * @param callable[]|array $callbacks
+ * @param array      $array
+ * @param callable[] $callbacks
  *
  * @return array
  */
