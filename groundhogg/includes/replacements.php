@@ -748,7 +748,7 @@ class Replacements implements \JsonSerializable {
 		return $this->tackle_replacements( $content );
 	}
 
-	const PATTERN = '/{([A-Za-z_][^{}\n]+)}/';
+	const PATTERN = '/{([A-Za-z_0-9][^{}\n]+)}/';
 
 	/**
 	 * Recursive function to tackle nested replacement codes until no more replacements are found.
@@ -2632,13 +2632,11 @@ class Replacements implements \JsonSerializable {
 			return '';
 		}
 
-		$args = wp_parse_args( $args, [
-			0 => '',
-			1 => 0,
-			2 => strlen( $args[0] ),
-		] );
+		$string = $args[0];
+		$start  = $args[1] ?? 0;
+		$end    = $args[2] ?? strlen( $string );
 
-		return substr( $args[0], $args[1], $args[2] );
+		return substr( $string, $start, $end );
 	}
 
 	/**

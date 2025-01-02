@@ -203,10 +203,17 @@ function standard_dropdown_callback( $field, $posted_data, &$data, &$meta, &$tag
  * @return void
  */
 function standard_multiselect_callback( $field, $posted_data, &$data, &$meta, &$tags ) {
-	$selections             = map_deep( $posted_data[ $field['name'] ], 'sanitize_text_field' );
-	$meta[ $field['name'] ] = $selections;
 
-	$options = $field['options'];
+	$selections = get_array_var( $posted_data, $field['name'], [] );
+
+	if ( ! is_array( $selections ) ) {
+		return;
+	}
+
+	$selections = map_deep( array_filter( $selections ), 'sanitize_text_field' );
+
+	$meta[ $field['name'] ] = $selections;
+	$options                = $field['options'];
 
 	// Find associated tags and apply
 	foreach ( $selections as $selection ) {
@@ -869,7 +876,7 @@ class Form_v2 extends Step {
 					$value = $posted_data[ $field['name'] ];
 
 					// multiple options
-					if ( $field['multiple'] ) {
+					if ( isset_not_empty( $field, 'multiple' ) ) {
 						if ( ! is_array( $value ) ) {
 							return new \WP_Error( 'invalid_selection', __( 'Invalid selection', 'groundhogg' ) );
 						}
