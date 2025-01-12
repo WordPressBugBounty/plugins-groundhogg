@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.7
 Requires PHP: 7.1
-Stable tag: 3.7.3.5
+Stable tag: 3.7.3.6
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -349,13 +349,19 @@ You can purchase a premium plan for access to support and our premium extensions
 
 == Changelog ==
 
+= 3.7.3.6 (2025-01-12) =
+* SECURITY Added additional file checks for large file uploads. Credit @wcraft and WordFence.
+* FIXED Fatal error when attempting to resend emails from the email log on PHP 8.1+.
+* FIXED Weird conflict with WPForms object caching.
+
 = 3.7.3.5 (2024-12-29) =
 * ADDED White label header for email reports.
 * ADDED Support for full replacement code usage in the image block SRC.
 * ADDED Dynamic replacement code preview for HTML block and image block in the email editor.
 * FIXED Missing white label name replacements in the settings.
 * FIXED Fatal ere defined.
-* FIXED Reports link in header of email reports not working.ror when bulk editing contacts and no filters ar
+* FIXED Reports link in header of email reports not working.
+* FIXED Error when bulk editing contacts and no filters are defined.
 * FIXED `{substr}` replacement bug.
 * REMOVED Affiliate Misc settings when white labeled.
 
