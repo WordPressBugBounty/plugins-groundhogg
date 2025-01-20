@@ -368,12 +368,6 @@ h2.nav-tab-wrapper.gh button .dashicons {
   margin: 0;
 }
 
-#notes-here .notes-widget,
-#notes-here .tasks-widget,
-#tasks-here .notes-widget,
-#tasks-here .tasks-widget {
-  margin: auto -20px;
-}
 #notes-here .notes-widget .notes-header,
 #notes-here .notes-widget .tasks-header,
 #notes-here .tasks-widget .notes-header,
@@ -420,10 +414,16 @@ h2.nav-tab-wrapper.gh button .dashicons {
 .notes-widget {
   overflow: auto;
 }
+.notes-widget form {
+  padding-bottom: 10px;
+}
 .notes-widget .notes-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.notes-widget .notes-header #add-notes {
+  margin-left: auto;
 }
 .notes-widget .notes-header h3 {
   font-size: 14px;
@@ -439,16 +439,9 @@ h2.nav-tab-wrapper.gh button .dashicons {
 .notes-widget #note-type {
   width: fit-content;
 }
-.notes-widget .add-note {
-  padding-top: 10px;
-  padding-bottom: 10px;
-  border-top: 1px solid rgba(16, 38, 64, 0.1);
-}
 .notes-widget .note {
   border-top: 1px solid rgba(16, 38, 64, 0.1);
   padding-top: 10px;
-  display: flex;
-  gap: 20px;
 }
 .notes-widget .note > .icon {
   width: 25px;
@@ -456,13 +449,35 @@ h2.nav-tab-wrapper.gh button .dashicons {
 }
 .notes-widget .note .note-header {
   display: flex;
-  font-weight: 500;
-  color: rgba(16, 38, 64, 0.3);
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
 }
+.notes-widget .note .note-header > svg {
+  width: 18px;
+  height: 18px;
+  color: rgba(16, 38, 64, 0.3);
+}
+.notes-widget .note .note-header .added-by {
+  font-size: 12px;
+}
 .notes-widget .note .note-header .summary {
   color: #102640;
+}
+.notes-widget .note .note-header input.select-note {
+  display: none;
+}
+.notes-widget .note .note-header input.select-note:checked {
+  display: block;
+}
+.notes-widget .note .note-header:has(input.select-note:checked) > svg {
+  display: none;
+}
+.notes-widget .note .note-header:hover input.select-note {
+  display: block;
+}
+.notes-widget .note .note-header:hover > svg {
+  display: none;
 }
 .notes-widget .note .note-content img {
   max-width: 100%;
@@ -474,6 +489,14 @@ h2.nav-tab-wrapper.gh button .dashicons {
 .notes-widget .note .note-content ul {
   list-style: disc;
   margin-left: 2em;
+}
+
+.saved-replies-widget > :first-child {
+  margin-bottom: 20px;
+}
+.saved-replies-widget .reply {
+  padding: 10px 30px;
+  border-top: 1px solid rgba(16, 38, 64, 0.15);
 }
 
 .tasks-widget {
@@ -505,6 +528,43 @@ h2.nav-tab-wrapper.gh button .dashicons {
 .tasks-widget .task {
   border-top: 1px solid rgba(16, 38, 64, 0.1);
   padding-top: 10px;
+}
+.tasks-widget .task:has(.task-activity-timeline, .toggle-activity) {
+  padding-bottom: 10px;
+}
+.tasks-widget .task.hide-timeline .task-activity-timeline {
+  display: none;
+}
+.tasks-widget .task .task-activity-timeline {
+  padding-left: 10px;
+  border-left: 2px solid #102640;
+}
+.tasks-widget .task .task-activity-timeline .task-activity-item {
+  position: relative;
+}
+.tasks-widget .task .task-activity-timeline .task-activity-item .timeline-dot {
+  position: absolute;
+  left: -16px;
+  background-color: #102640;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+}
+.tasks-widget .task .task-activity-timeline .task-activity-item .task-activity-note {
+  padding: 5px 8px;
+  background-color: rgba(16, 38, 64, 0.05);
+  border-radius: 4px;
+}
+.tasks-widget .task .task-activity-timeline .task-activity-item .task-activity-note > * {
+  line-height: 1.1;
+}
+.tasks-widget .task .task-activity-timeline .task-activity-item .task-activity-note > *:first-child {
+  margin-top: 0;
+}
+.tasks-widget .task .task-activity-timeline .task-activity-item .task-activity-note > *:last-child {
+  margin-bottom: 0;
 }
 .tasks-widget .task a.associated-object {
   font-size: 12px !important;
@@ -546,15 +606,30 @@ h2.nav-tab-wrapper.gh button .dashicons {
   width: 100%;
   display: flex;
   font-weight: 500;
-  color: rgba(16, 38, 64, 0.3);
   align-items: center;
   gap: 10px;
 }
 .tasks-widget .task .task-header > svg {
   width: 18px;
+  color: rgba(16, 38, 64, 0.3);
 }
 .tasks-widget .task .task-header .summary {
   color: #102640;
+}
+.tasks-widget .task .task-header input.select-task {
+  display: none;
+}
+.tasks-widget .task .task-header input.select-task:checked {
+  display: block;
+}
+.tasks-widget .task .task-header:has(input.select-task:checked) > svg {
+  display: none;
+}
+.tasks-widget .task .task-header:hover input.select-task {
+  display: block;
+}
+.tasks-widget .task .task-header:hover > svg {
+  display: none;
 }
 .tasks-widget .task .task-content {
   overflow: auto;
@@ -571,6 +646,10 @@ h2.nav-tab-wrapper.gh button .dashicons {
   margin-left: 2em;
 }
 
+.gh-panel > #notes-here > .notes-widget .notes-header {
+  padding: 10px;
+  margin-bottom: 0;
+}
 .gh-panel > .tasks-widget .tasks-header {
   padding: 10px;
 }
@@ -716,6 +795,14 @@ a.action-link {
 .pill.danger, .pill.red {
   background: rgba(233, 31, 79, 0.25);
   color: #4e0818;
+}
+.pill.dark {
+  background-color: #102640;
+  color: #fff;
+}
+.pill.semi-dark {
+  background-color: rgba(16, 38, 64, 0.75);
+  color: #fff;
 }
 .pill.sm {
   font-size: 13px;
@@ -1545,6 +1632,9 @@ button.gh-submit .gh-spinner {
 .gh-modal.hidden {
   display: none;
 }
+.gh-modal .saved-replies-widget .reply {
+  margin: 0 -30px;
+}
 .gh-modal.send-email {
   bottom: 0;
   top: auto;
@@ -1692,6 +1782,7 @@ input.ui-autocomplete-input.focus-visible {
 .input-wrap select,
 .input-wrap textarea {
   margin: 0;
+  min-width: 0;
 }
 .gh-input-group input.bigger, .gh-input-group select.bigger, .gh-input-group textarea.bigger,
 .input-wrap input.bigger,

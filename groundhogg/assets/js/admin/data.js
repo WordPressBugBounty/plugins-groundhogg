@@ -887,6 +887,7 @@
     }),
     broadcasts: ObjectStore(Groundhogg.api.routes.v4.broadcasts),
     notes: ObjectStore(Groundhogg.api.routes.v4.notes),
+    replies: ObjectStore(Groundhogg.api.routes.v4.notes), // same as notes, but used for replies.
     tasks: ObjectStore(Groundhogg.api.routes.v4.tasks, {
       complete (id) {
         return apiPatch(`${ this.route }/${ id }/complete`).
@@ -897,6 +898,14 @@
               item,
             ])
             return item
+          })
+      },
+      completeMany (ids) {
+        return apiPatch(`${ this.route }/complete`, ids ).
+          then(r => this.getItemsFromResponse(r)).
+          then(items => {
+            this.itemsFetched(items)
+            return items
           })
       },
       incomplete (id) {

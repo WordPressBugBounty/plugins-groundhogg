@@ -263,7 +263,7 @@ class Scripts {
 
 		wp_register_script( 'groundhogg-admin-components', GROUNDHOGG_ASSETS_URL . 'js/admin/components' . $dot_min . '.js', [
 			'groundhogg-admin-element',
-			'groundhogg-make-el',
+			'groundhogg-admin-saved-replies',
 		], GROUNDHOGG_VERSION );
 
 		wp_register_script( 'groundhogg-admin-properties', GROUNDHOGG_ASSETS_URL . 'js/admin/components/properties' . $dot_min . '.js', [
@@ -287,14 +287,13 @@ class Scripts {
 			'jquery',
 			'moment',
 			'jquery-ui-sortable',
-			'groundhogg-admin-notes',
 			'groundhogg-admin-tasks',
+			'groundhogg-admin-notes',
 			'groundhogg-admin-components',
 			'groundhogg-admin-properties',
 			'groundhogg-admin',
 			'groundhogg-admin-data',
-			'groundhogg-admin-email-log',
-			'groundhogg-make-el'
+			'groundhogg-make-el',
 		], GROUNDHOGG_VERSION, true );
 
 		wp_register_script( 'groundhogg-admin-contact-info-cards', GROUNDHOGG_ASSETS_URL . 'js/admin/contacts/info-cards' . $dot_min . '.js', [
@@ -322,11 +321,19 @@ class Scripts {
 		wp_register_script( 'groundhogg-admin-notes', GROUNDHOGG_ASSETS_URL . 'js/admin/components/notes' . $dot_min . '.js', [
 			'groundhogg-admin-element',
 			'groundhogg-admin-data',
+			'groundhogg-admin-saved-replies',
+		], GROUNDHOGG_VERSION );
+
+		wp_register_script( 'groundhogg-admin-saved-replies', GROUNDHOGG_ASSETS_URL . 'js/admin/components/replies' . $dot_min . '.js', [
+			'groundhogg-admin-data',
+			'groundhogg-make-el',
 		], GROUNDHOGG_VERSION );
 
 		wp_register_script( 'groundhogg-admin-tasks', GROUNDHOGG_ASSETS_URL . 'js/admin/components/tasks' . $dot_min . '.js', [
 			'groundhogg-admin-element',
 			'groundhogg-admin-data',
+			'groundhogg-admin-saved-replies',
+			'groundhogg-admin-email-log',
 		], GROUNDHOGG_VERSION );
 
 		wp_register_script( 'groundhogg-admin-send-broadcast', GROUNDHOGG_ASSETS_URL . '/js/admin/features/send-broadcast' . $dot_min . '.js', [
@@ -406,6 +413,7 @@ class Scripts {
 			'groundhogg-admin',
 			'groundhogg-admin-element',
 			'groundhogg-admin-components',
+			'groundhogg-admin-saved-replies',
 			'groundhogg-make-el',
 			'jquery-ui-sortable',
 			'jquery-ui-draggable',
