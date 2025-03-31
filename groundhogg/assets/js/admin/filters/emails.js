@@ -93,19 +93,19 @@
       ]),
     }))
 
-    Registry.registerFilter(createFilter('funnel', 'Funnel', group, {
+    Registry.registerFilter(createFilter('funnel', 'Flow', group, {
       display: ({ funnel_id = false }) => {
 
         if (!funnel_id) {
-          return 'Any funnel'
+          return 'Any flow'
         }
 
-        return sprintf('In funnel %s', bold( FunnelsStore.get(funnel_id).data.title ) )
+        return sprintf('In flow %s', bold( FunnelsStore.get(funnel_id).data.title ) )
       },
       edit: ({ funnel_id = false, updateFilter }) => Fragment([
         ItemPicker({
           id: `select-a-funnel`,
-          noneSelected: __('Select a funnel...', 'groundhogg'),
+          noneSelected: __('Select a flow...', 'groundhogg'),
           selected: funnel_id ? { id: funnel_id, text: FunnelsStore.get(funnel_id).data.title } : [],
           multiple: false,
           style: {
@@ -176,6 +176,17 @@
         }
       },
     }))
+
+    Registry.registerFilter(Groundhogg.filters.createPastDateFilter('sent', 'Sent', group, {
+      display: () => 'Sent at least once',
+    } ) )
+
+    Registry.registerFilter(createFilter('unused', 'Unused', group, {
+      display: () => 'Unused in any flows, broadcasts, and has not been sent in the last 6 months',
+      edit: () => Fragment([
+        'This filter has no settings.'
+      ])
+    } ) )
   }
 
   if ( window.GroundhoggTableFilters ){

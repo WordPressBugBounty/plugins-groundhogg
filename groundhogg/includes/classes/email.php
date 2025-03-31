@@ -98,6 +98,14 @@ class Email extends Base_Object_With_Meta {
 			$this->from_userdata = get_userdata( $this->get_from_user_id() );
 		}
 
+		$title = $this->title;
+		$subject = $this->subject;
+
+		// polyfill title as the subject if empty
+		if ( empty( $title ) && ! empty( $subject ) ) {
+			$this->title = $subject;
+		}
+
 		$this->set_from_select();
 
 		// Maybe update from the meta message type
@@ -138,7 +146,7 @@ class Email extends Base_Object_With_Meta {
 	}
 
 	public function get_title() {
-		return $this->title ?: $this->get_subject_line();
+		return $this->title; // defaults to subject in post_setup
 	}
 
 	public function get_pre_header() {
@@ -1200,6 +1208,10 @@ class Email extends Base_Object_With_Meta {
 		add_action( 'wp_mail_failed', [ $this, 'mail_failed' ] );
 		add_filter( 'wp_mail_content_type', [ $this, 'send_in_html' ] );
 
+		// even though we set the from header, plugins will try to overwrite the from email and name
+		add_filter( 'wp_mail_from_name', [ $this, 'get_from_name' ] );
+		add_filter( 'wp_mail_from', [ $this, 'get_from_email' ] );
+
 		$content = $this->build();
 		$to      = $this->get_to_address();
 		$subject = $this->get_merged_subject_line();
@@ -1221,6 +1233,8 @@ class Email extends Base_Object_With_Meta {
 		remove_action( 'phpmailer_init', [ $this, 'set_plaintext_body' ] );
 		remove_action( 'wp_mail_failed', [ $this, 'mail_failed' ] );
 		remove_filter( 'wp_mail_content_type', [ $this, 'send_in_html' ] );
+		remove_filter( 'wp_mail_from', [ $this, 'get_from_email' ] );
+		remove_filter( 'wp_mail_from_name', [ $this, 'get_from_name' ] );
 
 		if ( ! $sent ) {
 			do_action( 'groundhogg/email/send_failed', $this );
@@ -1411,12 +1425,21 @@ class Email extends Base_Object_With_Meta {
 	 */
 	public function duplicate( $overrides = [], $meta_overrides = [] ) {
 
-		$overrides = wp_parse_args( $overrides, [
+		$overrides = array_merge( [
 			'title'  => sprintf( __( 'Copy of %s', 'groundhogg' ), $this->get_title() ),
 			'status' => 'draft'
-		] );
+		], $overrides );
 
 		return parent::duplicate( $overrides, $meta_overrides );
+	}
+
+	/**
+	 * Context data is not needed for exporting
+	 *
+	 * @return array
+	 */
+	public function export() {
+		return parent::get_as_array();
 	}
 
 	/**
@@ -1490,7 +1513,7 @@ class Email extends Base_Object_With_Meta {
 				'from_name'   => $this->get_from_name(),
 				'from_email'  => $this->get_from_email(),
 				'subject'     => $this->get_merged_subject_line(),
-				'from_user'   => $this->get_from_user(),
+//				'from_user'   => $this->get_from_user(),
 				'built'       => $live_preview,
 				'plain'       => $this->get_merged_alt_body(),
 			]

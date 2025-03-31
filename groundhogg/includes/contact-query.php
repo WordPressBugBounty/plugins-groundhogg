@@ -398,6 +398,7 @@ class Contact_Query extends Table_Query {
 
 	/**
 	 * Filter by primary object relationships
+	 * "Is Parent Of"
 	 *
 	 * @param       $filter
 	 * @param Where $where
@@ -406,13 +407,21 @@ class Contact_Query extends Table_Query {
 	 */
 	public static function filter_primary_related( $filter, Where $where ) {
 
+		$filter = wp_parse_args( $filter, [
+			'object_type' => 'contact',
+			'object_id'   => 0
+		] );
+
 		if ( $where->hasCondition( 'object_relationships' ) ) {
 			$query = new Table_Query( 'object_relationships' );
 			$query->setSelect( 'primary_object_id' )
 			      ->where()
 			      ->equals( 'primary_object_type', 'contact' )
-			      ->equals( 'secondary_object_type', $filter['object_type'] )
-			      ->equals( 'secondary_object_id', $filter['object_id'] );
+			      ->equals( 'secondary_object_type', $filter['object_type'] );
+
+			if ( $filter['object_id'] ) {
+				$query->where()->equals( 'secondary_object_id', $filter['object_id'] );
+			}
 
 			$where->in( 'ID', $query );
 
@@ -422,12 +431,15 @@ class Contact_Query extends Table_Query {
 		$join = $where->query->addJoin( 'LEFT', 'object_relationships' );
 		$join->onColumn( 'primary_object_id', 'ID' )->equals( 'primary_object_type', 'contact' );
 
-		$where->equals( "$join->alias.secondary_object_id", $filter['object_id'] );
 		$where->equals( "$join->alias.secondary_object_type", $filter['object_type'] );
+		if ( $filter['object_id'] ) {
+			$where->equals( "$join->alias.secondary_object_id", $filter['object_id'] );
+		}
 	}
 
 	/**
 	 * Filter by secondary object relationships
+	 * "Is Child Of"
 	 *
 	 * @param       $filter
 	 * @param Where $where
@@ -436,13 +448,21 @@ class Contact_Query extends Table_Query {
 	 */
 	public static function filter_secondary_related( $filter, Where $where ) {
 
+		$filter = wp_parse_args( $filter, [
+			'object_type' => 'contact',
+			'object_id'   => 0
+		] );
+
 		if ( $where->hasCondition( 'object_relationships' ) ) {
 			$query = new Table_Query( 'object_relationships' );
 			$query->setSelect( 'secondary_object_id' )
 			      ->where()
 			      ->equals( 'secondary_object_type', 'contact' )
-			      ->equals( 'primary_object_type', $filter['object_type'] )
-			      ->equals( 'primary_object_id', $filter['object_id'] );
+			      ->equals( 'primary_object_type', $filter['object_type'] );
+
+			if ( $filter['object_id'] ) {
+				$query->where()->equals( 'primary_object_id', $filter['object_id'] );
+			}
 
 			$where->in( 'ID', $query );
 
@@ -452,8 +472,10 @@ class Contact_Query extends Table_Query {
 		$join = $where->query->addJoin( 'LEFT', 'object_relationships' );
 		$join->onColumn( 'secondary_object_id', 'ID' )->equals( 'secondary_object_type', 'contact' );
 
-		$where->equals( "$join->alias.primary_object_id", $filter['object_id'] );
 		$where->equals( "$join->alias.primary_object_type", $filter['object_type'] );
+		if ( $filter['object_id'] ) {
+			$where->equals( "$join->alias.primary_object_id", $filter['object_id'] );
+		}
 	}
 
 	/**
@@ -1320,6 +1342,99 @@ class Contact_Query extends Table_Query {
 	}
 
 	/**
+	 * Filter's whether the current time in `Y-m-d H:i:s` matches the filter conditions
+	 *
+	 * @param array $filter
+	 * @param Where $where
+	 *
+	 * @return void
+	 */
+	public static function filter_current_datetime( $filter, Where $where ) {
+
+		$filter = wp_parse_args( $filter, [
+			'compare' => 'before', // before, after, between, etc...
+			'before'  => '', // a date in `Y-m-d H:i:s` format
+			'after'   => '', // a date in `Y-m-d H:i:s` format
+		] );
+
+		try {
+			$now    = new DateTimeHelper();
+			$before = new DateTimeHelper( $filter['before'] );
+			$after  = new DateTimeHelper( $filter['after'] );
+		} catch ( \Exception $exception ) {
+			$where->addCondition( '1=0' ); // short circuit false
+
+			return;
+		}
+
+		$true = false;
+
+		switch ( $filter['compare'] ) {
+			case 'before':
+				$true = $now->isBefore( $before );
+				break;
+			case 'after':
+				$true = $now->isAfter( $after );
+				break;
+			case 'between':
+				$true = $now->isBetween( $after, $before );
+				break;
+		}
+
+		if ( $true ) {
+			$where->addCondition( '1=1' ); // always true
+		} else {
+			$where->addCondition( '1=0' ); // short circuit false
+		}
+	}
+
+	/**
+	 * Filter's whether the current time in `Y-m-d` matches the filter conditions
+	 *
+	 * @param array $filter
+	 * @param Where $where
+	 *
+	 * @return void
+	 */
+	public static function filter_current_date( $filter, Where $where ) {
+
+		$filter = wp_parse_args( $filter, [
+			'compare' => 'before', // before, after, between, etc...
+			'before'  => '', // a date in `Y-m-d` format
+			'after'   => '', // a date in `Y-m-d` format
+		] );
+
+		$filter['after']  = "{$filter['after']} 00:00:00";
+		$filter['before'] = "{$filter['before']} 23:59:59";
+
+		self::filter_current_datetime( $filter, $where );
+	}
+
+	/**
+	 * Filter's whether the current time in `H:i:s` matches the filter conditions
+	 *
+	 * @param array $filter
+	 * @param Where $where
+	 *
+	 * @return void
+	 */
+	public static function filter_current_time( $filter, Where $where ) {
+
+		$filter = wp_parse_args( $filter, [
+			'compare' => 'before', // before, after, between, etc...
+			'before'  => '', // a date in `H:i:s` format
+			'after'   => '', // a date in `H:i:s` format
+		] );
+
+		$today = Ymd( 'now', true );
+
+		$filter['after']  = "$today {$filter['after']}";
+		$filter['before'] = "$today {$filter['before']}";
+
+		self::filter_current_datetime( $filter, $where );
+	}
+
+	/**
 	 * Registers the standard filters
 	 *
 	 * @return void
@@ -1352,6 +1467,19 @@ class Contact_Query extends Table_Query {
 	}
 
 	/**
+	 * Set the query params
+	 *
+	 * @param array $params
+	 *
+	 * @return $this|Table_Query
+	 */
+	public function set_query_params( array $params ) {
+		$this->query_vars = $params;
+
+		return $this;
+	}
+
+	/**
 	 * Parse the query vars
 	 *
 	 * @param $query_vars
@@ -1367,7 +1495,8 @@ class Contact_Query extends Table_Query {
 
 		// Parse default query vars
 		$query_vars = wp_parse_args( $query_vars, [
-			'date_key' => $this->date_key
+			'date_key' => $this->date_key,
+//			'select'   => array_keys( $this->db_table->get_columns() ) // set select to just contact columns
 		] );
 
 		// Merge saved search query filters. They take priority and override anything previously set

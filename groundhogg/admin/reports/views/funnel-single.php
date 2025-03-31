@@ -10,7 +10,7 @@ use function Groundhogg\html;
 $funnel = new Funnel( get_url_var( 'funnel' ) );
 
 if ( ! $funnel->exists() ) {
-	wp_die( 'Funnel does not exist!' );
+	wp_die( 'Flow does not exist!' );
 }
 
 ?>
@@ -22,7 +22,7 @@ if ( ! $funnel->exists() ) {
 		'id'     => 'edit-funnel',
 		'href'   => $funnel->admin_link(),
 		'class'  => 'gh-button secondary'
-	], __( 'Edit Funnel' ) ) ?>
+	], __( 'Edit Flow' ) ) ?>
 </div>
 <div class="display-grid gap-20">
 
@@ -55,11 +55,9 @@ if ( ! $funnel->exists() ) {
 
     <div class="gh-panel span-12">
         <div class="gh-panel-header">
-            <h2 class="title"><?php _e( 'Funnel Breakdown', 'groundhogg' ); ?></h2>
+            <h2 class="title"><?php _e( 'Flow Breakdown', 'groundhogg' ); ?></h2>
         </div>
-        <div class="big-chart-wrap">
-            <canvas id="chart_funnel_breakdown"></canvas>
-        </div>
+        <div id="chart_funnel_breakdown"></div>
     </div>
 
 	<?php
@@ -98,7 +96,32 @@ if ( ! $funnel->exists() ) {
         <div class="gh-panel-header">
             <h2 class="title"><?php _e( 'Activity', 'groundhogg' ); ?></h2>
         </div>
-        <div id="table_funnel_stats"></div>
+		<?php
+
+		wp_enqueue_style( 'groundhogg-admin-funnel-editor' );
+		wp_enqueue_script( 'groundhogg-admin-funnel-editor' );
+
+		include __DIR__ . '/../../funnels/funnel-flow-preview.php'
+		?>
+        <script>
+          ( $ => {
+
+            $('.step .stat-wrap').click(e => {
+              let a = e.currentTarget.querySelector('a');
+
+              if ( a ){
+                a.click()
+              }
+            })
+
+            //$('.step[data-id]').click(e => {
+            //  window.open(Groundhogg.element.adminPageURL('gh_funnels', {
+            //    action: 'edit',
+            //    funnel: <?php //echo $funnel->ID ?>
+            //  }, e.currentTarget.dataset.id), '_self')
+            //})
+          } )(jQuery)
+        </script>
     </div>
 </div>
 

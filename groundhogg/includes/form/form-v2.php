@@ -19,6 +19,7 @@ use function Groundhogg\get_contactdata;
 use function Groundhogg\get_current_contact;
 use function Groundhogg\get_db;
 use function Groundhogg\get_default_field_label;
+use function Groundhogg\get_url_var;
 use function Groundhogg\html;
 use function Groundhogg\is_a_contact;
 use function Groundhogg\is_recaptcha_enabled;
@@ -204,21 +205,23 @@ function standard_dropdown_callback( $field, $posted_data, &$data, &$meta, &$tag
  */
 function standard_multiselect_callback( $field, $posted_data, &$data, &$meta, &$tags ) {
 
-	$selections = get_array_var( $posted_data, $field['name'], [] );
+	$selections = $posted_data[$field['name']];
 
 	if ( ! is_array( $selections ) ) {
 		return;
 	}
 
-	$selections = map_deep( array_filter( $selections ), 'sanitize_text_field' );
+	$options = array_map( function ( $option ) {
+		return is_array( $option ) ? $option[0] : $option;
+	}, $field['options'] );
 
+	$selections             = map_deep( array_intersect( $selections, $options ), 'sanitize_text_field' );
 	$meta[ $field['name'] ] = $selections;
-	$options                = $field['options'];
 
 	// Find associated tags and apply
 	foreach ( $selections as $selection ) {
 
-		$_selected = array_find( $options, function ( $option ) use ( $selection ) {
+		$_selected = array_find( $field['options'], function ( $option ) use ( $selection ) {
 			return is_array( $option ) && $option[0] === $selection;
 		} );
 
@@ -1033,8 +1036,9 @@ class Form_v2 extends Step {
 						'name'      => '',
 						'className' => '',
 						'required'  => false,
-						'value'     => '',
+						'value'     => '1',
 						'label'     => '',
+						'checked'   => false,
 					] );
 
 					if ( $field['required'] ) {
@@ -1047,12 +1051,15 @@ class Form_v2 extends Step {
 						'name'     => $field['name'],
 						'class'    => trim( 'gh-checkbox-input ' . $field['className'] ),
 						'required' => $field['required'],
-						'checked'  => $contact && $contact->get_meta( $field['name'] ) == ( $field['value'] ?: 1 ),
+						'checked'  => $contact && $contact->get_meta( $field['name'] ) == ( $field['value'] ?: 1 ) || $field['checked'],
 						'value'    => $field['value'] ?: '1',
 					] );
 				},
 				'validate' => '__return_true',
-				'before'   => __NAMESPACE__ . '\standard_meta_callback',
+				'before'   => function ( $field, $posted_data, &$data, &$meta ) {
+					// if the field is not set, it should be set to ''
+					$meta[ $field['name'] ] = isset( $posted_data[ $field['name'] ] ) ? sanitize_text_field( $posted_data[ $field['name'] ] ) : '';
+				},
 				'after'    => function ( $field, $posted_data, $contact ) {
 					if ( $posted_data->isset_not_empty( $field['name'] ) && ! empty( $field['tags'] ) ) {
 						$contact->apply_tag( $field['tags'] );
@@ -1605,6 +1612,10 @@ class Form_v2 extends Step {
 
 		// Init step as normal
 		parent::__construct( $id );
+
+		if ( get_url_var( 'preview' ) && current_user_can( 'edit_funnels' ) ) {
+			$this->merge_changes();
+		}
 	}
 
 	/**
@@ -1854,6 +1865,10 @@ class Form_v2 extends Step {
 		$theme        = $this->get_meta( 'theme' );
 		$accent_color = $this->get_meta( 'accent_color' );
 
+		if ( ! $accent_color ){
+			$accent_color = '#000000'; // default to black
+		}
+
 		if ( $theme && $theme !== 'default' ) {
 			$attrs['class'] .= ' ' . $theme;
 			$attrs['style'] = [ '--gh-accent-color' => $accent_color ];
@@ -2063,6 +2078,10 @@ class Form_v2 extends Step {
 	public function get_fields() {
 		$config = json_decode( wp_json_encode( $this->get_meta( 'form' ) ), true );
 
+		if ( ! is_array( $config ) || ! isset( $config['fields'] ) ) {
+			return [];
+		}
+
 		return $config['fields'];
 	}
 
@@ -2185,7 +2204,10 @@ class Form_v2 extends Step {
 		 */
 		do_action( 'groundhogg/form/v2/submit', $submission, $this, $contact );
 
-		if ( $this->benchmark_enqueue( $contact ) ) {
+		if ( $this->benchmark_enqueue( $contact, [
+			'submission_id' => $submission->get_id(),
+//			'form_id'       => $this->get_id()
+		] ) ) {
 			process_events( [ $contact ] );
 		}
 

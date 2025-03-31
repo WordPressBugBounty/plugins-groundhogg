@@ -3,8 +3,6 @@
 namespace Groundhogg\Steps;
 
 use Groundhogg\Step;
-use function Groundhogg\html;
-use function Groundhogg\key_to_words;
 
 class Error extends Funnel_Step {
 
@@ -17,7 +15,7 @@ class Error extends Funnel_Step {
 	}
 
 	public function get_group() {
-		return false;
+		return '';
 	}
 
 	public function get_description() {
@@ -25,7 +23,7 @@ class Error extends Funnel_Step {
 	}
 
 	public function get_icon() {
-		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/no-icon.png';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/no-icon.png';
 	}
 
 	/**
@@ -35,7 +33,7 @@ class Error extends Funnel_Step {
 	 * @return bool|\WP_Error
 	 */
 	public function run( $contact, $event ) {
-		return new \WP_Error( 'invalid_step_type', 'This step type is not active.' );
+		return new \WP_Error( 'invalid_step_type', 'This step type is not registered.' );
 	}
 
 	public function before_step_warnings() {
@@ -46,13 +44,5 @@ class Error extends Funnel_Step {
 	 * @param Step $step
 	 */
 	public function settings( $step ) {
-	}
-
-	/**
-	 * @param Step $step
-	 *
-	 * @return bool
-	 */
-	public function save( $step ) {
 	}
 }

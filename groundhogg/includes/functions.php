@@ -6,6 +6,7 @@ use Groundhogg\Classes\Activity;
 use Groundhogg\Classes\Page_Visit;
 use Groundhogg\DB\Query\Filters;
 use Groundhogg\DB\Query\Table_Query;
+use Groundhogg\Form\Posted_Data;
 use Groundhogg\Lib\Mobile\Mobile_Validator;
 use Groundhogg\Queue\Event_Queue;
 use Groundhogg\Queue\Process_Contact_Events;
@@ -454,6 +455,11 @@ function event_queue_db() {
  * @return bool
  */
 function isset_not_empty( $array, $key = '' ) {
+
+	if ( is_a( $array, Posted_Data::class ) ) {
+		throw new \Exception( 'Don\'t use isset_not_empty with Posted_Data' );
+	}
+
 	if ( is_object( $array ) ) {
 		return isset( $array->$key ) && ! empty( $array->$key );
 	} else if ( is_array( $array ) ) {
@@ -576,7 +582,12 @@ function base64_json_decode( string $string ) {
  *
  * @return string
  */
-function md5serialize( $stuff ) {
+function md5serialize( ...$stuff ) {
+
+    if ( count( $stuff ) === 1 ){
+        $stuff = array_pop( $stuff );
+    }
+
 	return md5( maybe_serialize( $stuff ) );
 }
 
@@ -768,6 +779,63 @@ function array_find( array $array, callable $predicate ) {
 	return false;
 }
 
+/**
+ * Find an item's index in an array based on a predicate
+ *
+ * @param $array     array
+ * @param $predicate callable
+ *
+ * @return mixed|false if item is not found return false
+ */
+function index_of( array $array, callable $predicate ) {
+
+	foreach ( $array as $key => $item ) {
+		if ( call_user_func( $predicate, $item ) ) {
+			return $key;
+		}
+	}
+
+	return false;
+}
+
+
+function should_serialize( $value ) {
+	return is_array( $value ) || is_object( $value );
+}
+
+/**
+ * Provides a diff of values that are different when they have the same key
+ *
+ * @param array $array1
+ * @param array $array2
+ * @param bool  $strict
+ *
+ * @return array
+ */
+function keep_the_diff( array $array1, array $array2, bool $strict = false ) {
+
+	$different = [];
+
+	foreach ( $array1 as $key => $v1 ) {
+
+		if ( ! isset( $array2[ $key ] ) ) {
+			$different[ $key ] = $v1;
+			continue;
+		}
+
+		$v2 = $array2[ $key ];
+
+		$a = should_serialize( $v1 ) ? serialize( $v1 ) : $v1;
+		$b = should_serialize( $v2 ) ? serialize( $v2 ) : $v2;
+
+		if ( ( $strict && $a !== $b ) || ( ! $strict && $a != $b ) ) {
+			$different[ $key ] = $v1;
+		}
+	}
+
+	return $different;
+}
+
 function find_object( array $array, array $args ) {
 	return array_find( $array, function ( object $object ) use ( $args ) {
 
@@ -791,6 +859,11 @@ function find_object( array $array, array $args ) {
  * @return mixed
  */
 function get_array_var( $array, $key = '', $default = false ) {
+
+	if ( is_a( $array, Posted_Data::class ) ) {
+		throw new \Exception( 'Don\'t use isset_not_empty with Posted_Data' );
+	}
+
 	if ( isset_not_empty( $array, $key ) ) {
 		if ( is_object( $array ) ) {
 			return $array->$key;
@@ -1052,7 +1125,7 @@ function search_and_replace_domain( $string ) {
  * @return string
  */
 function array_to_atts( $atts ) {
-	$tag = '';
+	$attributes = [];
 
 	if ( ! is_array( $atts ) ) {
 		return '';
@@ -1105,10 +1178,16 @@ function array_to_atts( $atts ) {
 
 		}
 
-		$tag .= sanitize_key( $key ) . '="' . $value . '" ';
+		$key = sanitize_key( $key );
+		if ( in_array( $key, [ 'required', 'disabled', 'checked', 'readonly' ] ) ) {
+			$attributes[] = $key;
+		} else {
+			$attributes[] = $key . '="' . $value . '"';
+		}
+
 	}
 
-	return $tag;
+	return implode( ' ', $attributes );
 }
 
 /**
@@ -1565,7 +1644,7 @@ function get_form_list() {
 	foreach ( $forms as $form ) {
 		$step = new Step( $form->ID );
 		if ( $step->is_active() ) {
-			$form_options[ $form->ID ] = $form->step_title;
+			$form_options[ $form->ID ] = $step->get_meta( 'form_name' ) ?: $step->get_step_title();
 		}
 	}
 
@@ -2281,6 +2360,36 @@ function get_mappable_fields( $extra = [] ) {
 	$fields = array_merge( $defaults, $extra );
 
 	return apply_filters( 'groundhogg/mappable_fields', $fields );
+}
+
+/**
+ * Given an array that would be used for mapping fields, properly sanitize it
+ *
+ * @param $field_map
+ *
+ * @return array
+ */
+function sanitize_field_map( $field_map ) {
+
+	// get mappable fields without the groups
+	$mappable_fields = array_reduce( get_mappable_fields(), function ( $fields, $group ) {
+		return array_merge( $fields, $group );
+	}, [] );
+
+	$new_map = [];
+
+	foreach ( $field_map as $from => $to ) {
+
+		// trying to map to a field that is not registered
+		if ( ! key_exists( $to, $mappable_fields ) ) {
+			continue;
+		}
+
+		$new_map[ sanitize_text_field( $from ) ] = $to;
+
+	}
+
+	return $new_map;
 }
 
 /**
@@ -3660,14 +3769,14 @@ function is_replacement_code_format( string $code, $exact = true ) {
 }
 
 /**
- * Whather the current admin page is a groundhogg page.
+ * Whether the current admin page is a groundhogg page.
  *
  * @return bool
  */
 function is_admin_groundhogg_page() {
 	$page = get_request_var( 'page' );
 
-	return is_admin() && $page && ( preg_match( '/^gh_/', $page ) || $page === 'groundhogg' );
+	return is_admin() && $page && is_string( $page ) && ( preg_match( '/^gh_/', $page ) || $page === 'groundhogg' );
 }
 
 
@@ -3725,15 +3834,17 @@ function is_main_blog() {
  * Remote post json content
  * Glorified wp_remote_post wrapper
  *
- * @param string $url
- * @param array  $body
- * @param string $method
- * @param array  $headers
- * @param bool   $as_array
+ * @param string $url       Where are we going?
+ * @param array  $body      The body of the request, as an array
+ * @param string $method    POST, PATCH, DELETE, ETC...
+ * @param array  $headers   headers to send with the request
+ * @param bool   $as_array  whether to decode JSON into an array instead of an object
+ * @param int $cache_ttl if > 0, will cache the request in /wp-content/uploads/groundhogg/requests/.
+ *                       If < 0 will force request and reset the cached request
  *
  * @return array|bool|WP_Error|object
  */
-function remote_post_json( $url = '', $body = [], $method = 'POST', $headers = [], $as_array = false ) {
+function remote_post_json( $url = '', $body = [], $method = 'POST', $headers = [], bool $as_array = false, int $cache_ttl = 0 ) {
 	$method = strtoupper( $method );
 
 	if ( ! isset_not_empty( $headers, 'Content-type' ) ) {
@@ -3759,8 +3870,40 @@ function remote_post_json( $url = '', $body = [], $method = 'POST', $headers = [
 
 	];
 
+	$cache_key = md5serialize( $url, $args );
+
+	// if the ttl is greater than 0, we might want to cache this request
+	// if there is no valid cache, then we'll clear any cached file, and proceed with the request
+	if ( $cache_ttl !== 0 && $cache_key ) {
+
+        // path to cache file
+		$cached_file = files()->get_uploads_dir( 'requests', $cache_key . '.json' );
+
+        // exists!
+		if ( @file_exists( $cached_file ) ) {
+
+            // positive integers will be treated as the cache time to live
+            if ( $cache_ttl > 0 ) {
+	            $time = filectime( $cached_file );
+	            // check the time the file was created, if within our ttl, return the contents
+	            if ( $time && $time > time() - $cache_ttl ) {
+		            $json = json_decode( @file_get_contents( $cached_file ), $as_array );
+		            if ( ! empty( $json ) ) {
+			            return $json;
+		            }
+	            }
+            }
+
+            // delete the file, either invalid contents or expired ttl, or force expiration with negative ttl
+            unlink( $cached_file );
+		}
+	}
+
 	if ( $method === 'GET' ) {
-		$response = wp_remote_get( $url, $args );
+        $params = $args['body'];
+        unset( $args['body'] ); // unneeded
+        unset( $args['data_format'] ); // unneeded
+		$response = wp_remote_get( add_query_arg( $params, $url ), $args );
 	} else {
 		$response = wp_remote_post( $url, $args );
 	}
@@ -3793,6 +3936,11 @@ function remote_post_json( $url = '', $body = [], $method = 'POST', $headers = [
 
 		return $error;
 	}
+
+    // We don't cache errors...
+    if ( $cache_ttl !== 0 && $cache_key ){
+        @file_put_contents( files()->get_uploads_dir( 'requests', $cache_key . '.json', true ), json_encode( $json ) );
+    }
 
 	return $json;
 }
@@ -4441,6 +4589,7 @@ function maybe_print_menu_styles() {
             display: inline-block;
             width: calc(100% - 44px);
             background: #dc741b;
+            border-radius: 3px;
         }
 
         #adminmenu #toplevel_page_groundhogg a.gh_go_pro:hover {
@@ -4452,7 +4601,7 @@ function maybe_print_menu_styles() {
         }
 
         #adminmenu #toplevel_page_groundhogg li.gh_funnels:before,
-        #adminmenu #toplevel_page_groundhogg li.gh_tools:before,
+        #adminmenu #toplevel_page_groundhogg li.gh_events:before,
         #adminmenu #toplevel_page_groundhogg li.gh_go_pro:before,
         #adminmenu #toplevel_page_groundhogg li.gh_contacts:before {
             background: #b4b9be;
@@ -5565,6 +5714,11 @@ function track_event_activity( Event $event, string $type = '', array $details =
 		'email_id'  => $event->email_id,
 	] );
 
+	// clear cached broadcast stats whenever new activity is tracked
+	if ( $event->is_broadcast_event() ) {
+		$event->get_step()->clear_cached_report_data();
+	}
+
 	return track_activity( $contact, $type, $args, $details );
 }
 
@@ -5824,7 +5978,9 @@ add_action( 'wp_loaded', __NAMESPACE__ . '\track_wp_cron_ping' );
  * Tracks the pings of the gh-cron.php.
  */
 function track_gh_cron_ping() {
-	update_option( 'gh_cron_last_ping', time() );
+	if ( gh_doing_cron() ) {
+		update_option( 'gh_cron_last_ping', time() );
+	}
 }
 
 add_action( 'groundhogg/event_queue/before_process', __NAMESPACE__ . '\track_gh_cron_ping', 9 );
@@ -5917,17 +6073,18 @@ function sanitize_object_meta( $meta_value, $meta_key = '', $object_type = '' ) 
 /**
  * Given an arbitrary payload, do our best to sanitize it
  *
- * @param array $payload
+ * @param mixed $payload
  *
- * @return array
+ * @return mixed
  */
-function sanitize_payload( array $payload ): array {
+function sanitize_payload( $payload ) {
 
 	return map_deep( $payload, function ( $param ) {
 
 		// Might be a float
 		// Might be int
-		if ( is_numeric( $param ) ) {
+		// if first digit is 0, treat as string
+		if ( is_numeric( $param ) && ! str_starts_with( "$param", '0' ) ) {
 
 			// No sanitization needed
 			if ( is_int( $param ) || is_float( $param ) ) {
@@ -6083,7 +6240,7 @@ function array_unique_cb( $array, $callback ) {
 
 	$seen = [];
 
-	return array_filter( $array, function ( $item ) use ( $seen, $callback ) {
+	return array_filter( $array, function ( $item ) use ( &$seen, $callback ) {
 
 		$__item = call_user_func( $callback, $item );
 
@@ -6148,12 +6305,17 @@ function array_filter_by_keys( array $associative_array, array $keys_to_keep ) {
 /**
  * Given an associative array apply a list of callbacks provided by the callbacks array
  *
- * @param array      $array
- * @param callable[] $callbacks
+ * @param array      $array     the items
+ * @param callable[] $callbacks callbacks to apply to the items
+ * @param bool       $strict    whether to remove items that are not in the callbacks set
  *
  * @return array
  */
-function array_apply_callbacks( array $array, array $callbacks ) {
+function array_apply_callbacks( array $array, array $callbacks, bool $strict = false ) {
+
+	if ( $strict ) {
+		$array = array_intersect_key( $array, $callbacks );
+	}
 
 	foreach ( $array as $key => &$value ) {
 		if ( ! isset( $callbacks[ $key ] ) ) {
@@ -6664,10 +6826,10 @@ function create_object_from_type( $object, $object_type ) {
 
 	$table = Plugin::instance()->dbs->get_object_db_by_object_type( $object_type );
 
-    // no table found, could be that an add-on was deactivated.
-    if ( ! $table ){
-        return null;
-    }
+	// no table found, could be that an add-on was deactivated.
+	if ( ! $table ) {
+		return null;
+	}
 
 	return $table->create_object( $object );
 }
@@ -6723,11 +6885,11 @@ function enqueue_email_block_editor_assets( $extra = [] ) {
 	$tel            = get_option( 'gh_phone' );
 	$terms          = get_option( 'gh_terms' );
 	$privacy_policy = get_option( 'gh_privacy_policy' ) ?: get_privacy_policy_url();
-	$links          = implode( ' | ', array_filter( [
-		$tel ? html()->e( 'a', [ 'href' => 'tel: ' . $tel ], $tel ) : false,
-		$privacy_policy ? html()->e( 'a', [ 'href' => $privacy_policy ], __( 'Privacy Policy' ) ) : false,
-		$terms ? html()->e( 'a', [ 'href' => $terms ], __( 'Terms' ) ) : false,
-	] ) );
+	$links          = [
+		'tel'     => $tel ? html()->e( 'a', [ 'href' => 'tel: ' . $tel ], $tel ) : false,
+		'privacy' => $privacy_policy ? html()->e( 'a', [ 'href' => $privacy_policy ], __( 'Privacy Policy' ) ) : false,
+		'terms'   => $terms ? html()->e( 'a', [ 'href' => $terms ], __( 'Terms' ) ) : false,
+	];
 	$unsubscribe    = sprintf( __( 'Don\'t want these emails? %s.', 'groundhogg' ), html()->e( 'a', [
 		'href' => '#unsubscribe_link#'
 	], __( 'Unsubscribe', 'groundhogg' ) ) );
@@ -6781,14 +6943,14 @@ function enqueue_email_block_editor_assets( $extra = [] ) {
  */
 function enqueue_filter_assets() {
 
-    static $called;
+	static $called;
 
-    if ( $called ){
-        return;
-    }
+	if ( $called ) {
+		return;
+	}
 
-    // call only once?
-    $called = true;
+	// call only once?
+	$called = true;
 
 	wp_enqueue_script( 'groundhogg-admin-filter-contacts' );
 	wp_enqueue_style( 'groundhogg-admin-filters' );
@@ -7840,7 +8002,7 @@ function get_gh_page_screen_id( $page = '' ) {
  * @return bool
  */
 function current_screen_is_gh_page( $page = '' ) {
-	return get_gh_page_screen_id( $page ) === get_current_screen()->id;
+	return get_current_screen() && get_gh_page_screen_id( $page ) === get_current_screen()->id;
 }
 
 /**
@@ -8330,6 +8492,7 @@ function html2markdown( $string, $clean_up = true, $tidy_up = true ) {
 			'blockquote',
 			'strong',
 			'b',
+			'br',
 			'em',
 			'i',
 			'hr',
@@ -8361,6 +8524,7 @@ function html2markdown( $string, $clean_up = true, $tidy_up = true ) {
 		'h6'       => '###### ',
 		'\/h\d'    => PHP_EOL,
 		'br'       => '  ' . PHP_EOL,
+		'br\/'     => '  ' . PHP_EOL,
 		'br\s\/'   => '  ' . PHP_EOL,
 		'hr'       => PHP_EOL . '---' . PHP_EOL . PHP_EOL,
 		'hr.*?'    => PHP_EOL . '---' . PHP_EOL . PHP_EOL,
@@ -8471,16 +8635,15 @@ function html2markdown( $string, $clean_up = true, $tidy_up = true ) {
 /**
  * Returns a string representing Good Fiar or Poor given specific thresholds
  *
- * @param int  $number
- * @param int  $great
- * @param int  $good
- * @param int  $fair
- * @param int  $poor
- * @param bool $inverse
+ * @param int $number
+ * @param int $great
+ * @param int $good
+ * @param int $fair
+ * @param int $poor
  *
  * @return string good|fair|poor|bad
  */
-function is_good_fair_or_poor( int $number, int $great, int $good, int $fair, int $poor ) {
+function is_good_fair_or_poor( $number, $great, $good, $fair, $poor ) {
 
 	if ( $number >= $great ) {
 		return 'great';
@@ -8590,4 +8753,136 @@ function ajax_send_plugin_feedback() {
 	}
 
 	wp_send_json_success();
+}
+
+/**
+ * Add a filter that removes itself after being called once
+ *
+ * @param string   $filter
+ * @param callable $callback
+ * @param int      $priority
+ * @param int      $args
+ *
+ * @return bool
+ */
+function add_self_removing_filter( string $filter, callable $callback, int $priority = 10, int $args = 1 ) {
+
+	$callbackWrapper = function ( ...$args ) use ( &$callbackWrapper, $filter, $callback, $priority ) {
+		$result = call_user_func_array( $callback, $args );
+		remove_filter( $filter, $callbackWrapper, $priority );
+
+		return $result;
+	};
+
+	return add_filter( $filter, $callbackWrapper, $priority, $args );
+}
+
+/**
+ * Allows the adding of event arguments before an event is added to the event queue
+ *
+ * @param $args
+ *
+ * @return bool
+ */
+function add_event_args( $args = [] ) {
+	if ( ! \Groundhogg\event_queue()::is_processing() ) {
+		return false;
+	}
+
+	$event = \Groundhogg\event_queue()->get_current_event();
+
+	return $event->set_args( $args );
+}
+
+/**
+ * Get an argument from the event args
+ *
+ * @param string $arg     the argument to retrieve
+ * @param mixed  $default what to return if not found or empty
+ *
+ * @return bool|mixed false if the event queue is not running, otherwise the found arg or the given default
+ */
+function get_event_arg( string $arg, $default = false ) {
+
+	if ( ! \Groundhogg\event_queue()::is_processing() ) {
+		return false;
+	}
+
+	$event = \Groundhogg\event_queue()->get_current_event();
+
+	// make sure the event exists...
+	if ( ! $event || ! $event->exists() ) {
+		return $default;
+	}
+
+	return $event->get_arg( $arg, $default );
+}
+
+/**
+ * Ensures the given value is in a set of pre-defined options
+ * Otherwise, return the first option of the set as the default.
+ * If the set is empty, return false.,mn
+ *
+ * @param       $value
+ * @param array $options
+ *
+ * @return false|mixed
+ */
+function one_of( $value, array $options ) {
+
+	if ( empty( $options ) ) {
+		return false;
+	}
+
+	if ( ! in_array( $value, $options ) ) {
+		return $options[0];
+	}
+
+	return $value;
+}
+
+function int_to_letters( $num ) {
+	$result = '';
+	while ( $num >= 0 ) {
+		$remainder = $num % 26;
+		$result    = chr( 65 + $remainder ) . $result;
+		$num       = intval( $num / 26 ) - 1;
+	}
+
+	return $result;
+}
+
+/**
+ * Do a search and replace in a file
+ *
+ * @param $file_path
+ * @param $search
+ * @param $replace
+ *
+ * @return bool
+ */
+function search_and_replace_in_file( $file_path, $search, $replace ) {
+	if ( ! file_exists( $file_path ) ) {
+		return false; // File not found
+	}
+
+	// Read file content
+	$content = file_get_contents( $file_path );
+
+	// Replace occurrences
+	$updated_content = str_replace( $search, $replace, $content );
+
+	// Write back to file
+	return file_put_contents( $file_path, $updated_content ) !== false;
+}
+
+/**
+ * Count the number of lines in a peric of text
+ *
+ * @param $text
+ *
+ * @return int
+ */
+function count_newlines( $text ) {
+	return count( explode( "\n", $text ) );
 }

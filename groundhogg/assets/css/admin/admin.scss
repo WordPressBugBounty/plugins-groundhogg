@@ -15,14 +15,22 @@ $error-red: rgb(233, 31, 79);
 $error-red-50: rgba(233, 31, 79, 0.5);
 $error-red-10: rgba(233, 31, 79, 0.10);
 $secondary-purple: rgb(108, 25, 173);
+$secondary-purple-25: rgba($secondary-purple, 0.25);
+$secondary-purple-10: rgba($secondary-purple, 0.10);
+$secondary-purple-5: rgba($secondary-purple, 0.05);
 $alert-yellow-50: rgba(255, 238, 88, 0.50);
 $alert-yellow: rgb(255, 238, 88);
 $benchmark-orange: rgb(245, 129, 21);
-$benchmark-orange-50: rgba(245, 129, 21, 0.50);
-$benchmark-orange-25: rgba(245, 129, 21, 0.25);
+$benchmark-orange-50: rgba($benchmark-orange, 0.50);
+$benchmark-orange-25: rgba($benchmark-orange, 0.25);
+$benchmark-orange-10: rgba($benchmark-orange, 0.10);
+$benchmark-orange-5: rgba($benchmark-orange, 0.05);
+$action-green-dark: rgb(90, 131, 3);
 $action-green: rgb(158, 206, 56);
-$action-green-50: rgba(158, 206, 56, 0.5);
-$action-green-25: rgba(158, 206, 56, 0.25);
+$action-green-50: rgba($action-green, 0.5);
+$action-green-25: rgba($action-green, 0.25);
+$action-green-10: rgba($action-green, 0.10);
+$action-green-5: rgba($action-green, 0.05);
 $box-shadow: 5px 5px 30px 0 rgba(24, 45, 70, 0.05);
 $background-color: #F6F9FB;
 
@@ -427,8 +435,17 @@ a.danger:hover {
   width: 50%;
 }
 
-table.wp-list-table.funnels th#title {
-  width: 400px;
+.table-view-list.funnels{
+
+  th#title {
+    //width: 300px;
+  }
+
+  th#steps,
+  td.steps.column-steps{
+    //overflow: hidden;
+    //width: 200px;
+  }
 }
 
 table.wp-list-table.funnels th.column-active_contacts,
@@ -620,6 +637,7 @@ label.gh-switch {
   width: 50px;
   height: 20px;
   padding: 0 !important;
+  flex-shrink: 0;
 
   input {
     opacity: 0;
@@ -729,6 +747,30 @@ label.gh-switch {
   display: grid;
   gap: 20px;
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  .full {
+    grid-column: span 4;
+
+    p{
+      font-size: 18px;
+    }
+  }
+
+  .add-new-report{
+    background-color: $primary-dark-5;
+    border: none;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px 0;
+
+    &:hover{
+      background-color: $primary-dark-15;
+    }
+  }
 
   .report-placeholder {
 
@@ -1016,6 +1058,22 @@ label.gh-switch {
   left: 36px !important;
 }
 
+body.gh-full-screen {
+  .gh-fixed-ui {
+    height: auto;
+    max-height: 100%;
+    left: 0 !important;
+    top: 0 !important;
+  }
+
+  /* Full Screen */
+  #adminmenumain,
+  #wpfooter,
+  #wpadminbar {
+    display: none !important;
+  }
+}
+
 #api-docs {
 
   background-color: $background-color;
@@ -1049,13 +1107,13 @@ label.gh-switch {
 
     }
 
-    &.post,&.patch{
+    &.post, &.patch {
       background-color: $primary-blue;
       color: #fff;
 
     }
 
-    &.delete{
+    &.delete {
       background-color: $error-red;
       color: #fff;
 
@@ -1105,8 +1163,8 @@ label.gh-switch {
     }
   }
 
-  #docs-ui{
-    height: calc( 100% - 60px );
+  #docs-ui {
+    height: calc(100% - 60px);
   }
 
   #endpoint-display {
@@ -1129,11 +1187,11 @@ label.gh-switch {
     }
 
     .gh-panel.outlined {
-      .parameter:first-of-type{
+      .parameter:first-of-type {
         border-top: none;
       }
 
-      .parameter{
+      .parameter {
         padding-left: 20px;
         padding-right: 20px;
       }
@@ -1145,9 +1203,10 @@ label.gh-switch {
     margin: 0;
     overflow: auto;
 
-    &:not(.light){
+    &:not(.light) {
       color: #fff;
       background-color: $primary-dark;
+
       a {
         color: #fff;
       }
@@ -1200,49 +1259,306 @@ label.gh-switch {
   }
 }
 
-table .column-steps {
+.funnel-preview{
 
-  width: 160px;
+  display: inline-flex;
+  align-items: center;
+  //flex-wrap: wrap;
+  //row-gap: 2px;
 
-  div.step-icon {
-    //padding: 3px;
-    display: inline-block;
+  div.step-preview {
     white-space: nowrap;
-    width: 27px;
-    height: 27px;
-    vertical-align: top;
+    width: 30px;
+    height: 30px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: stretch;
+    align-items: stretch;
 
-    &:not(:first-child){
+    &:not(:first-child) {
       margin-left: -10px;
     }
 
-    &.more {
+    div.step-icon {
       background-color: #fff;
-      border-radius: 20px;
-      padding: 4px;
-      border: 2px solid $primary-dark;
-    }
+      background-image: linear-gradient(var(--color-5), var(--color-5));
+      border: 2px solid var(--color);
+      padding: 3px;
+      aspect-ratio: 1 / 1;
 
-    &.action {
-      border: 2px solid $action-green;
-      background-color: #E7F3CD;
-      border-radius: 20px;
-    }
+      svg {
+        fill: var(--color);
+        width: 100%;
+        height: 100%;
+      }
 
-    &.benchmark{
-      border: 2px solid $benchmark-orange;
-      background-color: #FCDFC4;
-      border-radius: 3px;
-    }
+      &.more {
+        background-color: #fff;
+        border-radius: 20px;
+        padding: 4px;
+        border: 2px solid $primary-dark;
+      }
 
-    svg,
-    img {
-      width: 100%;
-      height: 100%;
+      &.action {
+        --color: #{$action-green};
+        --color-25: #{$action-green-25};
+        --color-5: #{$action-green-5};
+        border-radius: 5px;
+      }
+
+      &.benchmark {
+        --color: #{$benchmark-orange};
+        --color-25: #{$benchmark-orange-25};
+        --color-5: #{$benchmark-orange-5};
+        border-radius: 50%;
+      }
+
+      &.logic {
+        --color: #{$secondary-purple};
+        --color-25: #{$secondary-purple-25};
+        --color-5: #{$secondary-purple-5};
+
+        border-radius: 3px;
+        transform: rotate(45deg) scale(0.8);
+
+        .gh-tooltip,
+        svg {
+          transform: rotate(-45deg);
+        }
+      }
+
+      svg,
+      img {
+        width: 100%;
+        height: 100%;
+      }
     }
   }
 }
 
-#wpbody-content:has(.gh-header.admin-page-header) .wrap {
-  margin-top: 40px;
+#wpbody-content:has(.gh-header.admin-page-header):has(#show-settings-link) {
+  .wrap {
+    margin-top: 40px;
+  }
+}
+
+.groundhogg-admin-page .gh-header + h2.gh-nav {
+  margin: 0 0 0 -20px !important;
+  padding: 10px 0 0 20px !important;
+  background-color: #fff;
+}
+
+.gh-site {
+
+  /* Darks */
+  --color-dark-800: #212121;
+  --color-dark-900: #0f181e;
+
+  /* Gray */
+  --color-gray-50: #fafafa;
+  --color-gray-100: #e0e0e0;
+
+  /* Browns */
+  --color-brown-50: #fffcf1;
+  --color-brown-75: #fffcf1;
+  --color-brown-100: #fff5da;
+  --color-brown-200: #ffefb0;
+  --color-brown-300: #f7dd96;
+  --color-brown-400: #cfa756;
+  --color-brown-500: #9e743e;
+
+  /* Oranges */
+  --color-orange-700: #ff9431;
+  --color-orange-900: #ff7b01;
+
+  /* Reds */
+  --color-red-200: #f2c3c6;
+  --color-red-700: #DD2A37;
+  --color-red-900: #CA2000;
+
+  /* Various */
+  --color-footer: #1F1A22;
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --color-yellow: #ffca00;
+  --color-green-100: #dce9d5;
+  --color-green-400: #9FCA8F;
+  --color-green-500: #80BA6D;
+  --color-green-600: #61AA4A;
+  --color-green-900: #248B04;
+  --color-slate: #455A64;
+
+  h3 {
+    font-size: 20px;
+  }
+
+  p {
+    font-size: 16px;
+  }
+
+  a {
+    color: var(--color-orange-900);
+    text-decoration: none;
+  }
+
+  .bold {
+    font-weight: bold;
+  }
+
+  .gh-primary-card {
+    //padding: 1.25rem;
+    border-radius: 0.75rem;
+    background-color: var(--color-brown-200);
+    border-style: solid;
+    border-width: 1px;
+    border-right-width: 3px;
+    border-bottom-width: 3px;
+    border-color: var(--color-dark-800);
+  }
+
+  .gh-site-button {
+    border-radius: 0.75rem;
+    border-style: solid;
+    border-width: 1px;
+    border-right-width: 3px;
+    border-bottom-width: 3px;
+    border-color: var(--color-dark-800);
+    text-transform: uppercase;
+    padding: 0.625rem 1.25rem;
+
+    &.primary {
+      background-color: var(--color-yellow);
+    }
+  }
+
+  .gh-secondary-card {
+    //padding: 1.25rem;
+    border-radius: 0.75rem;
+    background-color: var(--color-brown-50);
+    border-style: solid;
+    border-width: 1px;
+    border-right-width: 3px;
+    border-bottom-width: 3px;
+    border-color: var(--color-dark-800);
+  }
+}
+
+.tour-prompt {
+  background: #fff;
+  border-radius: 10px;
+  z-index: 1000;
+  border: 1px solid $primary-dark;
+  //box-shadow: 0 0 100px $primary-dark;
+  box-sizing: border-box;
+  font-size: 16px;
+
+  button.dismiss {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    border: none;
+    background: transparent;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    margin: 0;
+  }
+
+  .gh-text {
+    font-weight: 500;
+  }
+
+  &.right {
+    border-top-left-radius: 0;
+  }
+
+  &.left {
+    border-top-right-radius: 0;
+  }
+
+  &.above {
+
+    border-bottom-left-radius: 0;
+  }
+
+  &.below {
+    border-top-left-radius: 0;
+  }
+
+  &.below-left {
+    border-top-right-radius: 0;
+  }
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.tour-window {
+  z-index: 98 !important;
+  position: fixed;
+  border-style: solid;
+  border-color: $primary-dark-15;
+  border-radius: 10px;
+  background: transparent;
+  top: 0;
+  //right: 0;
+  left: 0;
+  //bottom: 0;
+
+  .tour-window-shadow {
+    height: 100%;
+    width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 0 200px 100px $primary-dark !important;
+    background: transparent;
+  }
+}
+
+.tour-highlighted {
+  z-index: 99 !important;
+  position: relative;
+
+  --gap: -10px;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: var(--gap);
+    left: var(--gap);
+    right: var(--gap);
+    bottom: var(--gap);
+    background: transparent;
+    box-shadow: 0 0 200px 100px $primary-dark !important;
+    //z-index: -1;
+    border-radius: 10px;
+  }
+}
+
+[data-gh-href]{
+  cursor: pointer;
+}
+
+.gh-checkbox-label:has(input.gh-checkbox-toggle) {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.number-of {
+  position: absolute;
+  transform: translate(50%,-50%);
+  top: 0;
+  right: 0;
+  font-size: 11px;
+  aspect-ratio: 1/1;
+  line-height: 1;
+  background-color: $primary-dark;
+  color: #FFF;
+  border-radius: 50%;
+  width: 16px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
 }

@@ -34,6 +34,9 @@
   }
 
   const AttributeHandlers = {
+    State        : (el, value) => {
+      el.State = value
+    },
     required     : (el, value) => {
       el.required = value
     },
@@ -246,7 +249,7 @@
 
     if (children !== null) {
 
-      const morph = () => morphdom(document.getElementById(el.id), makeEl(tagName, attributes, children))
+      const morph = (args = {}) => morphdom(document.getElementById(el.id), makeEl(tagName, attributes, children), args)
 
       if (!Array.isArray(children)) {
         if (children instanceof NodeList) {
@@ -566,11 +569,13 @@
    */
   const Modal = ({
     dialogClasses = '',
+    className = '',
     onOpen = () => {},
     onClose = () => {},
     width,
     closeButton = true,
     closeOnOverlayClick = true,
+    overlay = true,
   }, children) => {
 
     const Dialog = ({
@@ -595,17 +600,17 @@
     ])
 
     let modal = Div({
-      className: 'gh-modal',
+      className: `gh-modal ${ className }`,
       tabindex : 0,
     }, [
-      Div({
+      overlay ? Div({
         className: 'gh-modal-overlay',
         onClick  : e => {
           if (closeOnOverlayClick) {
             close()
           }
         },
-      }),
+      }) : null,
       Dialog({
         header : null,
         content: null,
@@ -613,11 +618,11 @@
     ])
 
     const close = () => {
-      onClose()
+      onClose(modal)
       modal.remove()
     }
 
-    const morph = () => {
+    const morph = (args = {}) => {
 
       let content = getContent()
 
@@ -626,7 +631,7 @@
       morphdom(modal.querySelector('.gh-modal-dialog'), Dialog({
         header,
         content,
-      }))
+      }), args)
     }
 
     const getContent = () => maybeCall(children, {
@@ -646,10 +651,28 @@
       morph,
     })
 
-    modal.focus()
+    if (!modal.contains(document.activeElement)) {
+      modal.focus()
+    }
 
     return modal
   }
+
+  const ModalWithHeader = ({
+    header = '',
+    ...args
+  }, children) => Modal(args, methods => Div({}, [
+    Div({
+      className: 'gh-header modal-header',
+    }, [
+      MakeEl.H3({}, header),
+      MakeEl.Button({
+        className: 'gh-button icon secondary text',
+        onClick  : methods.close,
+      }, MakeEl.Dashicon('no-alt')),
+    ]),
+    maybeCall(children, methods),
+  ]))
 
   /**
    * Custom modal appended to the body.
@@ -1007,6 +1030,7 @@
 
   const ItemPicker = ({
     id = '',
+    label = '',
     placeholder = 'Type to search...',
     fetchOptions = (search, resolve) => {},
     selected = [],
@@ -1148,6 +1172,10 @@
           focused: false,
         })
       }
+
+      setState({
+        search: '',
+      })
 
       morph()
 
@@ -1414,6 +1442,15 @@
       id       : `${ id }-picker`,
       className: `gh-picker ${ optionsVisible() ? 'options-visible' : '' }`,
       tabindex : '0',
+      onKeydown: e => {
+        if (e.key === 'Escape') {
+          setState({
+            searching: false,
+            focused  : false,
+          })
+          morph()
+        }
+      },
       onCreate : el => {
         el.addEventListener('focusout', e => {
 
@@ -1448,6 +1485,7 @@
       Div({
         className: `gh-picker-selected ${ multiple ? 'multiple' : 'single' }`,
       }, [
+        selected.length && label ? Span({ className: 'gh-picker-label' }, label) : null,
         ...selected.map((item, i) => itemPickerItem(item, i)),
         multiple || !selected.length ? SearchInput() : null,
       ]),
@@ -1543,7 +1581,15 @@
   const Img = (props) => makeEl('img', props)
   const Pg = (props, children) => makeEl('p', props, children)
   const Bold = (props, children) => makeEl('b', props, children)
-  const An = (props, children) => makeEl('a', props, children)
+  const An = (props, children) => {
+
+    props = {
+      href: 'javascript:void(0)', // set to void by default
+      ...props,
+    }
+
+    return makeEl('a', props, children)
+  }
   const Ul = (props, children) => makeEl('ul', props, children)
   const Ol = (props, children) => makeEl('ol', props, children)
   const Li = (props, children) => makeEl('li', props, children)
@@ -1563,8 +1609,107 @@
     },
   })))
 
+  const useState = (initialState, id) => {
+    const el = document.getElementById(id)
+    if (el && el.State) {
+      return el.State
+    }
+    return Groundhogg.createState(initialState)
+  }
+
+  const Accordion = ({
+    id,
+    items,
+    outlined = false,
+    multiple = false, // whether multiple items can be expanded at the same time
+  }) => {
+
+    const State = useState({
+      expanded: null,
+    }, id)
+
+    const isExpanded = index => multiple ? State.get(`expand${ index + 1 }`) : State.expanded === index
+
+    const toggleExpand = index => {
+      if (multiple) {
+        State.set({
+          [`expand${ index + 1 }`]: !isExpanded(index),
+        })
+      }
+      else {
+        State.set({
+          expanded: index,
+        })
+      }
+    }
+
+    return Div({
+      id,
+      className: 'gh-accordion',
+      State,
+    }, morph => Fragment(items.map(({
+      title,
+      content,
+    }, i) => Div({
+      className: `gh-accordion-item gh-accordion-row ${ isExpanded(i) ? 'expanded' : 'collapsed' } ${ outlined ? 'outlined' : 'has-box-shadow' }`,
+      id       : `${ id }-item-${ i + 1 }`,
+    }, [
+      Div({
+        id       : `${ id }-item-toggle-${ i + 1 }`,
+        className: 'display-flex gap-10 align-center',
+        onClick  : e => {
+          toggleExpand(i)
+          morph()
+        },
+      }, [
+        Pg({
+          className: 'gh-accordion-item-title',
+        }, title),
+        isExpanded(i) ? Dashicon('arrow-up-alt2') : Dashicon('arrow-down-alt2'),
+      ]),
+      isExpanded(i) ? content : null,
+    ]))))
+  }
+
+  const TinyMCE = ({
+    id = '',
+    content = '',
+    config = {},
+    onChange = content => {},
+    ...props
+  }) => {
+
+    let openEditor = document.getElementById(id)
+    let height = 300
+
+    if (openEditor && openEditor.tinyMceInitialized) {
+      height = openEditor.previousElementSibling.getBoundingClientRect().height
+    }
+
+    return Div({
+      id       : `tiny-mce-${ id }`,
+      className: 'tiny-mce-wrap',
+    }, Textarea({
+      id,
+      name    : id.replaceAll('-', '_'),
+      value   : content,
+      style   : {
+        height: `${ height }px`,
+      },
+      onCreate: el => {
+
+        setTimeout(() => {
+          Groundhogg.element.tinymceElement(el.id, config, onChange)
+          el.tinyMceInitialized = true
+        })
+      },
+      ...props,
+    }))
+  }
+
   window.MakeEl = {
     Skeleton,
+    TinyMCE,
     InputGroup,
     Ellipses,
     Input,
@@ -1588,6 +1733,7 @@
     Td,
     Th,
     Modal,
+    ModalWithHeader,
     MiniModal,
     ModalFrame,
     ItemPicker,
@@ -1596,6 +1742,7 @@
     ButtonToggle,
     Autocomplete,
     ProgressBar,
+    Accordion,
     Pg,
     Bold,
     Img,
@@ -1618,6 +1765,6 @@
     htmlToElement,
     htmlToElements,
     domElementToReact,
-
+    useState,
   }
 } )(jQuery ?? function () { throw new Error('jQuery was not loaded.') })

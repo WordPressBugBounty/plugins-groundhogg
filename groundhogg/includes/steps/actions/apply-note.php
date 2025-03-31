@@ -7,6 +7,7 @@ use Groundhogg\Event;
 use Groundhogg\Step;
 use function Groundhogg\do_replacements;
 use function Groundhogg\html;
+use function Groundhogg\one_of;
 use function Groundhogg\Ymd_His;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -61,7 +62,7 @@ class Apply_Note extends Action {
 	 * @return string
 	 */
 	public function get_description() {
-		return _x( 'Add a note to the notes section of a contact.', 'step_description', 'groundhogg' );
+		return _x( 'Add a note to the contact.', 'step_description', 'groundhogg' );
 	}
 
 	/**
@@ -70,8 +71,7 @@ class Apply_Note extends Action {
 	 * @return string
 	 */
 	public function get_icon() {
-//		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/apply-note.png';
-		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/add-note.svg';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/crm/add-note.svg';
 	}
 
 	/**
@@ -79,21 +79,43 @@ class Apply_Note extends Action {
 	 */
 	public function settings( $step ) {
 
-		echo html()->textarea( [
+		echo html()->e( 'p', [], 'What type of note is being added?' );
+
+		echo html()->dropdown( [
+			'name'     => $this->setting_name_prefix( 'note_type' ),
+			'options'  => [
+				'note'    => 'Note',
+				'call'    => 'Call',
+				'email'   => 'Email',
+				'meeting' => 'Meeting',
+			],
+			'selected' => $this->get_setting( 'note_type' ),
+		] );
+
+		echo html()->e( 'p', [], 'Add the note content...' );
+
+		echo html()->e( 'div', [ 'class' => 'ignore-morph' ], html()->textarea( [
 			'id'    => $this->setting_id_prefix( 'note_text' ),
 			'name'  => 'note_text',
 			'value' => $this->get_setting( 'note_text' )
-		] );
+		] ) );
 
+		?><p></p><?php
 	}
 
-	/**
-	 * Save the step settings
-	 *
-	 * @param $step Step
-	 */
-	public function save( $step ) {
-//		$this->save_setting( 'note_text', wp_kses_post( $this->get_posted_data( 'note_text', "" ) ) );
+	public function get_settings_schema() {
+		return [
+			'note_type' => [
+				'default'  => 'note',
+				'sanitize' => function ( $value ) {
+					return one_of( $value, [ 'note', 'call', 'email', 'meeting' ] );
+				}
+			],
+			'note_text' => [
+				'default'  => '',
+				'sanitize' => 'wp_kses_post'
+			]
+		];
 	}
 
 	/**
@@ -107,13 +129,17 @@ class Apply_Note extends Action {
 	public function run( $contact, $event ) {
 
 		$note = $this->get_setting( 'note_text' );
-
+		$type = $this->get_setting( 'note_type', 'note' );
 		$finished_note = do_replacements( $note, $contact );
-
 		// Add funnel context
 		$note = $contact->add_note( $finished_note, 'funnel', $event->get_funnel_id(), [
 			'timestamp'    => $event->get_time(),
-			'date_created' => Ymd_His( $event->get_time() )
+			'date_created' => Ymd_His( $event->get_time() ),
+			'type'         => $type,
+		] );
+
+		$event->set_args( [
+			'note' => $note->ID
 		] );
 
 		return true;

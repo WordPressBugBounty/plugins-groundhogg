@@ -2,10 +2,8 @@
 
 namespace Groundhogg;
 
-use Groundhogg\DB\DB;
 use Groundhogg\DB\Events;
 use Groundhogg\Queue\Email_Notification;
-
 use Groundhogg\queue\Test_Email;
 use Groundhogg\Queue\Test_Event_Failure;
 use Groundhogg\Queue\Test_Event_Success;
@@ -250,7 +248,7 @@ class Event extends Base_Object {
 	 */
 	public function get_email() {
 
-		if ( $this->get_email_id() ){
+		if ( $this->get_email_id() ) {
 			return new Email( $this->get_email_id() );
 		}
 
@@ -287,8 +285,8 @@ class Event extends Base_Object {
 	 */
 	protected static array $step_setup_callbacks = [];
 
-	public static function register_step_setup_callback( int $type, callable $callback ){
-		self::$step_setup_callbacks[$type] = $callback;
+	public static function register_step_setup_callback( int $type, callable $callback ) {
+		self::$step_setup_callbacks[ $type ] = $callback;
 	}
 
 	/**
@@ -296,33 +294,33 @@ class Event extends Base_Object {
 	 *
 	 * @return void
 	 */
-	public static function maybe_register_step_setup_callbacks(){
+	public static function maybe_register_step_setup_callbacks() {
 
-		if ( ! empty( self::$step_setup_callbacks ) ){
+		if ( ! empty( self::$step_setup_callbacks ) ) {
 			return;
 		}
 
-		self::register_step_setup_callback( self::FUNNEL, function ( Event $event ){
+		self::register_step_setup_callback( self::FUNNEL, function ( Event $event ) {
 			return new Step( $event->get_step_id() );
 		} );
 
-		self::register_step_setup_callback( self::BROADCAST, function ( Event $event ){
+		self::register_step_setup_callback( self::BROADCAST, function ( Event $event ) {
 			return new Broadcast( $event->get_step_id() );
 		} );
 
-		self::register_step_setup_callback( self::EMAIL_NOTIFICATION, function ( Event $event ){
+		self::register_step_setup_callback( self::EMAIL_NOTIFICATION, function ( Event $event ) {
 			return new Email_Notification( $event->get_email_id() );
 		} );
 
-		self::register_step_setup_callback( self::TEST_SUCCESS, function ( Event $event ){
+		self::register_step_setup_callback( self::TEST_SUCCESS, function ( Event $event ) {
 			return new Test_Event_Success();
 		} );
 
-		self::register_step_setup_callback( self::TEST_FAILURE, function ( Event $event ){
+		self::register_step_setup_callback( self::TEST_FAILURE, function ( Event $event ) {
 			return new Test_Event_Failure();
 		} );
 
-		self::register_step_setup_callback( self::TEST_EMAIL, function ( Event $event ){
+		self::register_step_setup_callback( self::TEST_EMAIL, function ( Event $event ) {
 			return new Test_Email( $event->get_email_id() );
 		} );
 
@@ -336,11 +334,12 @@ class Event extends Base_Object {
 	 */
 	protected function post_setup() {
 
+		$this->args    = maybe_unserialize( $this->args );
 		$this->contact = new Contact( $this->get_contact_id() );
 
 		self::maybe_register_step_setup_callbacks();
 
-		$callback = get_array_var( self::$step_setup_callbacks, $this->get_event_type(), function ( Event $event ){
+		$callback = get_array_var( self::$step_setup_callbacks, $this->get_event_type(), function ( Event $event ) {
 			$class = apply_filters( 'groundhogg/event/post_setup/step_class', false, $this );
 
 			if ( class_exists( $class ) ) {
@@ -356,10 +355,26 @@ class Event extends Base_Object {
 	}
 
 	/**
+	 * Sanitize columns
+	 *
+	 * @param $data
+	 *
+	 * @return array
+	 */
+	protected function sanitize_columns( $data = [] ) {
+
+		if ( isset_not_empty( $data, 'args' ) ) {
+			$data['args'] = maybe_serialize( $data['args'] );
+		}
+
+		return parent::sanitize_columns( $data );
+	}
+
+	/**
 	 * Return whether the event is a funnel (automated) event.
 	 *
-	 * @return bool
 	 * @since 1.2
+	 * @return bool
 	 */
 	public function is_funnel_event() {
 		return $this->get_event_type() === self::FUNNEL;
@@ -373,7 +388,6 @@ class Event extends Base_Object {
 	public function is_broadcast_event() {
 		return $this->get_event_type() === self::BROADCAST;
 	}
-
 
 	/**
 	 * @return string
@@ -409,62 +423,52 @@ class Event extends Base_Object {
 			return new WP_Error( 'invalid_claim', 'This event has not be claimed' );
 		}
 
-		if ( ! $this->is_waiting() ){
+		if ( ! $this->is_waiting() ) {
 			return new WP_Error( 'not_waiting', 'This event\'s status is not waiting' );
 		}
+
+		$step = $this->get_step();
 
 		do_action( 'groundhogg/event/run/before', $this );
 
 		$this->in_progress();
 
 		// No step or not contact?
-		if ( ! $this->get_step() || ! $this->get_contact() || ! $this->get_contact()->exists() ) {
-
-			$error = new \WP_Error( 'missing', 'Could not locate contact or step record.' );
-
-			$this->add_error( $error );
-
-			$this->fail();
-
-			return apply_filters( 'groundhogg/event/run/failed_result', $error, $this );
+		if ( ! $step || ! $this->get_contact() || ! $this->get_contact()->exists() ) {
+			$result = new WP_Error( 'missing', 'Could not locate contact or step record.' );
+		} else {
+			try {
+				$result = $step->run( $this->get_contact(), $this );
+			} catch ( \Exception $e ) {
+				$result = new WP_Error( 'exception', $e->getMessage() );
+			}
 		}
 
-		try {
-			$result = $this->get_step()->run( $this->get_contact(), $this );
-		} catch ( \Exception $e ){
-			$result = new WP_Error( 'exception', $e->getMessage() );
-		}
-
-		// Hard fail when WP Error
-		if ( is_wp_error( $result ) ) {
-			/* handle event failure */
-			$this->add_error( $result );
-
-			$this->fail();
-
-			return apply_filters( 'groundhogg/event/run/failed_result', $result, $this );
-		}
-
-		// Falsy value from the run() method
-		if ( $result === false ) {
+		// skipped
+		if ( $result === false ){
 
 			// Update the error code details with the reason this event was skipped
 			$this->skip( [
 				'error_code'    => 'soft_fail',
 				'error_message' => 'Falsy value returned from Step::run() method'
 			] );
+		}
+		// error
+		elseif ( is_wp_error( $result ) ){
 
-			/**
-			 * We have decided that a "Soft Fail" (Falsy value from the run() method) will allow funnel events to proceed to the next step
-			 * instead of stopping the funnel.
-			 */
-			$result = apply_filters( 'groundhogg/event/run/skipped_result', false, $this );
+			/* handle event failure */
+			$this->add_error( $result );
+
+			$this->fail();
+		}
+		// Everything else is good
+		else {
+
+			$this->complete();
 		}
 
-		$this->complete();
-
-		if ( method_exists( $this->get_step(), 'run_after' ) ){
-			call_user_func( [ $this->get_step(), 'run_after' ], $this->get_contact(), $this );
+		if ( ! is_wp_error( $result ) && method_exists( $step, 'run_after' ) ) {
+			call_user_func( [ $step, 'run_after' ], $this->get_contact(), $this );
 		}
 
 		do_action( 'groundhogg/event/run/after', $this );
@@ -517,8 +521,8 @@ class Event extends Base_Object {
 		do_action( 'groundhogg/event/cancelled', $this );
 
 		return $this->update( [
-			'status' => self::CANCELLED,
-			'time'   => time(),
+			'status'         => self::CANCELLED,
+			'time_scheduled' => time(),
 		] );
 
 	}
@@ -554,10 +558,10 @@ class Event extends Base_Object {
 	public function skip( $args = [] ) {
 		do_action( 'groundhogg/event/skipped', $this );
 
-		return $this->update( wp_parse_args( $args, [
-			'status' => self::SKIPPED,
-			'time'   => time(),
-		] ) );
+		return $this->update( array_merge( [
+			'status'         => self::SKIPPED,
+			'time_scheduled' => time(),
+		], $args ) );
 	}
 
 	/**
@@ -583,11 +587,38 @@ class Event extends Base_Object {
 	}
 
 	/**
+	 * Get an arg from the args array
+	 *
+	 * @param string $arg
+	 * @param        $default
+	 *
+	 * @return bool|mixed
+	 */
+	public function get_arg( string $arg, $default = false ) {
+		return get_array_var( $this->args, $arg, $default );
+	}
+
+	/**
+	 * Add new args to the event
+	 *
+	 * @param array $args
+	 *
+	 * @return bool
+	 */
+	public function set_args( array $args ) {
+		$args = is_array( $this->args ) ? array_merge( $this->args, $args ) : $args;
+
+		return $this->update( [
+			'args' => $args
+		] );
+	}
+
+	/**
 	 * Mark the event as complete
 	 */
 	public function complete() {
 
-		if ( $this->is_complete() ){
+		if ( $this->is_complete() ) {
 			return true;
 		}
 
@@ -607,10 +638,10 @@ class Event extends Base_Object {
 
 		$date = new DateTimeHelper( $this->get_time() );
 
-		if ( $this->is_waiting() && $this->get_time() <= time() ){
+		if ( $this->is_waiting() && $this->get_time() <= time() ) {
 			$diff_time = __( 'Running now...', 'groundhogg' );
 		} else {
-			$diff_time = sprintf( $this->is_waiting() ? __( 'Runs %s', 'groundhogg' ) : __( 'Ran %s', 'groundhogg' ),  $date->i18n() );
+			$diff_time = sprintf( $this->is_waiting() ? __( 'Runs %s', 'groundhogg' ) : __( 'Ran %s', 'groundhogg' ), $date->i18n() );
 		}
 
 		$array['i18n'] = [

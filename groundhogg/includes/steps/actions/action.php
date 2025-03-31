@@ -32,5 +32,4 @@ abstract class Action extends Funnel_Step {
 	final public function get_group() {
 		return self::ACTION;
 	}
-
 }

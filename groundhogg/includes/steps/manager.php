@@ -4,34 +4,28 @@ namespace Groundhogg\Steps;
 
 use Groundhogg\Steps\Actions\Action;
 use Groundhogg\Steps\Actions\Admin_Notification;
-use Groundhogg\Steps\Actions\Advanced_Timer;
 use Groundhogg\Steps\Actions\Apply_Note;
-use Groundhogg\Steps\Actions\Apply_Owner;
 use Groundhogg\Steps\Actions\Apply_Tag;
 use Groundhogg\Steps\Actions\Create_Task;
-use Groundhogg\Steps\Actions\Create_User;
-use Groundhogg\Steps\Actions\Date_Timer;
 use Groundhogg\Steps\Actions\Delay_Timer;
-use Groundhogg\Steps\Actions\Edit_Meta;
-use Groundhogg\Steps\Actions\Field_Timer;
-use Groundhogg\Steps\Actions\HTTP_Post;
 use Groundhogg\Steps\Actions\Remove_Tag;
 use Groundhogg\Steps\Actions\Send_Email;
 use Groundhogg\Steps\Benchmarks\Account_Created;
 use Groundhogg\Steps\Benchmarks\Benchmark;
 use Groundhogg\Steps\Benchmarks\Email_Confirmed;
+use Groundhogg\Steps\Benchmarks\Email_Opened;
 use Groundhogg\Steps\Benchmarks\Form_Filled;
 use Groundhogg\Steps\Benchmarks\Link_Clicked;
-use Groundhogg\Steps\Benchmarks\Login_Status;
 use Groundhogg\steps\benchmarks\Optin_Status_Changed;
-use Groundhogg\Steps\Benchmarks\Page_Visited;
-use Groundhogg\Steps\Benchmarks\Plugin_Api;
-use Groundhogg\Steps\Benchmarks\Role_Changed;
 use Groundhogg\Steps\Benchmarks\Tag_Applied;
 use Groundhogg\Steps\Benchmarks\Tag_Removed;
 use Groundhogg\Steps\Benchmarks\Task_Completed;
 use Groundhogg\Steps\Benchmarks\Web_Form;
+use Groundhogg\Steps\Logic\If_Else;
+use Groundhogg\Steps\Logic\Logic;
 use function Groundhogg\get_array_var;
+use function Groundhogg\is_pro_features_active;
+use function Groundhogg\is_white_labeled;
 
 /**
  * Created by PhpStorm.
@@ -85,6 +79,9 @@ class Manager {
 		$this->register_sub_group( 'lms', __( 'LMS' ) );
 		$this->register_sub_group( 'other', __( 'Other' ) );
 		$this->register_sub_group( 'developer', __( 'Developer' ) );
+		$this->register_sub_group( 'branching', __( 'Branching' ) );
+		$this->register_sub_group( 'logic', __( 'Logic' ) );
+		$this->register_sub_group( 'special', __( 'Special' ) );
 
 		/* actions */
 		$this->add_step( new Send_Email() );
@@ -106,13 +103,52 @@ class Manager {
 		$this->add_step( new Optin_Status_Changed() );
 		$this->add_step( new Form_Filled() );
 		$this->add_step( new Task_Completed() );
+		$this->add_step( new Email_Opened() );
 
 		/* Other */
 		$this->add_step( new Error() );
 
-		do_action( 'groundhogg/steps/init', $this );
+		/* Logic */
+		$this->add_step( new If_Else() );
 
-		// Order by subgroup
+		// Premium steps, don't include if white labeled
+		if ( ! is_pro_features_active() && ! is_white_labeled() ) {
+			// actions
+			$this->add_step( new Premium\Actions\Apply_Owner() );
+			$this->add_step( new Premium\Actions\Create_User() );
+			$this->add_step( new Premium\Actions\Edit_Meta() );
+			$this->add_step( new Premium\Actions\Date_Timer() );
+			$this->add_step( new Premium\Actions\Field_Timer() );
+			$this->add_step( new Premium\Actions\Advanced_Timer() );
+			$this->add_step( new Premium\Actions\HTTP_Post() );
+			$this->add_step( new Premium\Actions\Loop() );
+			$this->add_step( new Premium\Actions\New_Activity() );
+			$this->add_step( new Premium\Actions\Plugin_Action() );
+			$this->add_step( new Premium\Actions\Skip() );
+
+			// benchmarks
+			$this->add_step( new Premium\Benchmarks\Custom_Activity() );
+			$this->add_step( new Premium\Benchmarks\Field_Changed() );
+			$this->add_step( new Premium\Benchmarks\Login_Status() );
+			$this->add_step( new Premium\Benchmarks\Page_Visited() );
+			$this->add_step( new Premium\Benchmarks\Plugin_Api() );
+			$this->add_step( new Premium\Benchmarks\Post_Published() );
+			$this->add_step( new Premium\Benchmarks\Role_Changed() );
+			$this->add_step( new Premium\Benchmarks\Webhook_Listener() );
+
+			// logic
+			$this->add_step( new Premium\Logic\Split_Path() );
+			$this->add_step( new Premium\Logic\Split_Test() );
+			$this->add_step( new Premium\Logic\Weighted_Distribution() );
+			$this->add_step( new Premium\Logic\Evergreen_Sequence() );
+			$this->add_step( new Premium\Logic\Logic_Loop() );
+			$this->add_step( new Premium\Logic\Logic_Skip() );
+			$this->add_step( new Premium\Logic\Logic_Stop() );
+//			$this->add_step( new Premium\Logic\Timer_Skip() );
+
+		}
+
+		do_action( 'groundhogg/steps/init', $this );
 	}
 
 	public function __set( $name, $value ) {
@@ -128,13 +164,13 @@ class Manager {
 		$this->elements[ $step->get_type() ] = $step;
 	}
 
-	function filter_by_group( $group ){
+	function filter_by_group( $group ) {
 		return array_filter( $this->elements, function ( $element ) use ( $group ) {
 			return $element->get_group() === $group;
 		} );
 	}
 
-	function filter_by_sub_group( $group ){
+	function filter_by_sub_group( $group ) {
 		return array_filter( $this->elements, function ( $element ) use ( $group ) {
 			return $element->get_sub_group() === $group;
 		} );
@@ -159,6 +195,18 @@ class Manager {
 	public function get_actions() {
 		return array_filter( $this->elements, function ( $element ) {
 			return $element->get_group() === Funnel_Step::ACTION;
+		} );
+	}
+
+
+	/**
+	 * Return an array of actions
+	 *
+	 * @return Logic[]
+	 */
+	public function get_logic() {
+		return array_filter( $this->elements, function ( $element ) {
+			return $element->get_group() === Funnel_Step::LOGIC;
 		} );
 	}
 
@@ -194,7 +242,7 @@ class Manager {
 	 * @return Funnel_Step[]
 	 */
 	public function get_elements() {
-		return array_merge( $this->get_actions(), $this->get_benchmarks() );
+		return array_merge( $this->get_actions(), $this->get_benchmarks(), $this->get_logic() );
 	}
 
 	/**
@@ -222,5 +270,9 @@ class Manager {
 
 		return get_array_var( $this->elements, $get_type );
 
+	}
+
+	public function get_types() {
+		return array_keys( $this->elements );
 	}
 }

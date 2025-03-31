@@ -2,7 +2,6 @@
 
 namespace Groundhogg\Steps\Benchmarks\Base;
 
-use Groundhogg\Api\V4\Properties_Api;
 use Groundhogg\Contact;
 use Groundhogg\Step;
 use Groundhogg\Steps\Benchmarks\Benchmark;
@@ -129,7 +128,7 @@ abstract class LMS_Integration extends Benchmark {
 	 * @return string
 	 */
 	public function get_icon() {
-		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/lms-enrolled.svg';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/lms/lms-event.svg';
 	}
 
 	/**
@@ -147,7 +146,6 @@ abstract class LMS_Integration extends Benchmark {
 		echo html()->select2( [
 			'id'       => $this->setting_id_prefix( 'action' ),
 			'name'     => $this->setting_name_prefix( 'action' ) . '[]',
-			'class'    => 'gh-select2',
 			'options'  => [
 				'course_enrolled'  => __( 'Enrolls in a course', 'groundhogg' ),
 				'course_completed' => __( 'Completes a course', 'groundhogg' ),
@@ -164,7 +162,6 @@ abstract class LMS_Integration extends Benchmark {
 			'name'        => $this->setting_name_prefix( 'course' ) . '[]',
 			'data'        => $this->get_courses_for_select(),
 			'selected'    => $course_ids,
-			'class'       => 'gh-select2',
 			'multiple'    => true,
 			'placeholder' => 'Any course'
 		] );
@@ -180,18 +177,39 @@ abstract class LMS_Integration extends Benchmark {
 			'placeholder' => 'Any lesson'
 		] );
 
-
 		?><p></p><?php
+	}
 
+	public function get_settings_schema() {
+		return [
+			'action' => [
+				'default'  => [],
+				'sanitize' => function ( $value ) {
+					return array_intersect( $value, [
+						'course_enrolled',
+						'course_completed',
+						'lesson_completed',
+					] );
+				}
+			],
+			'course' => [
+				'default'  => [],
+				'sanitize' => 'wp_parse_id_list'
+			],
+			'lesson' => [
+				'default'  => [],
+				'sanitize' => 'wp_parse_id_list'
+			]
+		];
 	}
 
 	public function generate_step_title( $step ) {
 
-		$actions    = wp_parse_list( $this->get_setting( 'action' ) );
+		$actions = wp_parse_list( $this->get_setting( 'action' ) );
 
-        if ( empty( $actions ) ){
-            return 'LMS event';
-        }
+		if ( empty( $actions ) ) {
+			return 'LMS event';
+		}
 
 		$course_ids = wp_parse_id_list( $this->get_setting( 'course' ) );
 		$lesson_ids = wp_parse_id_list( $this->get_setting( 'lesson' ) );
@@ -223,22 +241,22 @@ abstract class LMS_Integration extends Benchmark {
 			}
 		}
 
-        if ( in_array( 'lesson_completed', $actions ) ){
+		if ( in_array( 'lesson_completed', $actions ) ) {
 
-            $events = [
-	            'course_enrolled'  => __( 'Enrolls in a course', 'groundhogg' ),
-	            'course_completed' => __( 'Completes a course', 'groundhogg' ),
-	            'lesson_completed' => __( 'Completes a lesson', 'groundhogg' )
-            ];
+			$events = [
+				'course_enrolled'  => __( 'Enrolls in a course', 'groundhogg' ),
+				'course_completed' => __( 'Completes a course', 'groundhogg' ),
+				'lesson_completed' => __( 'Completes a lesson', 'groundhogg' )
+			];
 
-            $actions = array_intersect_key( $events, array_combine( $actions, $actions ) );
+			$actions = array_intersect_key( $events, array_combine( $actions, $actions ) );
 
-	        return orList( array_bold( array_values( $actions ) ) );
-        }
+			return orList( array_bold( array_values( $actions ) ) );
+		}
 
-        $actions = orList( array_bold( [ 'Completes', 'Enrolls in' ] ) );
+		$actions = orList( array_bold( [ 'Completes', 'Enrolls in' ] ) );
 
-        return sprintf( '%s %s', $actions, $courses );
+		return sprintf( '%s %s', $actions, $courses );
 	}
 
 	/**
@@ -256,15 +274,4 @@ abstract class LMS_Integration extends Benchmark {
 	 * @return mixed
 	 */
 	abstract protected function get_lessons_for_select( $course_ids );
-
-	/**
-	 * Save the step based on the given ID
-	 *
-	 * @param $step Step
-	 */
-	public function save( $step ) {
-		$this->save_setting( 'action', array_map( 'sanitize_text_field', $this->get_posted_data( 'action', [] ) ) );
-		$this->save_setting( 'course', wp_parse_id_list( $this->get_posted_data( 'course' ) ) );
-		$this->save_setting( 'lesson', wp_parse_id_list( $this->get_posted_data( 'lesson' ) ) );
-	}
 }

@@ -5,10 +5,14 @@ namespace Groundhogg\Steps\Benchmarks;
 use Groundhogg\Email;
 use Groundhogg\Form;
 use Groundhogg\Plugin;
+use Groundhogg\Properties;
 use Groundhogg\Step;
+use function Groundhogg\array_apply_callbacks;
+use function Groundhogg\bold_it;
 use function Groundhogg\encrypt;
 use function Groundhogg\html;
 use function Groundhogg\managed_page_url;
+use function Groundhogg\one_of;
 
 
 /**
@@ -30,9 +34,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Web_Form extends Benchmark {
 
-    public function get_sub_group() {
-	    return 'forms';
-    }
+	public function get_sub_group() {
+		return 'forms';
+	}
 
 	/**
 	 * Get element name
@@ -67,8 +71,7 @@ class Web_Form extends Benchmark {
 	 * @return string
 	 */
 	public function get_icon() {
-//		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/contact-form.svg';
-		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/web-form.svg';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/forms/web-form.svg';
 	}
 
 	public function complete() {
@@ -82,85 +85,27 @@ class Web_Form extends Benchmark {
 		return [];
 	}
 
-	public function html_v2( $step ) {
-		?>
-        <div data-id="<?php echo $step->get_id(); ?>" data-type="<?php esc_attr_e( $this->get_type() ); ?>"
-             title="<?php echo $step->get_title() ?>" id="settings-<?php echo $step->get_id(); ?>"
-             class="step <?php echo $step->get_group(); ?> <?php echo $step->get_type(); ?>">
+	protected function after_settings( Step $step ) {
+		echo html()->input( [
+			'id'          => $this->setting_id_prefix( 'form_name' ),
+			'name'        => $this->setting_name_prefix( 'form_name' ),
+			'value'       => $this->get_setting( 'form_name', $step->step_title ),
+			'class'       => 'full-width',
+			'style'       => [
+				'font-size' => '18px'
+			],
+			'placeholder' => 'Form name...'
+		] );
 
-            <!-- WARNINGS -->
-			<?php if ( $step->has_errors() ): ?>
-                <div class="step-warnings">
-					<?php foreach ( $step->get_errors() as $error ): ?>
-
-                        <div id="<?php $error->get_error_code() ?>"
-                             class="notice notice-warning is-dismissible">
-							<?php echo wpautop( wp_kses_post( $error->get_error_message() ) ); ?>
-                        </div>
-					<?php endforeach; ?>
-                </div>
-			<?php endif; ?>
-            <!-- SETTINGS -->
-            <div class="step-flex">
-                <div class="step-edit panels">
-                    <div class="gh-panel">
-						<?php $this->step_title_edit( $step ); ?>
-                    </div>
-
-					<?php $this->settings( $step ); ?>
-
-					<?php do_action( "groundhogg/steps/{$this->get_type()}/settings/before", $step ); ?>
-					<?php do_action( 'groundhogg/steps/settings/before', $this ); ?>
-					<?php do_action( "groundhogg/steps/{$this->get_type()}/settings/after", $step ); ?>
-					<?php do_action( 'groundhogg/steps/settings/after', $this ); ?>
-                </div>
-                <div class="step-notes">
-					<?php $this->before_step_notes( $step ); ?>
-					<?php if ( $step->is_benchmark() ): ?>
-                        <div class="gh-panel benchmark-settings">
-                            <div class="gh-panel-header">
-                                <h2><?php _e( 'Settings', 'groundhogg' ); ?></h2>
-                            </div>
-                            <div class="inside display-flex gap-20 column">
-								<?php if ( ! $step->is_starting() ):
-
-									echo html()->checkbox( [
-										'label'   => 'Allow contacts to enter the funnel at this step',
-										'name'    => $this->setting_name_prefix( 'is_entry' ),
-										'checked' => $step->is_entry()
-									] );
-
-								endif;
-
-								echo html()->checkbox( [
-									'label'   => 'Track conversion when completed',
-									'name'    => $this->setting_name_prefix( 'is_conversion' ),
-									'checked' => $step->is_conversion()
-								] );
-
-								?>
-                            </div>
-                        </div>
-					<?php endif; ?>
-					<?php
-					echo html()->textarea( [
-						'id'          => $this->setting_id_prefix( 'step-notes' ),
-						'name'        => $this->setting_name_prefix( 'step_notes' ),
-						'value'       => $step->get_step_notes(),
-						'placeholder' => __( 'You can use this area to store custom notes about the step.', 'groundhogg' ),
-						'class'       => 'step-notes-textarea'
-					] );
-					?>
-                </div>
-            </div>
-        </div>
-		<?php
+		echo html()->e( 'div', [
+			'id' => "step_{$step->ID}_web_form_builder"
+		], 'Form Builder' );
 	}
 
 	protected function before_step_notes( Step $step ) {
 
 		$form     = new Form\Form_v2( [ 'id' => $step->get_id() ] );
-		$form_url = managed_page_url( sprintf( 'forms/%s/', urlencode( encrypt( $step->get_id() ) ) ) );
+		$form_url = add_query_arg( 'preview', '1', managed_page_url( sprintf( 'forms/%s/', urlencode( encrypt( $step->get_id() ) ) ) ) );
 
 		?>
         <div class="gh-panel">
@@ -173,21 +118,21 @@ class Web_Form extends Benchmark {
                     <input
                             type="text"
                             onfocus="this.select()"
-                            class="regular-text code"
+                            class="full-width code copy-text"
                             value="<?php echo esc_attr( $form->get_shortcode() ); ?>"
                             readonly>
                     <label><?php printf( '%s:', __( 'Iframe' ) ); ?></label>
                     <input
                             type="text"
                             onfocus="this.select()"
-                            class="regular-text code"
+                            class="full-width code copy-text"
                             value="<?php echo esc_attr( $form->get_iframe_embed_code() ); ?>"
                             readonly>
                     <label><?php printf( '%s:', __( 'Hosted' ) ); ?></label>
                     <input
                             type="text"
                             onfocus="this.select()"
-                            class="regular-text code"
+                            class="full-width code copy-text"
                             value="<?php echo esc_attr( $form->get_submission_url() ); ?>"
                             readonly>
                 </div>
@@ -217,19 +162,143 @@ class Web_Form extends Benchmark {
 	 * @param $step Step
 	 */
 	public function settings( $step ) {
-		echo html()->e( 'div', [
-			'id' => "step_{$step->ID}_web_form_builder"
-		], 'Form Builder' );
 	}
 
+	/**
+	 * Given an individual field, remove unknown attrs and apply callbacks to known attrs
+	 *
+	 * @param $field
+	 *
+	 * @return array
+	 */
+	public function sanitize_form_field( $field ) {
+
+		return array_apply_callbacks( $field, [
+			'id'            => 'sanitize_key',
+			'type'          => 'sanitize_key',
+			'name'          => 'sanitize_key',
+			'className'     => 'sanitize_text_field',
+			'placeholder'   => 'sanitize_text_field',
+			'value'         => 'sanitize_text_field',
+			'text'          => function ( $label ) {
+				return wp_kses( $label, 'data' );
+			},
+			'label'         => function ( $label ) {
+				return wp_kses( $label, 'data' );
+			},
+			'html'          => function ( $label ) {
+				return wp_kses( $label, 'post' );
+			},
+			'phone_type'    => function ( $value ) {
+				return one_of( $value, [ 'primary', 'mobile', 'company' ] );
+			},
+			'required'      => 'boolval',
+			'checked'       => 'boolval',
+			'multiple'      => 'boolval',
+			'enabled'       => 'boolval',
+			'file_types'    => function ( $value ) {
+				return array_map( 'sanitize_text_field', $value );
+			},
+			'captcha_theme' => function ( $value ) {
+				return one_of( $value, [ 'light', 'dark' ] );
+			},
+			'captcha_size'  => function ( $value ) {
+				return one_of( $value, [ 'normal', 'compact' ] );
+			},
+			'hide_label'    => 'boolval',
+			'options'       => function ( $options ) {
+
+				return array_map( function ( $option ) {
+					$value = sanitize_text_field( $option[0] );
+					$tags  = '';
+					if ( isset( $option[1] ) ) {
+						$tags = implode( ',', wp_parse_id_list( $option[1] ) );
+					}
+
+					return [ $value, $tags ];
+				}, $options );
+			},
+			'column_width'  => function ( $value ) {
+				return one_of( $value, [ '1/1', '1/2', '1/3', '1/4', '2/3', '3/4' ] );
+			},
+			'property'      => function ( $property_id ) {
+				$property = Properties::instance()->get_field( $property_id );
+				if ( ! $property ) {
+					return false;
+				}
+
+				return $property_id;
+
+			},
+			'tags'          => 'wp_parse_id_list',
+		], true );
+	}
 
 	/**
-	 * Save the step settings
+	 * Make sure the form schema is sanitized correctly
 	 *
-	 * @param $step Step
+	 * @param $form
+	 *
+	 * @return array
 	 */
-	public function save( $step ) {
+	public function sanitize_form( $form ) {
 
+		// let's just make sure it's the format we expect
+		$form = json_decode( wp_json_encode( $form ), true );
+
+		$form['button'] = $this->sanitize_form_field( $form['button'] );
+		$form['fields'] = array_map( [ $this, 'sanitize_form_field' ], $form['fields'] );
+
+		if ( isset( $form['recaptcha'] ) ) {
+			$form['recaptcha'] = $this->sanitize_form_field( $form['recaptcha'] );
+		}
+
+		return $form;
+	}
+
+	/**
+	 *
+	 * @return array {
+	 * @type mixed    $default
+	 * @type callable $sanitize
+	 * }
+	 */
+	public function get_settings_schema() {
+		return [
+			'form'            => [
+				'default'  => [],
+				'sanitize' => [ $this, 'sanitize_form' ],
+			],
+			'form_name'       => [
+				'default'  => '',
+				'sanitize' => 'sanitize_text_field',
+				'initial'  => 'Web Form'
+			],
+			'enable_ajax'     => [
+				'default'  => false,
+				'sanitize' => 'boolval'
+			],
+			'accent_color'    => [
+				'default'  => '',
+				'sanitize' => 'sanitize_hex_color',
+			],
+			'theme'           => [
+				'default'  => '',
+				'sanitize' => 'sanitize_text_field',
+			],
+			'success_message' => [
+				'default'  => '',
+				'sanitize' => 'wp_kses_post',
+			],
+			'success_page'    => [
+				'default'  => '',
+				'sanitize' => 'sanitize_text_field',
+			]
+		];
+	}
+
+	public function generate_step_title( $step ) {
+		return sprintf( __( 'Submits %s' ), bold_it( $this->get_setting( 'form_name' ) ) );
 	}
 
 	protected function get_the_contact() {
@@ -254,33 +323,33 @@ class Web_Form extends Benchmark {
 		$new_url       = sprintf( managed_page_url( "forms/%s/" ), $step->get_slug() );
 		$old_url_regex = "@https?://[A-z0-9/\-.]+/gh/forms/$old_slug/@";
 
-        $steps = $step->get_funnel()->get_steps();
+		$steps = $step->get_funnel()->get_steps();
 
 		foreach ( $steps as $_step ) {
 
-            switch ( $_step->get_type() ){
-                case 'send_email':
+			switch ( $_step->get_type() ) {
+				case 'send_email':
 
-	                $email = new Email( $_step->get_meta( 'email_id' ) );
+					$email = new Email( $_step->get_meta( 'email_id' ) );
 
-	                if ( ! $email->exists() ) {
-		                break;
-	                }
+					if ( ! $email->exists() ) {
+						break;
+					}
 
-	                $content = preg_replace( $old_url_regex, $new_url, $email->get_content() );
-	                $email->update( [
-		                'content' => $content
-	                ] );
+					$content = preg_replace( $old_url_regex, $new_url, $email->get_content() );
+					$email->update( [
+						'content' => $content
+					] );
 
-                    break;
-                case 'link_click':
+					break;
+				case 'link_click':
 
-                    $to_link = $_step->get_meta( 'redirect_to' ) ?: '';
-	                $to_link = preg_replace( $old_url_regex, $new_url, $to_link );
-                    $_step->update_meta( 'redirect_to', $to_link );
+					$to_link = $_step->get_meta( 'redirect_to' ) ?: '';
+					$to_link = preg_replace( $old_url_regex, $new_url, $to_link );
+					$_step->update_meta( 'redirect_to', $to_link );
 
-	                break;
-            }
+					break;
+			}
 		}
 	}
 

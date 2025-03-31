@@ -417,10 +417,10 @@ class HTML {
 	}
 
 	/**
-     * Helps creating links
-     *
-     * <a href="#baz">foobar</a>
-     *
+	 * Helps creating links
+	 *
+	 * <a href="#baz">foobar</a>
+	 *
 	 * @param $href
 	 * @param $text
 	 * @param $attrs
@@ -672,6 +672,31 @@ class HTML {
 			'preventSave'        => 'true',
 			'class'              => 'dashicons dashicons-editor-help help-icon'
 		] );
+	}
+
+	/**
+	 * Generate a link that activates the Groundhogg modal
+	 *
+	 * @param array $args
+	 *
+	 * @return string
+	 */
+	public function new_modal_link( $args = [] ) {
+
+		$atts = wp_parse_args( $args, array(
+			'text'  => __( 'Open Modal', 'groundhogg' ),
+			'class' => 'button button-secondary',
+			'id'    => '',
+			'href'  => '#target',
+			'modal' => []
+		) );
+
+		return $this->e( 'a', [
+			'id'               => $atts['id'],
+			'class'            => $atts['class'] . ' gh-open-modal',
+			'href'             => $atts['href'],
+			'data-modal-props' => wp_json_encode( $atts['modal'] )
+		], $atts['text'] );
 	}
 
 	/**
@@ -991,7 +1016,7 @@ class HTML {
 		$a = wp_parse_args( $args, array(
 			'name'              => '',
 			'id'                => '',
-			'class'             => 'gh-select2',
+			'class'             => 'gh-select-2-picker',
 			'data'              => [],
 			'options'           => [],
 			'selected'          => [],
@@ -1002,6 +1027,10 @@ class HTML {
 			'tags'              => false,
 			'style'             => []
 		) );
+
+		if ( empty( $a['id'] ) ) {
+			$a['id'] = sanitize_title( $args['name'] );
+		}
 
 		if ( isset_not_empty( $a, 'data' ) ) {
 			$a['options'] = $a['data'];
@@ -1577,11 +1606,11 @@ class HTML {
 			'offLabel' => __( 'Off' ),
 			'checked'  => false,
 			'name'     => '',
+			'id'       => '',
 			'value'    => 1,
-			'id'
 		] );
 
-		return html()->e( 'label', [
+		$switch = html()->e( 'label', [
 			'class' => 'gh-switch'
 		], [
 			html()->input( [
@@ -1595,6 +1624,24 @@ class HTML {
 			html()->e( 'span', [ 'class' => 'on' ], $args['onLabel'] ),
 			html()->e( 'span', [ 'class' => 'off' ], $args['offLabel'] ),
 		] );
+
+		if ( isset( $args['label'] ) ) {
+			$switch = html()->e( 'div', [
+				'class' => 'display-flex align-center gap-5'
+			], [
+				html()->e( 'label', [ 'for' => $args['id'] ], $args['label'] ),
+				$switch,
+			] );
+		}
+
+		return $switch;
+	}
+
+	public function toggleYesNo( $args = [] ) {
+		$args['onLabel']  = __( 'Yes' );
+		$args['offLabel'] = __( 'No' );
+
+		return $this->toggle( $args );
 	}
 
 	/**
@@ -1824,6 +1871,17 @@ class HTML {
 		return html()->e( 'span', [
 			'class' => $classes
 		], $tri . number_format( abs( $percentage ) ) . '%' );
+	}
+
+	/**
+     * Kinda like a JS doc fragumeent
+     *
+	 * @param $stuff
+	 *
+	 * @return string
+	 */
+	public function frag( $stuff ) {
+        return is_array( $stuff ) ? implode( '', $stuff ) : "$stuff";
 	}
 
 }

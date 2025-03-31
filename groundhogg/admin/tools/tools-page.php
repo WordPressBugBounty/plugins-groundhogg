@@ -16,6 +16,7 @@ use Groundhogg\Properties;
 use Groundhogg\Queue\Event_Queue;
 use WP_Error;
 use function Groundhogg\action_input;
+use function Groundhogg\action_url;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\count_csv_rows;
 use function Groundhogg\enqueue_filter_assets;
@@ -28,6 +29,7 @@ use function Groundhogg\get_post_var;
 use function Groundhogg\get_request_query;
 use function Groundhogg\get_request_var;
 use function Groundhogg\get_url_var;
+use function Groundhogg\gh_cron_installed;
 use function Groundhogg\html;
 use function Groundhogg\install_gh_cron_file;
 use function Groundhogg\is_groundhogg_network_active;
@@ -39,6 +41,7 @@ use function Groundhogg\uninstall_gh_cron_file;
 use function Groundhogg\uninstall_groundhogg;
 use function Groundhogg\utils;
 use function Groundhogg\validate_tags;
+use function Groundhogg\verify_admin_ajax_nonce;
 use function Groundhogg\white_labeled_name;
 
 /**
@@ -72,7 +75,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 	 * @return int
 	 */
 	public function get_priority() {
-		return 100;
+		return 105;
 	}
 
 	// Unused functions.
@@ -83,6 +86,26 @@ class Tools_Page extends Tabbed_Admin_Page {
 	public function scripts() {
 		wp_enqueue_style( 'groundhogg-admin-element' );
 
+		if ( $this->get_current_tab() === 'cron' ) {
+			wp_enqueue_script( 'groundhogg-admin-cron-jobs' );
+
+			$wp_last_ping = absint( get_option( 'wp_cron_last_ping' ) );
+			$gh_last_ping = absint( get_option( 'gh_cron_last_ping' ) );
+
+			$data = [
+				'DISABLE_WP_CRON'    => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
+				'gh_disable_wp_cron' => is_option_enabled( 'gh_disable_wp_cron' ),
+				'gh_cron_installed'  => gh_cron_installed(),
+				'wp_last_ping_i18n'  => $wp_last_ping ? sprintf( '%s ago', human_time_diff( $wp_last_ping ) ) : 'Never',
+				'wp_last_ping_diff'  => time() - $wp_last_ping,
+				'gh_last_ping_i18n'  => $gh_last_ping ? sprintf( '%s ago', human_time_diff( $gh_last_ping ) ) : 'Never',
+				'gh_last_ping_diff'  => time() - $gh_last_ping,
+				'cron_download_url'  => action_url( 'install_gh_cron_manually' ),
+				'promo_dismissed'    => notices()->is_dismissed( 'gh-promo-cron-job' )
+			];
+
+			wp_add_inline_script( 'groundhogg-admin-cron-jobs', 'const GroundhoggCron = ' . wp_json_encode( $data ), 'above' );
+		}
 		if ( $this->get_current_tab() === 'api' ) {
 			enqueue_filter_assets();
 			wp_enqueue_script( 'groundhogg-admin-api-docs' );
@@ -111,6 +134,28 @@ class Tools_Page extends Tabbed_Admin_Page {
 	}
 
 	public function add_ajax_actions() {
+		add_action( 'wp_ajax_gh_install_cron', [ $this, 'ajax_install_gh_cron' ] );
+		add_action( 'wp_ajax_gh_check_cron', [ $this, 'ajax_check_cron' ] );
+		add_action( 'wp_ajax_gh_disable_internal_cron', [ $this, 'ajax_disable_internal_wp_cron' ] );
+	}
+
+	public function ajax_check_cron() {
+
+		if ( ! verify_admin_ajax_nonce() || ! current_user_can( 'manage_options' ) ) {
+			$this->wp_die_no_access();
+		}
+
+		$wp_last_ping = absint( get_option( 'wp_cron_last_ping' ) );
+		$gh_last_ping = absint( get_option( 'gh_cron_last_ping' ) );
+
+		$data = [
+			'wp_last_ping_i18n' => $wp_last_ping ? sprintf( '%s ago', human_time_diff( $wp_last_ping ) ) : 'Never',
+			'wp_last_ping_diff' => time() - $wp_last_ping,
+			'gh_last_ping_i18n' => $gh_last_ping ? sprintf( '%s ago', human_time_diff( $gh_last_ping ) ) : 'Never',
+			'gh_last_ping_diff' => time() - $gh_last_ping,
+		];
+
+		wp_send_json_success( $data );
 	}
 
 	protected function add_additional_actions() {
@@ -306,14 +351,16 @@ class Tools_Page extends Tabbed_Admin_Page {
                     <h2 class="hndle"><?php _e( 'Safe Mode', 'groundhogg' ); ?></h2>
                 </div>
                 <div class="inside">
-                    <p><?php printf( __( 'Safe mode will disable any non %s related plugins for debugging purposes.', 'groundhogg' ), white_labeled_name() ); ?></p>
+                    <p><?php printf( __( 'Safe mode will temporarily disable any non %s related plugins for debugging purposes for your account only. Other users will not be impacted.', 'groundhogg' ), white_labeled_name() ); ?></p>
 					<?php
 
-					if ( ! is_option_enabled( 'gh_safe_mode_enabled' ) ):
+                    maybe_install_safe_mode_plugin();
+
+					if ( ! groundhogg_is_safe_mode_enabled() ):
 
 						echo html()->e( 'a', [
 							'href'  => nonce_url_no_amp( $this->admin_url( [ 'action' => 'enable_safe_mode' ] ), 'enable_safe_mode' ),
-							'class' => [ 'gh-button secondary' ]
+							'class' => 'gh-button danger text danger-confirm',
 						], __( 'Enable Safe Mode' ) );
 
 					else:
@@ -397,6 +444,7 @@ class Tools_Page extends Tabbed_Admin_Page {
                     </div>
                 </div>
 			<?php endif; ?>
+            <?php if ( is_super_admin() ): ?>
             <div class="gh-panel">
                 <div class="gh-panel-header">
                     <h2 class="hndle"><span>⚠️ <?php _e( 'Reset', 'groundhogg' ); ?></span></h2>
@@ -404,17 +452,17 @@ class Tools_Page extends Tabbed_Admin_Page {
                 <div class="inside">
                     <p><?php printf( __( 'Want to start from scratch? You can reset your %s installation to when you first installed it.', 'groundhogg' ), white_labeled_name() ); ?></p>
                     <p><?php _e( 'To confirm you want to reset, type <code>reset</code> into the text box below.', 'groundhogg' ); ?></p>
-                    <form method="post">
+                    <form method="post" class="danger-permanent">
 						<?php wp_nonce_field( 'reset' ) ?>
 						<?php action_input( 'reset' ) ?>
                         <div class="gh-input-group">
-							<?php echo html()->input( [
+
+                            <?php echo html()->input( [
 								'class'       => 'input',
 								'name'        => 'reset_confirmation',
-								'placeholder' => 'reset',
+								'placeholder' => 'Type "reset" to confirm.',
 								'required'    => true,
 							] );
-
 
 							echo html()->submit( [
 								'class' => 'gh-button danger',
@@ -426,6 +474,7 @@ class Tools_Page extends Tabbed_Admin_Page {
                     <p><?php _e( 'This cannot be undone.', 'groundhogg' ); ?></p>
                 </div>
             </div>
+            <?php endif; ?>
 			<?php do_action( 'groundhogg/admin/tools/system_status/after' ); ?>
         </div>
 		<?php
@@ -435,6 +484,9 @@ class Tools_Page extends Tabbed_Admin_Page {
 	 * Enable safe mode
 	 */
 	public function process_enable_safe_mode() {
+
+        maybe_install_safe_mode_plugin();
+
 		if ( groundhogg_enable_safe_mode() ) {
 			$this->add_notice( 'safe_mode_enabled', __( 'Safe mode has been enabled.' ) );
 		} else {
@@ -443,6 +495,9 @@ class Tools_Page extends Tabbed_Admin_Page {
 	}
 
 	public function process_disable_safe_mode() {
+
+        maybe_install_safe_mode_plugin();
+
 		if ( groundhogg_disable_safe_mode() ) {
 			$this->add_notice( 'safe_mode_disabled', __( 'Safe mode has been disabled.' ) );
 		}
@@ -880,7 +935,8 @@ class Tools_Page extends Tabbed_Admin_Page {
 	 * Reset Groundhogg to when first installed.
 	 */
 	public function process_system_reset() {
-		if ( ! current_user_can( 'manage_options' ) ) {
+
+		if ( ! is_super_admin() ) {
 			$this->wp_die_no_access();
 		} else if ( get_post_var( 'reset_confirmation' ) !== 'reset' ) {
 			return new WP_Error( 'error', __( 'You must confirm the reset by typing <code>reset</code> into the text field.', 'groundhogg' ) );
@@ -897,15 +953,48 @@ class Tools_Page extends Tabbed_Admin_Page {
 
 		do_action( 'groundhogg/reset' );
 
-		die();
-
 		return admin_page_url( 'gh_guided_setup' );
 	}
 
 	########### ADVANCED SETUP ###########
 
 	public function cron_view() {
-		include __DIR__ . '/cron-setup.php';
+		?>
+        <div id="cron-wrap"></div><?php
+	}
+
+	public function ajax_disable_internal_wp_cron() {
+		if ( ! verify_admin_ajax_nonce() || ! current_user_can( 'manage_options' ) ) {
+			$this->wp_die_no_access();
+		}
+
+		// disabled in wp-config.
+		if ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ) {
+			wp_send_json_success();
+		}
+
+		// already disabled
+		if ( is_option_enabled( 'gh_disable_wp_cron' ) ) {
+			wp_send_json_success();
+		}
+
+		if ( ! update_option( 'gh_disable_wp_cron', true ) ) {
+			wp_send_json_error();
+		}
+
+		wp_send_json_success();
+	}
+
+	public function ajax_install_gh_cron() {
+		if ( ! verify_admin_ajax_nonce() || ! current_user_can( 'manage_options' ) ) {
+			$this->wp_die_no_access();
+		}
+
+		if ( ! install_gh_cron_file() ) {
+			wp_send_json_error();
+		}
+
+		wp_send_json_success();
 	}
 
 	/**

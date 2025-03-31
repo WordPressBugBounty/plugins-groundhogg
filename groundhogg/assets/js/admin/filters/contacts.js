@@ -42,6 +42,7 @@
   const {
     formatDate,
     formatDateTime,
+    formatTime,
   } = Groundhogg.formatting
 
   const {
@@ -1633,10 +1634,10 @@
 // Tags
 
   registerFilterGroup('funnels',
-    _x('Funnel', 'noun meaning automation', 'groundhogg'))
+    _x('Flows', 'noun meaning automation', 'groundhogg'))
 
   registerFilter('funnel_history', 'funnels',
-    __('Funnel History', 'groundhogg'), {
+    __('Flow History', 'groundhogg'), {
       view ({
         status = 'complete',
         funnel_id = 0,
@@ -1670,7 +1671,7 @@
 
         }
         else {
-          prepend = __('Completed any step in any funnel', 'groundhogg')
+          prepend = __('Completed any step in any flow', 'groundhogg')
         }
 
         return standardActivityDateTitle(prepend, {
@@ -1716,7 +1717,7 @@
         funnelPicker('#filter-funnel', false, (items) => {
           FunnelsStore.itemsFetched(items)
         }, {}, {
-          placeholder: __('Select a funnel', 'groundhogg'),
+          placeholder: __('Select a flow', 'groundhogg'),
         }).on('select2:select', ({ target }) => {
           updateFilter({
             funnel_id: parseInt($(target).val()),
@@ -2267,7 +2268,7 @@
     },
   }, {}))
 
-  ContactFilterRegistry.registerFilter(createFilter('secondary_related', 'Child relationship', 'query', {
+  ContactFilterRegistry.registerFilter(createFilter('secondary_related', 'Is Child Of', 'query', {
     edit   : ({object_type= '', object_id = '', updateFilter }) => Fragment([
       Input({
         id: 'object-type',
@@ -2298,15 +2299,21 @@
       object_type,
       object_id,
     }) => {
-      if ( ! object_type || ! object_id ){
-        throw new Error( 'Type and ID must both be defined' )
+      if ( ! object_type ){
+        throw new Error( 'Type be defined' )
+      }
+
+      if ( ! object_id ){
+        return `Is a child of ${ object_type }`
       }
 
       return `Is a child of ${ object_type } with ID ${ object_id }`
     }
-  }, {}))
+  }, {
+    object_type: 'contact'
+  }))
 
-  ContactFilterRegistry.registerFilter(createFilter('primary_related', 'Parent relationship', 'query', {
+  ContactFilterRegistry.registerFilter(createFilter('primary_related', 'Is Parent Of', 'query', {
     edit   : ({object_type= '', object_id = '', updateFilter }) => Fragment([
       Input({
         id: 'object-type',
@@ -2337,14 +2344,95 @@
       object_type,
       object_id,
     }) => {
-      if ( ! object_type || ! object_id ){
-        throw new Error( 'Type and ID must both be defined' )
+      if ( ! object_type ){
+        throw new Error( 'Type must be defined' )
+      }
+
+      if ( ! object_id ){
+        return `Is a parent of ${ object_type }`
       }
 
       return `Is a parent of ${ object_type } with ID ${ object_id }`
     }
-  }, {}))
+  }, {
+    object_type: 'contact'
+  }))
 
+  registerFilterGroup( 'date', 'Date' )
+
+  const CurrentDateCompareFilterFactory = ( id, name, type, formatter ) => createFilter(id, name, 'date', {
+    edit   : ({compare= '', after = '', before = '', updateFilter }) => Fragment([
+      Select({
+        id: 'select-compare',
+        selected:  compare,
+        options: {
+          after: 'After',
+          before: 'Before',
+          between: 'Between'
+        },
+        onChange: e => {
+          updateFilter({
+            compare: e.target.value
+          })
+        }
+      }),
+      compare === 'before' ? null : Input({
+        type,
+        id: 'after-date',
+        name: 'after_date',
+        value: after,
+        placeholder: 'After...',
+        onChange: e => {
+          updateFilter({
+            after: e.target.value
+          })
+        }
+      }),
+      compare === 'after' ? null : Input({
+        type,
+        id: 'before-date',
+        name: 'before_date',
+        value: before,
+        placeholder: 'Before...',
+        min: 0,
+        onInput: e => {
+          updateFilter({
+            before: e.target.value
+          })
+        }
+      })
+    ]),
+    display: ({
+      compare = '',
+      after,
+      before,
+    }) => {
+
+      let prefix = `<b>${name}</b>`
+
+      switch (compare) {
+        case 'between':
+          return ComparisonsTitleGenerators.between(prefix,
+            formatter(after), formatter(before))
+        case 'after':
+          return ComparisonsTitleGenerators.after(prefix,
+            formatter(after))
+        case 'before':
+          return ComparisonsTitleGenerators.before(prefix,
+            formatter(before))
+        default:
+          throw new Error( 'Invalid date comparison.' )
+      }
+    },
+  }, {
+    compare: 'between',
+    before: '',
+    after: '',
+  })
+
+  ContactFilterRegistry.registerFilter(CurrentDateCompareFilterFactory('current_datetime', 'Current Date & Time', 'datetime-local', formatDateTime ))
+  ContactFilterRegistry.registerFilter(CurrentDateCompareFilterFactory('current_date', 'Current Date', 'date', formatDate ))
+  ContactFilterRegistry.registerFilter(CurrentDateCompareFilterFactory('current_time', 'Current Time', 'time', ( time ) => formatTime(`2000-01-01T${time}`) ))
 
   if (!Groundhogg.filters) {
     Groundhogg.filters = {}

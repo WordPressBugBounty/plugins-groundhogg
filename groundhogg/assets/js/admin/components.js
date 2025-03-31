@@ -23,34 +23,65 @@
     skeleton,
     adminPageURL,
   } = Groundhogg.element
+
+  const {
+    Div,
+    H2,
+    H4,
+    Toggle,
+    Img,
+    An,
+    Span,
+    ModalFrame,
+    Iframe,
+    makeEl,
+    Button,
+    Modal,
+    ModalWithHeader,
+    Dashicon,
+    ToolTip,
+    Input,
+    TinyMCE,
+    Label,
+    Fragment,
+    ItemPicker,
+    Skeleton,
+    Pg,
+    Form,
+    Textarea,
+    InputGroup,
+  } = MakeEl
+
   const {
     contacts: ContactsStore,
     tags    : TagsStore,
     forms   : FormsStore,
     emails  : EmailsStore,
   } = Groundhogg.stores
+
   const {
     post,
     routes,
     postFormData,
   } = Groundhogg.api
   const { tagPicker } = Groundhogg.pickers
+
   const {
     userHasCap,
     getOwner,
   } = Groundhogg.user
+
   const {
     sprintf,
     __,
     _x,
     _n,
   } = wp.i18n
+
   const {
-    formatNumber,
-    formatTime,
-    formatDate,
     formatDateTime,
   } = Groundhogg.formatting
+
   const { currentUser } = Groundhogg
 
   const {
@@ -86,7 +117,6 @@
         },
       }),
     )
-
   }
 
   const betterTagPicker = (el, {
@@ -1109,268 +1139,265 @@
 
   }
 
-  const emailModal = (props, onSend = () => {}) => {
+  const EmailModal = (props, onSend = () => {}) => {
 
-    const email = {
+    const State = Groundhogg.createState({
       to        : [],
-      from_name : '',
-      from_email: '',
+      from_user : currentUser.ID,
+      from_name : currentUser.data.display_name,
+      from_email: currentUser.data.user_email,
       cc        : [],
+      showCC    : false,
       bcc       : [],
+      showBCC   : false,
       subject   : '',
       content   : '',
+      sending   : false,
       ...props,
-    }
-
-    // Modal is already open
-    if ($('.gh-modal.send-email').length) {
-      return
-    }
-
-    let showCc = email.cc.length > 0
-    let showBcc = email.bcc.length > 0
-
-    const template = () => {
-      //language=HTML
-      return `
-          <div class="gh-rows-and-columns">
-              <div class="gh-row">
-                  <label>${ __('From:') }</label>
-                  <div class="gh-col">
-                      <select id="from"></select>
-                  </div>
-              </div>
-              <div class="gh-row">
-                  <label>${ __('To:') }</label>
-                  <div class="gh-col">
-                      <select id="recipients"></select>
-                  </div>
-                  ${ !showCc ? `<a id="send-email-cc" href="#">${ __('Cc') }</a>` : '' }
-                  ${ !showBcc ? `<a id="send-email-bcc" href="#">${ __('Bcc') }</a>` : '' }
-              </div>
-              ${ showCc ? `<div class="gh-row">
-				  <label>${ __('Cc:') }</label>
-				  <div class="gh-col">
-					  <select id="cc"></select>
-				  </div>
-			  </div>` : '' }
-              ${ showBcc ? `<div class="gh-row">
-				  <label>${ __('Bcc:') }</label>
-				  <div class="gh-col">
-					  <select id="bcc"></select>
-				  </div>
-			  </div>` : '' }
-              <div class="gh-row">
-                  <div class="gh-col">
-                      ${ input({
-                          placeholder: __('Subject line...'),
-                          id         : 'send-email-subject',
-                          value      : email.subject,
-                      }) }
-                  </div>
-              </div>
-              <div class="gh-row">
-                  <div class="gh-col">
-                      ${ textarea({
-                          id   : 'send-email-content',
-                          value: email.subject,
-                      }) }
-                  </div>
-              </div>
-              <div class="gh-row">
-                  <div class="gh-col align-right-space-between">
-                      <button class="gh-button danger text" id="discard-draft">${ __('Discard') }</button>
-                      <button class="gh-button primary" id="send-email-commit">${ __('Send') }</button>
-                  </div>
-              </div>
-          </div>`
-    }
-
-    const onMount = ({
-      close,
-      setContent,
-    }) => {
-
-      const reMount = () => {
-        wp.editor.remove('send-email-content')
-        setContent(template())
-        onMount({
-          close,
-          setContent,
-        })
-      }
-
-      const selectChange = (e, name) => {
-        email[name] = $(e.target).val()
-      }
-
-      $('#recipients').ghPicker({
-        endpoint   : ContactsStore.route,
-        getResults : r => r.items.map(c => ( {
-          text: c.data.email,
-          id  : c.data.email,
-        } )),
-        getParams  : q => ( {
-          ...q,
-          email        : q.term,
-          email_compare: 'starts_with',
-        } ),
-        data       : email.to.map(i => ( {
-          id      : i,
-          text    : i,
-          selected: true,
-        } )),
-        tags       : true,
-        multiple   : true,
-        width      : '100%',
-        placeholder: __('Recipients'),
-      }).on('change', e => selectChange(e, 'to'))
-
-      $('#cc').ghPicker({
-        endpoint   : ContactsStore.route,
-        getResults : r => r.items.map(c => ( {
-          text: c.data.email,
-          id  : c.data.email,
-        } )),
-        getParams  : q => ( {
-          ...q,
-          email        : q.term,
-          email_compare: 'starts_with',
-        } ),
-        data       : email.cc.map(i => ( {
-          id      : i,
-          text    : i,
-          selected: true,
-        } )),
-        tags       : true,
-        multiple   : true,
-        width      : '100%',
-        placeholder: __('Cc'),
-      }).on('change', e => selectChange(e, 'cc'))
-
-      $('#from').select2({
-        data       : Groundhogg.filters.owners.map(u => ( {
-          id      : u.ID,
-          text    : `${ u.data.display_name } <${ u.data.user_email }>`,
-          selected: u.data.user_email === email.from_email,
-        } )),
-        width      : '100%',
-        placeholder: __('From'),
-      }).on('change', e => {
-
-        let u = Groundhogg.filters.owners.find(u => u.ID == $(e.target).val())
-
-        email['from_email'] = u.data.user_email
-        email['from_name'] = u.data.display_name
-      })
-
-      $('#bcc').select2({
-        data       : [
-          ...email.bcc.map(i => ( {
-            id      : i,
-            text    : i,
-            selected: true,
-          } )),
-          ...Groundhogg.filters.owners.filter(u => !email.bcc.includes(u.data.user_email)).
-            map(u => ( {
-              text: u.data.user_email,
-              id  : u.data.user_email,
-            } )),
-        ],
-        tags       : true,
-        multiple   : true,
-        width      : '100%',
-        placeholder: __('Bcc'),
-      }).on('change', e => selectChange(e, 'bcc'))
-
-      $('#send-email-subject').on('change', (e) => {
-        email.subject = e.target.value
-      }).focus()
-
-      addMediaToBasicTinyMCE()
-
-      let editor = tinymceElement('send-email-content', {
-        replacements: true,
-        savedReplies: true,
-        quicktags   : false,
-        tinymce     : {
-          height: 300,
-        },
-      }, (content) => {
-        email.content = content
-      })
-
-      $('#send-email-cc').on('click', () => {
-        showCc = true
-        reMount()
-      })
-
-      $('#send-email-bcc').on('click', () => {
-        showBcc = true
-        reMount()
-      })
-
-      $('#discard-draft').on('click', close)
-
-      $('#send-email-commit').on('click', ({ target }) => {
-
-        $(target).text(__('Sending', 'groundhogg')).prop('disabled', true)
-        const { stop } = loadingDots(target)
-
-        const release = () => {
-          stop()
-          $(target).text(__('Send', 'groundhogg')).prop('disabled', false)
-        }
-
-        post(`${ routes.v4.emails }/send`, email).then((r) => {
-
-          release()
-
-          if (r.status !== 'success') {
-
-            dialog({
-              message: r.message,
-              type   : 'error',
-            })
-
-            return
-          }
-
-          dialog({
-            message: __('Message sent!', 'groundhogg'),
-          })
-
-          onSend({
-            ...r,
-            email,
-          })
-
-          close()
-        }).catch(e => {
-
-          release()
-
-          dialog({
-            message: e.message,
-            type   : 'error',
-          })
-        })
-      })
-
-    }
-
-    return modal({
-      content         : template(),
-      onOpen          : onMount,
-      onClose         : () => {
-        wp.editor.remove('send-email-content')
-      },
-      overlay         : false,
-      className       : 'send-email',
-      dialogClasses   : 'gh-panel',
-      disableScrolling: false,
     })
 
+    const EmailAddressPicker = ({
+      label = '',
+      key = '',
+    }) => ItemPicker({
+      id              : `composed-${ key }`,
+      label           : `${ label }:`,
+      style           : {
+        flexGrow: 1,
+      },
+      noneSelected    : `${ label }...`,
+      tags            : true,
+      selected        : State[key].map(v => ( {
+        id  : v,
+        text: v,
+      } )),
+      fetchOptions    : search => ContactsStore.fetchItems({
+        search,
+      }).then(items => items.map(item => ( {
+        id  : item.data.email,
+        text: item.data.email,
+      } ))),
+      isValidSelection: isValidEmail,
+      onChange        : items => State.set({
+        [key]: items.map(item => item.id),
+      }),
+    })
+
+    return Modal({
+        className    : 'send-email',
+        dialogClasses: 'gh-panel',
+        overlay      : false,
+        onClose      : () => {
+          wp.editor.remove('composed-content')
+        },
+      }, ({
+        close,
+        morph: realMorph,
+      }) => {
+
+        const morph = () => realMorph({
+          // onBeforeNodeDiscarded: node => {
+          //   return ! node.classList.contains( 'mce-tinymce' )
+          // }
+        })
+
+        return Form({
+          id       : 'compose-email-form',
+          className: 'display-flex column gap-10',
+          onSubmit : e => {
+
+            e.preventDefault()
+
+            const {
+              to,
+              from_email,
+              from_name,
+              cc,
+              bcc,
+              subject,
+              content,
+            } = State
+
+            if (!content) {
+              errorDialog({
+                message: 'Please add a message.',
+              })
+              return false
+            }
+
+            if (!to.length) {
+              errorDialog({
+                message: 'Please add a least one recipient.',
+              })
+              return false
+            }
+
+            State.set({ sending: true })
+            morph()
+
+            post(`${ routes.v4.emails }/send`, {
+              to,
+              from_email,
+              from_name,
+              cc,
+              bcc,
+              subject,
+              content,
+            }).then((r) => {
+
+              if (r.status !== 'success') {
+
+                dialog({
+                  message: r.message,
+                  type   : 'error',
+                })
+
+                return
+              }
+
+              dialog({
+                message: __('Message sent!', 'groundhogg'),
+              })
+
+              onSend({
+                ...r,
+                email: {
+                  to,
+                  from_email,
+                  from_name,
+                  cc,
+                  bcc,
+                  subject,
+                  content,
+                },
+              })
+
+              close()
+
+            }).catch(e => {
+
+              dialog({
+                message: e.message,
+                type   : 'error',
+              })
+
+              State.set({ sending: false })
+              morph()
+
+            })
+
+            return false
+          },
+        }, [
+
+          // from
+          OwnerPicker({
+            label      : 'From:',
+            id         : 'composed-from',
+            selected   : [State.from_user],
+            multiple   : false,
+            allow0     : false,
+            itemDisplay: u => `${ u.data.display_name } &lt;${ u.data.user_email }&gt;`,
+            onChange   : item => {
+              State.set({
+                form_user : item.id,
+                from_email: getOwner(item.id).data.user_email,
+                from_name : getOwner(item.id).data.display_name,
+              })
+            },
+          }),
+
+          Div({
+            className: 'display-flex gap-5 align-center',
+          }, [
+
+            // to
+            EmailAddressPicker({
+              label: 'To',
+              key  : 'to',
+            }),
+
+            State.cc.length || State.showCC ? null : An({
+              id     : 'show-cc',
+              onClick: e => {
+                State.set({ showCC: true })
+                morph()
+              },
+            }, 'CC'),
+            State.bcc.length || State.showBCC ? null : An({
+              id     : 'show-bcc',
+              onClick: e => {
+                State.set({ showBCC: true })
+                morph()
+              },
+            }, 'BCC'),
+
+          ]),
+
+          // cc
+          State.cc.length || State.showCC ? EmailAddressPicker({
+            label: 'CC',
+            key  : 'cc',
+          }) : null,
+
+          // bcc
+          State.bcc.length || State.showBCC ? EmailAddressPicker({
+            label: 'BCC',
+            key  : 'bcc',
+          }) : null,
+
+          // subject
+          Input({
+            id         : 'composed-subject-line',
+            name       : 'composed_subject_line',
+            required   : true,
+            placeholder: __('Subject line...'),
+            value      : State.subject,
+            onInput    : e => State.set({ subject: e.target.value }),
+          }),
+
+          // content
+          TinyMCE({
+            id      : 'composed-content',
+            value   : State.content,
+            config  : {
+              replacements: true,
+              savedReplies: true,
+              media       : true,
+              quicktags   : false,
+              tinymce     : {
+                height: 300,
+              },
+            },
+            onChange: content => State.set({
+              content,
+            }),
+          }),
+
+          // discard/send
+          Div({
+            className: 'display-flex gap-5 flex-end',
+          }, [
+            Button({
+              className: 'gh-button danger text',
+              disabled : State.sending,
+              onClick  : e => close(),
+            }, __('Discard')),
+            Button({
+              type     : 'submit',
+              className: 'gh-button primary',
+              disabled : State.sending,
+            }, State.sending ? Span({ className: 'gh-spinner' }) : __('Send')),
+          ]),
+
+        ])
+      },
+    )
+
+  }
+
+  const emailModal = (props, onSend = () => {}) => {
+    return EmailModal(props, onSend)
   }
 
   const EmailTemplateModal = async (contactId, onSend = () => {}) => {
@@ -1667,32 +1694,6 @@
     })
   }
 
-  const {
-    Div,
-    H2,
-    H4,
-    Toggle,
-    Img,
-    An,
-    Span,
-    ModalFrame,
-    Iframe,
-    makeEl,
-    Button,
-    Modal,
-    Dashicon,
-    ToolTip,
-    Input,
-    Label,
-    Fragment,
-    ItemPicker,
-    Skeleton,
-    Pg,
-    Form,
-    Textarea,
-    InputGroup,
-  } = MakeEl
-
   const EmailPreviewModal = async (emailId, {
     height = window.innerHeight * 0.85,
     width = 900,
@@ -1893,8 +1894,9 @@
       submitting: false,
     })
 
-    Modal({
+    ModalWithHeader({
       width: '400px',
+      header: 'Send Feedback'
     }, ({
       close,
       morph,
@@ -2048,7 +2050,7 @@
           ]),
           Div({}, [
             An({
-              href: `mailto: ${ email }`,
+              href: `mailto:${ email }`,
             }, email),
             Span({}, [
               ' — ',
@@ -2425,6 +2427,7 @@
     selected = [], // list of user ids,
     onChange = ids => {}, // list of user ids,
     allow0 = true,
+    itemDisplay = user => user.data.display_name,
     ...overrides
   }) => ItemPicker({
     id              : `select-users`,
@@ -2440,7 +2443,7 @@
 
       return {
         id  : user_id,
-        text: getOwner(user_id).data.user_email,
+        text: itemDisplay(getOwner(user_id)),
       }
     }),
     multiple        : true,
@@ -2453,7 +2456,7 @@
 
       let options = Groundhogg.filters.owners.map(u => ( {
         id  : u.ID,
-        text: u.data.display_name,
+        text: itemDisplay(u),
       } ))
 
       if (allow0) {
@@ -2470,6 +2473,286 @@
     onChange        : items => onChange(items.map(({ id }) => id)),
     ...overrides,
   })
+
+  function getClosestRelativeAncestor (element) {
+    let parent = element.parentElement
+
+    while (parent) {
+      if (window.getComputedStyle(parent).position === 'relative') {
+        return parent // Found the closest relative ancestor
+      }
+      parent = parent.parentElement // Move up the tree
+    }
+
+    return null // No relative ancestor found
+  }
+
+  const Tour = (steps, {
+    onFinish = () => {},
+    beforeDismiss = ({dismiss}) => dismiss(),
+    onDismiss = () => {},
+    fixed = false,
+  }) => {
+
+    const State = Groundhogg.createState({
+      current : 0,
+      step    : null,
+      target  : null,
+      relative: null,
+    })
+
+    const currentStep = () => steps[State.current]
+    const removeSteps = () => {
+      document.querySelectorAll('.tour-prompt-container').forEach(el => el.remove())
+      document.querySelectorAll('.tour-prompt').forEach(el => el.remove())
+      document.querySelectorAll('.tour-highlighted').forEach(el => el.classList.remove('tour-highlighted'))
+    }
+
+    const remove = () => {
+      removeSteps()
+      document.removeEventListener('resize', rePositionStep)
+      document.removeEventListener('scroll', rePositionStep)
+    }
+
+    const dismiss = async () => {
+      remove()
+      onDismiss()
+    }
+
+    const next = () => {
+
+      const { onNext = () => {} } = currentStep()
+      onNext()
+
+      if (State.current + 1 >= steps.length) {
+        remove()
+        onFinish(true)
+        return
+      }
+
+      State.current++
+      showStep()
+    }
+
+    const prev = () => {
+
+      const { onPrev = () => {} } = currentStep()
+      onPrev()
+
+      if (State.current <= 0) {
+        // can't go back
+        return
+      }
+
+      State.current--
+      showStep()
+    }
+
+    const showStep = () => {
+
+      removeSteps() // remove other prompts
+
+      // create a new prompt
+      positionStep()
+    }
+
+    function rePositionStep () {
+
+      let {
+        position,
+      } = currentStep()
+
+      let {
+        target,
+        relative,
+        step,
+        windowEl
+      } = State
+
+      const targetPos = target.getBoundingClientRect()
+      const relativePos = relative.getBoundingClientRect()
+      const stepPos = step.getBoundingClientRect()
+
+      const gap = 20;
+
+      if (fixed) {
+
+        windowEl.style.height = `${ targetPos.height + gap*2 }px`
+        windowEl.style.width = `${ targetPos.width + gap*2 }px`
+        windowEl.style.borderWidth = `${ Math.round(targetPos.y) - gap }px ${ Math.round(window.innerWidth - targetPos.x) - gap }px ${ Math.round(
+          window.innerHeight - targetPos.y) - gap }px ${ Math.round(targetPos.x) - gap }px`
+
+        switch (position) {
+          case 'right':
+            step.style.left = `${ targetPos.x + targetPos.width + gap }px`
+            step.style.top = `${ targetPos.y }px`
+            break
+          case 'left':
+            step.style.left = `${ targetPos.x - stepPos.width - gap }px`
+            step.style.top = `${ targetPos.y }px`
+            break
+          case 'above':
+            step.style.left = `${ targetPos.x }px`
+            step.style.top = `${ targetPos.y - stepPos.height - gap }px`
+            break
+          case 'below':
+            step.style.left = `${ targetPos.x }px`
+            step.style.top = `${ targetPos.y + targetPos.height + gap }px`
+            break
+          case 'below-left':
+            step.style.left = `${ targetPos.x + targetPos.width - stepPos.width }px`
+            step.style.top = `${ targetPos.y + targetPos.height + gap }px`
+            break
+        }
+
+        return
+      }
+
+      switch (position) {
+        case 'right':
+          step.style.left = `${ targetPos.right - relativePos.left + gap }px`
+          step.style.top = `${ targetPos.top - relativePos.top }px`
+          break
+        case 'left':
+          step.style.left = `${ targetPos.left - relativePos.left - stepPos.width - gap }px`
+          step.style.top = `${ targetPos.top - relativePos.top }px`
+          break
+        case 'above':
+          step.style.left = `${ targetPos.left - relativePos.left }px`
+          step.style.top = `${ targetPos.top - relativePos.top - stepPos.height - gap }px`
+          break
+        case 'below':
+          step.style.left = `${ targetPos.left - relativePos.left }px`
+          step.style.top = `${ targetPos.bottom - relativePos.top + gap }px`
+          break
+        case 'below-left':
+          step.style.left = `${ targetPos.right - relativePos.left - stepPos.width }px`
+          step.style.top = `${ targetPos.bottom - relativePos.top + gap }px`
+          break
+      }
+    }
+
+    function positionStep () {
+
+      let tourEl = TourStep()
+      let windowEl = tourEl.querySelector('.tour-window')
+      let stepEl = tourEl.querySelector('.tour-prompt')
+      let {
+        target,
+        relative,
+        onInit = () => {},
+        onBefore = () => {},
+      } = currentStep()
+
+      target = document.querySelector(target)
+
+      if (!target) {
+        next()
+        return
+      }
+
+      if (fixed) {
+        relative = document.body
+      }
+      else if (relative) {
+        relative = target.closest(relative)
+      }
+      else {
+        relative = getClosestRelativeAncestor(target)
+      }
+
+      stepEl.style.position = fixed ? 'fixed' : 'absolute'
+
+      if ( fixed ){
+        relative.append(tourEl)
+      } else {
+        target.classList.add('tour-highlighted')
+        relative.append(stepEl)
+      }
+
+      target.scrollIntoView({
+        behavior: 'instant',
+        block   : 'center',
+        inline  : 'center',
+      })
+
+      onBefore({
+        next,
+        prev,
+        target,
+        relative,
+        step: stepEl,
+        windowEl,
+        currentStep,
+      })
+
+      State.set({
+        step: stepEl,
+        windowEl,
+        target,
+        relative,
+      })
+
+      rePositionStep()
+
+      onInit({
+        next,
+        prev,
+        target,
+        relative,
+        step: stepEl,
+        windowEl,
+        currentStep,
+      })
+
+      stepEl.querySelector('#tour-next').focus()
+    }
+
+    const TourStep = () => MakeEl.Div({
+      className: 'tour-prompt-container',
+    }, [
+      fixed ? MakeEl.Div({
+        className: 'tour-window',
+      }, [
+        MakeEl.Div({
+          className: 'tour-window-shadow',
+          onClick: next
+        })
+      ]) : null,
+      MakeEl.Div({
+        className: `tour-prompt ${ currentStep().position }`,
+        style    : {
+          padding: '10px',
+          width  : '200px',
+        },
+      }, [
+        MakeEl.Button({
+          className: 'dismiss',
+          onClick  : e => {
+            beforeDismiss({ dismiss, State })
+          },
+        }, MakeEl.Dashicon('no-alt')),
+        MakeEl.Div({}, currentStep().prompt),
+        MakeEl.Div({ className: 'display-flex flex-end gap-5 space-above-10' }, [
+          State.current > 0 ? MakeEl.Button({
+            id       : 'tour-prev',
+            className: 'gh-button small secondary text prev-step',
+            onClick  : () => prev(),
+          }, 'Prev') : null,
+          currentStep().showNext === false ? null : MakeEl.Button({
+            id       : 'tour-next',
+            className: `gh-button small ${State.current < steps.length - 1 ? 'secondary' : 'primary'} next-step`,
+            onClick  : () => next(),
+          }, State.current < steps.length - 1 ? 'Next' : 'Finish'),
+        ]),
+      ]),
+    ])
+
+    document.addEventListener('resize', rePositionStep)
+    document.addEventListener('scroll', rePositionStep)
+
+    positionStep()
+  }
 
   Groundhogg.components = {
     QuickSearch,
@@ -2494,6 +2777,7 @@
     Panels,
     Relationships,
     OwnerPicker,
+    Tour,
   }
 
 } )(jQuery)

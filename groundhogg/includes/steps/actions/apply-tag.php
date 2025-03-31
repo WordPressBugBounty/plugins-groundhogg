@@ -4,15 +4,12 @@ namespace Groundhogg\Steps\Actions;
 
 use Groundhogg\Contact;
 use Groundhogg\Event;
-use Groundhogg\HTML;
 use Groundhogg\Step;
 use function Groundhogg\andList;
 use function Groundhogg\array_bold;
-use function Groundhogg\force_custom_step_names;
 use function Groundhogg\get_db;
 use function Groundhogg\html;
 use function Groundhogg\parse_tag_list;
-use function Groundhogg\validate_tags;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -76,8 +73,7 @@ class Apply_Tag extends Action {
 	 * @return string
 	 */
 	public function get_icon() {
-//		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/apply-tag.png';
-		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/apply-tag.svg';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/crm/apply-tag.svg';
 	}
 
 	/**
@@ -94,13 +90,22 @@ class Apply_Tag extends Action {
 		echo html()->e( 'p' );
 	}
 
-	/**
-	 * Save the step settings
-	 *
-	 * @param $step Step
-	 */
-	public function save( $step ) {
+	public function get_settings_schema() {
+		return [
+			'tags' => [
+				'default'  => [],
+				'sanitize' => function ( $tags ) {
+					return parse_tag_list( $tags );
+				}
+			],
+		];
+	}
 
+	public function validate_settings( Step $step ) {
+		$tags = $this->get_setting( 'tags' );
+		if ( empty( $tags ) ) {
+			$step->add_error( 'no_tags', 'No tags have been selected.' );
+		}
 	}
 
 	public function generate_step_title( $step ) {
@@ -127,9 +132,7 @@ class Apply_Tag extends Action {
 	 * @return true
 	 */
 	public function run( $contact, $event ) {
-		$tags = wp_parse_id_list( $this->get_setting( 'tags' ) );
-
-		return $contact->add_tag( $tags );
+		return $contact->add_tag( $this->get_setting( 'tags' ) );
 	}
 
 	/**

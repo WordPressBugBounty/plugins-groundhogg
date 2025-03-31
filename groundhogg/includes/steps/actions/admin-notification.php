@@ -15,6 +15,7 @@ use function Groundhogg\get_default_from_name;
 use function Groundhogg\get_owners;
 use function Groundhogg\html;
 use function Groundhogg\is_replacement_code_format;
+use function Groundhogg\one_of;
 
 /**
  * Admin Notification
@@ -78,7 +79,7 @@ class Admin_Notification extends Action {
 	 * @return string
 	 */
 	public function get_description() {
-		return _x( 'Send an email or SMS notification to any email or list of emails.', 'step_description', 'groundhogg' );
+		return _x( 'Send a custom email notification to a user or list of users.', 'step_description', 'groundhogg' );
 	}
 
 	/**
@@ -87,9 +88,11 @@ class Admin_Notification extends Action {
 	 * @return string
 	 */
 	public function get_icon() {
-//		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/notification.svg';
-//		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/admin-notification.png';
-		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/admin-notification.svg';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/comms/email-admin-notification.svg';
+	}
+
+	protected function settings_should_ignore_morph() {
+		return false;
 	}
 
 	/**
@@ -101,7 +104,7 @@ class Admin_Notification extends Action {
         <p></p>
         <div class="gh-rows-and-columns">
             <div class="gh-row">
-                <div class="gh-col">
+                <div class="gh-col ignore-morph">
                     <label><?php _e( 'Send to...' ); ?></label>
                     <div class="">
 						<?php
@@ -191,7 +194,7 @@ class Admin_Notification extends Action {
 					?>
                 </div>
             </div>
-            <div class="gh-row">
+            <div class="gh-row ignore-morph">
                 <div class="gh-col">
 					<?php
 
@@ -232,44 +235,63 @@ class Admin_Notification extends Action {
 		}
 	}
 
-	/**
-	 * Save the step settings
-	 *
-	 * @param $step Step
-	 */
-	public function save( $step ) {
+	public function get_settings_schema() {
+		return [
+			'send_to'          => [
+				'default'  => [],
+				'sanitize' => function ( $emails ) {
 
-		$send_to = $this->get_posted_data( 'send_to', [] );
+					if ( empty( $emails ) ) {
+						return [];
+					}
 
-		if ( $send_to ) {
+					return array_map( function ( $email ) {
 
-			$send_to = array_map( function ( $email ) {
-				if ( is_replacement_code_format( $email ) ) {
-					return $email;
+						if ( is_replacement_code_format( $email ) ) {
+							return $email;
+						}
+
+						return sanitize_email( $email );
+					}, array_filter( $emails, 'is_string' ) );
 				}
+			],
+			'reply_to_type'    => [
+				'default'  => '',
+				'sanitize' => function ( $value ) {
+					return one_of( $value, [ 'contact', 'owner', 'custom' ] );
+				},
+			],
+			'reply_to'         => [
+				'default'  => '',
+				'sanitize' => function ( $value ) {
 
-				return sanitize_email( $email );
-			}, $send_to );
+					if ( ! is_string( $value ) ) {
+						return '';
+					}
 
-			$this->save_setting( 'send_to', array_filter( $send_to ) );
-		}
+					if ( is_replacement_code_format( $value ) ) {
+						return $value;
+					}
 
-		$reply_to_type = $this->get_posted_data( 'reply_to_type' );
-		$reply_to      = $this->get_posted_data( 'reply_to' );
-
-		if ( $reply_to ) {
-			if ( is_replacement_code_format( $reply_to ) || is_email( $reply_to ) ) {
-				$this->save_setting( 'reply_to_type', $reply_to );
-			} else {
-				$this->save_setting( 'reply_to_type', '' );
-			}
-		}
-
-		$this->save_setting( 'reply_to_type', sanitize_text_field( $reply_to_type ) );
-		$this->save_setting( 'hide_admin_links', boolval( $this->get_posted_data( 'hide_admin_links' ) ) );
-		$this->save_setting( 'subject', sanitize_text_field( $this->get_posted_data( 'subject' ) ) );
+					return sanitize_email( $value );
+				},
+			],
+			'hide_admin_links' => [
+				'default'  => false,
+				'sanitize' => 'boolval',
+			],
+			'subject'          => [
+				'default'  => '',
+				'sanitize' => 'sanitize_text_field',
+			],
+			'note_text'        => [
+				'default'  => '',
+				'sanitize' => function ( $text ) {
+					return email_kses( $text );
+				},
+			],
+		];
 	}
-
 
 	public function generate_step_title( $step ) {
 		$send_to = wp_parse_list( $this->get_setting( 'send_to', [] ) );

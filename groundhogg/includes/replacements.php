@@ -3,6 +3,7 @@
 namespace Groundhogg;
 
 use Groundhogg\DB\Query\Table_Query;
+use Groundhogg\Utils\DateTimeHelper;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -55,7 +56,7 @@ class Replacements implements \JsonSerializable {
 
 		add_action( 'init', [ $this, 'setup_defaults' ] );
 
-		if ( isset_not_empty( $_GET, 'page' ) && strpos( $_GET['page'], 'gh_' ) !== false ) {
+		if ( is_admin_groundhogg_page() ) {
 			add_action( 'admin_footer', [ $this, 'replacements_in_footer' ] );
 		}
 
@@ -277,6 +278,20 @@ class Replacements implements \JsonSerializable {
 				'name'        => __( 'Birthday', 'groundhogg' ),
 				'description' => _x( 'The contact\'s birthday.', 'replacement', 'groundhogg' ),
 			],
+            [
+				'code'        => 'upcoming_birthday',
+				'group'       => 'contact',
+				'callback'    => [ $this, 'replacement_upcoming_birthday' ],
+				'name'        => __( 'Upcoming Birthday', 'groundhogg' ),
+				'description' => _x( 'The contact\'s next birthday.', 'replacement', 'groundhogg' ),
+			],
+			[
+				'code'        => 'website',
+				'group'       => 'contact',
+				'callback'    => [ $this, 'replacement_website' ],
+				'name'        => __( 'Website', 'groundhogg' ),
+				'description' => _x( 'The contact\'s website as parsed from their email address.', 'replacement', 'groundhogg' ),
+			],
 			[
 				'code'        => 'tag_names',
 				'group'       => 'crm',
@@ -434,7 +449,7 @@ class Replacements implements \JsonSerializable {
 			[
 				'code'         => 'form_submission',
 				'group'        => 'activity',
-				'default_args' => 'layout="stacked" fields="all" form="recent"',
+				'default_args' => 'layout="stacked" fields="all"',
 				'callback'     => [ $this, 'replacement_form_submission' ],
 				'name'         => __( 'Form Submission', 'groundhogg' ),
 				'description'  => _x( 'All the responses from the most recent form submission.', 'replacement', 'groundhogg' ),
@@ -517,7 +532,7 @@ class Replacements implements \JsonSerializable {
 			[
 				'code'     => 'post_url',
 				'group'    => 'post',
-				'callback' => [ $this, 'post_link' ],
+				'callback' => [ $this, 'post_url' ],
 //				'name'        => __( 'Post URL', 'groundhogg' ),
 //				'description' => _x( 'The URL of a single recent post.', 'replacement', 'groundhogg' ),
 			],
@@ -607,6 +622,23 @@ class Replacements implements \JsonSerializable {
 		}
 
 		if ( is_callable( $callback ) ) {
+
+			// If the plain callback is not callable
+			// Set it to a version that parses as markdown
+			if ( ! is_callable( $plain_callback ) ) {
+				$plain_callback = function ( ...$args ) use ( $callback ) {
+
+					$content = $callback( ...$args );
+
+					// contains HTML
+					if ( wp_strip_all_tags( $content ) !== $content ) {
+						$content = html2markdown( $content );
+					}
+
+					return $content;
+				};
+			}
+
 			$this->replacement_codes[ $code ] = [
 				'code'           => $code,
 				'callback'       => $callback,
@@ -834,7 +866,7 @@ class Replacements implements \JsonSerializable {
 
 			$cache_key = implode( ':', [
 				// if there is no defined plain callback we should reference the html version
-				is_callable( $plain_callback ) ? $this->get_context() : 'html',
+				$this->get_context(),
 				$this->contact_id ?: 'anon',
 				md5serialize( $parts ),
 				cache_get_last_changed( 'groundhogg/replacements' )
@@ -844,21 +876,6 @@ class Replacements implements \JsonSerializable {
 
 			if ( $found ) {
 				return $cache_value;
-			}
-
-			// If the plain callback is not callable
-			// Set it to a version that parses as markdown
-			if ( ! is_callable( $plain_callback ) ) {
-				$plain_callback = function ( ...$args ) use ( $html_callback ) {
-
-					$content = $html_callback( ...$args );
-
-					if ( wp_strip_all_tags( $content ) !== $content ) {
-						return html2markdown( $content );
-					}
-
-					return $content;
-				};
 			}
 
 			$callback = $this->context_is_html() ? $html_callback : $plain_callback;
@@ -1040,7 +1057,65 @@ class Replacements implements \JsonSerializable {
 	}
 
 	function replacement_birthday() {
-		return $this->get_current_contact()->get_meta( 'birthday' );
+
+		$birthday = $this->get_current_contact()->get_meta( 'birthday' );
+
+		if ( ! $birthday ){
+			return '';
+		}
+
+		try {
+			$birthday = new DateTimeHelper( $birthday );
+		}catch (\Exception $exception){
+			return '';
+		}
+
+		return $birthday->ymd();
+	}
+
+	/**
+     * The upcoming birthday of the contact
+     *
+	 * @return string
+	 */
+	function replacement_upcoming_birthday() {
+
+        $birthday = $this->get_current_contact()->get_meta( 'birthday' );
+
+        if ( ! $birthday ){
+            return '';
+        }
+
+        try {
+	        $birthday = new DateTimeHelper( $birthday );
+        }catch (\Exception $exception){
+            return '';
+        }
+
+		$birthday->setToCurrentYear();
+
+        if ( $birthday->isPast() ){
+            $birthday->modify( '+1 year' );
+        }
+
+        return $birthday->ymd();
+	}
+
+
+	/**
+     * The contact's website
+     *
+	 * @return string
+	 */
+	function replacement_website() {
+
+        $contact = $this->get_current_contact();
+
+        if ( is_free_email_provider( $contact->get_email() ) ){
+            return '';
+        }
+
+		return 'https://' . get_email_address_hostname( $this->get_current_contact()->get_email() );
 	}
 
 	/**
@@ -1361,8 +1436,21 @@ class Replacements implements \JsonSerializable {
 		return $this->get_current_contact()->get_meta( 'country' );
 	}
 
+	/**
+	 * Full country name if country is set,
+	 * otherwise the empty string
+	 *
+	 * @return string
+	 */
 	function replacement_country() {
-		return utils()->location->get_countries_list( $this->get_current_contact()->get_meta( 'country' ) );
+
+		$country_code = $this->get_current_contact()->get_meta( 'country' );
+
+		if ( empty( $country_code ) ) {
+			return '';
+		}
+
+		return utils()->location->get_countries_list( $country_code );
 	}
 
 	function replacement_ip_address() {
@@ -1384,9 +1472,7 @@ class Replacements implements \JsonSerializable {
 		$address = implode( ', ', $this->get_current_contact()->get_address() );
 
 		return $address;
-
 	}
-
 
 	/**
 	 * Get the contact notes
@@ -1408,7 +1494,6 @@ class Replacements implements \JsonSerializable {
 
 		return $return;
 	}
-
 
 	/**
 	 * Return back the email address of the contact owner.
@@ -1822,9 +1907,9 @@ class Replacements implements \JsonSerializable {
 		$quotes[] = "I'm a god, I'm not the God. I don't think.";
 		$quotes[] = "Don't drive angry! Don't drive angry!";
 		$quotes[] = "I'm betting he's going to swerve first.";
-		$quotes[] = "You want a prediction about the weather? You're asking the wrong Phil. I'm going to give you a prediction about this winter? It's going to be cold, it's going to be dark and it's going to last you for the rest of your lives!";
+		$quotes[] = "You want a prediction about the weather? You're asking the wrong Phil. I'm going to give you a prediction about this winter. It's going to be cold, it's going to be dark, and it's going to last you for the rest of your lives!";
 		$quotes[] = "We mustn't keep our audience waiting.";
-		$quotes[] = "Okay campers, rise and shine, and don't forget your booties cause its cold out there...its cold out there every day.";
+		$quotes[] = "Okay campers, rise and shine, and don't forget your booties cause its cold out there...it's cold out there every day.";
 		$quotes[] = "I peg you as a glass half empty kinda guy.";
 		$quotes[] = "Well, what if there is no tomorrow? There wasn't one today.";
 		$quotes[] = "Did he actually refer to himself as \"the talent\"?";
@@ -2495,40 +2580,46 @@ class Replacements implements \JsonSerializable {
 
 		$props = $this->parse_atts( $args, [
 			'layout' => 'stacked',
-			'form'   => 'newest',
+			'form'   => '',
 			'fields' => 'all',
 			'hidden' => false
 		] );
 
-		$query = new Table_Query( 'submissions' );
-		$query->setLimit( 1 )
-		      ->setOrderby( [ 'date_created', 'DESC' ] )
-		      ->where()
-		      ->equals( 'contact_id', $this->get_current_contact()->get_id() )
-		      ->equals( 'type', 'form' );
+		if ( get_event_arg( 'submission_id' ) && empty( $props['form'] ) ) {
+			// If there is a submission for the current event
+			$submission = new Submission( absint( get_event_arg( 'submission_id' ) ) );
+		} else {
+			// do a query instead
+			$query = new Table_Query( 'submissions' );
+			$query->setLimit( 1 )
+			      ->setOrderby( [ 'date_created', 'DESC' ] )
+			      ->where()
+			      ->equals( 'contact_id', $this->get_current_contact()->get_id() )
+			      ->equals( 'type', 'form' );
 
-		if ( in_array( $props['form'], [ 'last', 'newest', 'recent' ] ) ) {
+			if ( in_array( $props['form'], [ 'last', 'newest', 'recent' ] ) || empty( $props['form'] ) ) {
 
-			// get the most recent form submission
+				// get the most recent form submission
 
-		} else if ( in_array( $props['form'], [ 'first', 'oldest' ] ) ) {
+			} else if ( in_array( $props['form'], [ 'first', 'oldest' ] ) ) {
 
-			// get the first form submission
-			$query->setOrderby( [ 'date_created', 'ASC' ] );
+				// get the first form submission
+				$query->setOrderby( [ 'date_created', 'ASC' ] );
 
-		} else if ( absint( $props['form'] ) > 0 ) {
+			} else if ( absint( $props['form'] ) > 0 ) {
 
-			// get the most recent submission for a specific form
-			$query->where()->equals( 'form_id', absint( $props['form'] ) );
+				// get the most recent submission for a specific form
+				$query->where()->equals( 'form_id', absint( $props['form'] ) );
+			}
+
+			$submissions = $query->get_objects();
+
+			if ( empty( $submissions ) ) {
+				return '';
+			}
+
+			$submission = $submissions[0];
 		}
-
-		$submissions = $query->get_objects();
-
-		if ( empty( $submissions ) ) {
-			return '';
-		}
-
-		$submission = $submissions[0];
 
 		$answers = $submission->get_answers( $props['hidden'] );
 

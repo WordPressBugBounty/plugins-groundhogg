@@ -616,9 +616,17 @@ class Contact extends Base_Object_With_Meta {
 
 		$created = parent::create( $data );
 
-		$this->handle_consents_in_data( $data );
+		if ( $created ){
+			$this->handle_consents_in_data( $data );
+			$this->set_locale();
 
-		$this->set_locale();
+			/**
+			 * When a new contact is created with the Contact::create() method
+			 *
+			 * @param
+			 */
+			do_action( 'groundhogg/contact/created', $this );
+		}
 
 		return $created;
 	}
@@ -669,6 +677,11 @@ class Contact extends Base_Object_With_Meta {
 			if ( ! is_email( $new_email ) || is_email_address_in_use( $new_email ) ) {
 				unset( $data['email'] );
 			}
+		}
+
+		// prevent email being removed...
+		if ( isset( $data['email'] ) && empty( $data['email'] ) ){
+			unset( $data['email'] );
 		}
 
 		$folders       = $this->get_uploads_folder();
@@ -1230,7 +1243,7 @@ class Contact extends Base_Object_With_Meta {
 		$additional_emails   = $this->get_meta( 'alternate_emails' ) ?: [];
 		$additional_emails[] = $other->get_email();
 		$additional_emails   = array_merge( $additional_emails, $other->get_meta( 'alternate_emails' ) ?: [] );
-		$this->update_meta( 'alternate_emails', array_unique( $additional_emails ) );
+		$this->update_meta( 'alternate_emails', array_values( array_unique( $additional_emails ) ) );
 
 		// Handle additional phone numbers
 		$additional_phones   = $this->get_meta( 'alternate_phones' ) ?: [];
@@ -1245,7 +1258,7 @@ class Contact extends Base_Object_With_Meta {
 			return $r[1];
 		} );
 
-		$this->update_meta( 'alternate_phones', $additional_phones );
+		$this->update_meta( 'alternate_phones', array_values( $additional_phones ) );
 
 		// Update the data
 		$this->update( array_merge( array_filter( $other->data ), array_filter( $this->data ) ) );
@@ -1407,19 +1420,55 @@ class Contact extends Base_Object_With_Meta {
 		return false;
 	}
 
+	/**
+	 * Add additional checks and sanitization for custom fields and special meta keys like gdpr_consent
+	 *
+	 * @param $key
+	 * @param $value
+	 *
+	 * @return bool|mixed
+	 */
 	public function add_meta( $key, $value = false ) {
 
-		if ( $this->handle_special_meta_keys( $key, $value ) ) {
-			return true;
+		if ( is_string( $key ) ){
+
+			if ( $this->handle_special_meta_keys( $key, $value ) ){
+				return true;
+			}
+
+			// handle custom fields (properties)
+			try {
+				$value = sanitize_custom_field( $value, $key );
+			} catch ( PropertyException $e ){
+				// this means that the property does not exist... so do nothing.
+			}
 		}
 
 		return parent::add_meta( $key, $value );
 	}
 
+	/**
+	 * Add additional checks and sanitization for custom fields and special meta keys like gdpr_consent
+	 *
+	 * @param $key
+	 * @param $value
+	 *
+	 * @return bool|mixed
+	 */
 	public function update_meta( $key, $value = false ) {
 
-		if ( $this->handle_special_meta_keys( $key, $value ) ) {
-			return true;
+		if ( is_string( $key ) ) {
+
+			if (  $this->handle_special_meta_keys( $key, $value ) ){
+				return true;
+			}
+
+			// handle custom fields (properties)
+			try {
+				$value = sanitize_custom_field( $value, $key );
+			} catch ( PropertyException $e ){
+				// this means that the property does not exist... so do nothing.
+			}
 		}
 
 		return parent::update_meta( $key, $value );

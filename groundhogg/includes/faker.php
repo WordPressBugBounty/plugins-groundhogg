@@ -193,6 +193,7 @@ class Faker {
 		$contacts = $query->query( null, true );
 
 		if ( doing_cli() ) {
+			\WP_CLI::log( sprintf( 'Generating funnel activity for %s contacts', _nf( count( $contacts ) ) ) );
 			$progress = make_progress_bar( 'Generating activity and events', count( $contacts ) );
 		}
 
@@ -270,7 +271,7 @@ class Faker {
 			$event = new Event();
 			$event->create( $event_args );
 
-			$next = $step->get_next_action();
+			$next = $step->get_next_action( $contact );
 
 			switch ( $step->get_type() ) {
 				case 'send_email':

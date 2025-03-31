@@ -1043,7 +1043,7 @@ abstract class DB {
 			'offset'    => false,
 			'orderby'   => $this->get_primary_key(),
 			'order'     => 'desc',
-			'select'    => '*',
+			'select'    => array_keys( $this->get_columns() ),
 			'search'    => false,
 			'func'      => false,
 		] );
@@ -1323,16 +1323,9 @@ abstract class DB {
 			'operation'      => 'SELECT',
 			'data'           => [],
 			'where'          => [],
-//			'limit'          => false,
-//			'offset'         => false,
 			'orderby'        => $this->get_primary_key(),
 			'search_columns' => $this->get_searchable_columns(),
 			'order'          => 'desc', // ASC || DESC
-//			'select'         => '*',
-//			'search'         => false,
-//			'func'           => false, // COUNT | AVG | SUM
-//			'groupby'        => false,
-//			'meta_query'     => [],
 			'found_rows'     => false,
 		] );
 
@@ -1538,6 +1531,9 @@ abstract class DB {
 					$query->setGroupby( $val );
 					break;
 				case 'filters':
+				case 'filters1':
+				case 'filters2':
+				case 'filters3':
 				case 'include_filters':
 
 					$this->parse_filters( $val, $query->where() );

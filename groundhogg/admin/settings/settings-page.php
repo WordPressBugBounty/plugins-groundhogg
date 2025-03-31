@@ -13,6 +13,7 @@ use Groundhogg\Tag_Mapping;
 use Groundhogg_Email_Services;
 use function Groundhogg\action_input;
 use function Groundhogg\admin_page_url;
+use function Groundhogg\array_any;
 use function Groundhogg\get_array_var;
 use function Groundhogg\get_post_var;
 use function Groundhogg\get_request_var;
@@ -373,6 +374,13 @@ class Settings_Page extends Admin_Page {
 
 		foreach ( $this->sections as $id => $section ) {
 
+            // filter out sections with no settings.
+            if ( ! array_any( $this->settings, function ( $setting ) use ( $id ) {
+                return get_array_var( $setting, 'section' ) === $id;
+            } ) ){
+                continue;
+            }
+
 			$callback = array();
 
 			if ( key_exists( 'callback', $section ) ) {
@@ -505,14 +513,29 @@ class Settings_Page extends Admin_Page {
 				'title' => _x( 'Danger Zone', 'settings_sections', 'groundhogg' ),
 				'tab'   => 'misc'
 			],
-			'compliance'            => [
-				'id'    => 'compliance',
-				'title' => _x( 'Compliance', 'settings_sections', 'groundhogg' ),
+			'double_optin'            => [
+				'id'    => 'double_optin',
+				'title' => _x( 'Double Opt-in', 'settings_sections', 'groundhogg' ),
+				'tab'   => 'marketing'
+			],
+			'gdpr'            => [
+				'id'    => 'gdpr',
+				'title' => _x( 'GDPR', 'settings_sections', 'groundhogg' ),
+				'tab'   => 'marketing'
+			],
+			'policies'            => [
+				'id'    => 'policies',
+				'title' => _x( 'Policies', 'settings_sections', 'groundhogg' ),
 				'tab'   => 'marketing'
 			],
 			'cookies'               => [
 				'id'    => 'cookies',
 				'title' => _x( 'Cookies', 'settings_sections', 'groundhogg' ),
+				'tab'   => 'marketing'
+			],
+			'compliance'            => [
+				'id'    => 'compliance',
+				'title' => _x( 'Compliance', 'settings_sections', 'groundhogg' ),
 				'tab'   => 'marketing'
 			],
 //			'sendwp'            => [
@@ -861,7 +884,7 @@ class Settings_Page extends Admin_Page {
 				'id'      => 'gh_send_notifications_on_event_failure',
 				'section' => 'event_notices',
 				'label'   => _x( 'Event Failure Notifications', 'settings', 'groundhogg' ),
-				'desc'    => _x( 'This will let you know if something goes wrong in a funnel so you can fix it.', 'settings', 'groundhogg' ),
+				'desc'    => _x( 'This will let you know if something goes wrong in a flow so you can fix it.', 'settings', 'groundhogg' ),
 				'type'    => 'checkbox',
 				'atts'    => [
 					'label' => __( 'Enable' ),
@@ -919,13 +942,24 @@ class Settings_Page extends Admin_Page {
 			'gh_ignore_user_precedence'              => [
 				'id'      => 'gh_ignore_user_precedence',
 				'section' => 'page_tracking',
-				'label'   => _x( 'Disable logged in user tracking precedence.', 'settings', 'groundhogg' ),
+				'label'   => _x( 'Disable logged in user tracking precedence', 'settings', 'groundhogg' ),
 				'desc'    => sprintf( _x( 'By default, %s will always show info of a logged in user before referencing information from tracking links or forms. You can disable this behaviour with this option.', 'settings', 'groundhogg' ), white_labeled_name() ),
 				'type'    => 'checkbox',
 				'atts'    => [
 					'label' => __( 'Disable' ),
 					'name'  => 'gh_ignore_user_precedence',
 					'id'    => 'gh_ignore_user_precedence',
+					'value' => 'on',
+				],
+			],
+			'gh_disable_page_tracking'              => [
+				'id'      => 'gh_disable_page_tracking',
+				'section' => 'page_tracking',
+				'label'   => _x( 'Disable frontend page tracking', 'settings', 'groundhogg' ),
+				'desc'    => 'The journey of your contacts on the frontend of your site, and form impressions, will no longer be tracked.',
+				'type'    => 'checkbox',
+				'atts'    => [
+					'label' => __( 'Disable' ),
 					'value' => 'on',
 				],
 			],
@@ -971,8 +1005,8 @@ class Settings_Page extends Admin_Page {
 			'gh_show_legacy_steps'                   => [
 				'id'      => 'gh_show_legacy_steps',
 				'section' => 'interface',
-				'label'   => _x( 'Enable Legacy Funnel Steps', 'settings', 'groundhogg' ),
-				'desc'    => _x( 'This will allow supported legacy funnels steps to be added in the funnel editor.', 'settings', 'groundhogg' ),
+				'label'   => _x( 'Enable Legacy Flow Steps', 'settings', 'groundhogg' ),
+				'desc'    => _x( 'This will allow supported legacy steps to be added in the flow editor.', 'settings', 'groundhogg' ),
 				'type'    => 'checkbox',
 				'atts'    => [
 					'label' => __( 'Show', 'groundhogg' ),
@@ -996,7 +1030,7 @@ class Settings_Page extends Admin_Page {
 			],
 			'gh_privacy_policy'                      => [
 				'id'      => 'gh_privacy_policy',
-				'section' => 'compliance',
+				'section' => 'policies',
 				'label'   => __( 'Privacy Policy' ),
 				'desc'    => _x( 'Link to your privacy policy.', 'settings', 'groundhogg' ),
 				'type'    => 'link_picker',
@@ -1007,7 +1041,7 @@ class Settings_Page extends Admin_Page {
 			],
 			'gh_terms'                               => [
 				'id'      => 'gh_terms',
-				'section' => 'compliance',
+				'section' => 'policies',
 				'label'   => _x( 'Terms & Conditions (Terms of Service)', 'settings', 'groundogg' ),
 				'desc'    => _x( 'Link to your terms & conditions.', 'settings', 'groundhogg' ),
 				'type'    => 'link_picker',
@@ -1018,7 +1052,7 @@ class Settings_Page extends Admin_Page {
 			],
 			'gh_strict_confirmation'                 => [
 				'id'      => 'gh_strict_confirmation',
-				'section' => 'compliance',
+				'section' => 'double_optin',
 				'label'   => _x( 'Only send to confirmed emails.', 'settings', 'groundhogg' ),
 				'desc'    => _x( 'This will stop emails being sent to contacts who do not have confirmed emails outside of the below grace period.', 'settings', 'groundhogg' ),
 				'type'    => 'checkbox',
@@ -1032,7 +1066,7 @@ class Settings_Page extends Admin_Page {
 			],
 			'gh_confirmation_grace_period'           => [
 				'id'      => 'gh_confirmation_grace_period',
-				'section' => 'compliance',
+				'section' => 'double_optin',
 				'label'   => _x( 'Email confirmation grace period', 'settings', 'groundhogg' ),
 				'desc'    => _x( 'The number of days for which you can send an email to a contact after they are created but their email has not been confirmed. The default is 14 days.', 'settings', 'groundhogg' ),
 				'type'    => 'number',
@@ -1045,7 +1079,7 @@ class Settings_Page extends Admin_Page {
 			],
 			'gh_enable_gdpr'                         => [
 				'id'      => 'gh_enable_gdpr',
-				'section' => 'compliance',
+				'section' => 'gdpr',
 				'label'   => _x( 'Enable GDPR features', 'settings', 'groundhogg' ),
 				'desc'    => _x( 'This will add a consent box to your forms as well as a "Delete Everything" Button to your email preferences page.', 'settings', 'groundhogg' ),
 				'type'    => 'checkbox',
@@ -1059,7 +1093,7 @@ class Settings_Page extends Admin_Page {
 			],
 			'gh_strict_gdpr'                         => [
 				'id'      => 'gh_strict_gdpr',
-				'section' => 'compliance',
+				'section' => 'gdpr',
 				'label'   => _x( 'Do not send email without consent', 'settings', 'groundhogg' ),
 				'desc'    => _x( 'This will prevent your system from sending emails to contacts for which you do not have explicit consent. Only works if GDPR features are enabled.', 'settings', 'groundhogg' ),
 				'type'    => 'checkbox',
@@ -1618,7 +1652,7 @@ class Settings_Page extends Admin_Page {
 			'gh_purge_page_visits'                   => [
 				'id'      => 'gh_purge_page_visits',
 				'section' => 'page_tracking',
-				'label'   => _x( 'Delete Old Page Visit Logs (recommended)', 'settings', 'groundhogg' ),
+				'label'   => _x( 'Delete old page visit logs (recommended)', 'settings', 'groundhogg' ),
 				'desc'    => __( 'To preserve storage in the database and overall performance it is recommended to delete old page visit logs.', 'groundhogg' ),
 				'type'    => 'checkbox',
 				'atts'    => [
@@ -1631,7 +1665,7 @@ class Settings_Page extends Admin_Page {
 			'gh_page_visits_log_retention'           => [
 				'id'      => 'gh_page_visits_log_retention',
 				'section' => 'page_tracking',
-				'label'   => _x( 'Log Retention', 'settings', 'groundhogg' ),
+				'label'   => _x( 'Log retention', 'settings', 'groundhogg' ),
 				'desc'    => sprintf( _x( 'The number of days to retain logged page visits. Logs older then <code>%d</code> days will be deleted.', 'settings', 'groundhogg' ), get_option( 'gh_page_visits_log_retention' ) ?: 90 ),
 				'type'    => 'input',
 				'atts'    => [
@@ -1841,7 +1875,33 @@ class Settings_Page extends Admin_Page {
 				'id'    => 'save-from-header'
 			] ) ?>
         </div>
-        <script>document.getElementById('save-from-header').addEventListener('click', e => {
+        <h2 class="gh-nav nav-tab-wrapper">
+			<?php foreach ( $this->tabs as $id => $tab ):
+
+				// Force API Tab & Licenses Tab
+				if ( ! $this->tab_has_settings( $tab['id'] ) && ! in_array( $tab['id'], [
+						'extensions',
+						'api_tab'
+					] ) ) {
+					continue;
+				}
+
+				// Check for cap restriction on the tab...
+				$cap = get_array_var( $tab, 'cap' );
+
+				// ignore if there is no cap, but if there is one check if the user has required privileges...
+				if ( $cap && ! current_user_can( $cap ) ) {
+					continue;
+				}
+
+				?>
+
+                <a href="?page=gh_settings&tab=<?php echo $tab['id']; ?>"
+                   class="nav-tab <?php echo $this->active_tab() == $tab['id'] ? 'nav-tab-active' : ''; ?>"><?php _e( $tab['title'], 'groundhogg' ); ?></a>
+			<?php endforeach; ?>
+        </h2>
+        <script>
+          document.getElementById('save-from-header').addEventListener('click', e => {
             document.getElementById('primary-submit').click()
           })</script>
         <div class="wrap">
@@ -1877,34 +1937,6 @@ class Settings_Page extends Admin_Page {
 			settings_errors();
 			$action = $this->tab_has_settings( $this->active_tab() ) ? 'options.php' : ''; ?>
             <form method="POST" enctype="multipart/form-data" action="<?php echo $action; ?>">
-
-                <!-- BEGIN TABS -->
-                <h2 class="nav-tab-wrapper">
-					<?php foreach ( $this->tabs as $id => $tab ):
-
-						// Force API Tab & Licenses Tab
-						if ( ! $this->tab_has_settings( $tab['id'] ) && ! in_array( $tab['id'], [
-								'extensions',
-								'api_tab'
-							] ) ) {
-							continue;
-						}
-
-						// Check for cap restriction on the tab...
-						$cap = get_array_var( $tab, 'cap' );
-
-						// ignore if there is no cap, but if there is one check if the user has required privileges...
-						if ( $cap && ! current_user_can( $cap ) ) {
-							continue;
-						}
-
-						?>
-
-                        <a href="?page=gh_settings&tab=<?php echo $tab['id']; ?>"
-                           class="nav-tab <?php echo $this->active_tab() == $tab['id'] ? 'nav-tab-active' : ''; ?>"><?php _e( $tab['title'], 'groundhogg' ); ?></a>
-					<?php endforeach; ?>
-                </h2>
-                <!-- END TABS -->
 
                 <!-- BEGIN SETTINGS -->
 				<?php

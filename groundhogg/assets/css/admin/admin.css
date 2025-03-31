@@ -384,10 +384,6 @@ a.danger:hover {
   width: 50%;
 }
 
-table.wp-list-table.funnels th#title {
-  width: 400px;
-}
-
 table.wp-list-table.funnels th.column-active_contacts,
 table.wp-list-table.funnels td.column-active_contacts {
   text-align: center;
@@ -571,6 +567,7 @@ label.gh-switch {
   width: 50px;
   height: 20px;
   padding: 0 !important;
+  flex-shrink: 0;
 }
 label.gh-switch input {
   opacity: 0;
@@ -657,6 +654,26 @@ label.gh-switch input:checked ~ span.off {
   display: grid;
   gap: 20px;
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.report-grid .full {
+  grid-column: span 4;
+}
+.report-grid .full p {
+  font-size: 18px;
+}
+.report-grid .add-new-report {
+  background-color: rgba(16, 38, 64, 0.05);
+  border: none;
+  border-radius: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 0;
+}
+.report-grid .add-new-report:hover {
+  background-color: rgba(16, 38, 64, 0.15);
 }
 .report-grid .report-placeholder {
   background-color: rgba(16, 38, 64, 0.15);
@@ -898,6 +915,21 @@ label.gh-switch input:checked ~ span.off {
   left: 36px !important;
 }
 
+body.gh-full-screen {
+  /* Full Screen */
+}
+body.gh-full-screen .gh-fixed-ui {
+  height: auto;
+  max-height: 100%;
+  left: 0 !important;
+  top: 0 !important;
+}
+body.gh-full-screen #adminmenumain,
+body.gh-full-screen #wpfooter,
+body.gh-full-screen #wpadminbar {
+  display: none !important;
+}
+
 #api-docs {
   background-color: #F6F9FB;
 }
@@ -967,7 +999,7 @@ label.gh-switch input:checked ~ span.off {
   display: none;
 }
 #api-docs #docs-ui {
-  height: calc( 100% - 60px );
+  height: calc(100% - 60px);
 }
 #api-docs #endpoint-display {
   padding: 20px;
@@ -1042,43 +1074,261 @@ label.gh-switch input:checked ~ span.off {
   padding: 2px;
 }
 
-table .column-steps {
-  width: 160px;
+.funnel-preview {
+  display: inline-flex;
+  align-items: center;
 }
-table .column-steps div.step-icon {
-  display: inline-block;
+.funnel-preview div.step-preview {
   white-space: nowrap;
-  width: 27px;
-  height: 27px;
-  vertical-align: top;
+  width: 30px;
+  height: 30px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: stretch;
+  align-items: stretch;
 }
-table .column-steps div.step-icon:not(:first-child) {
+.funnel-preview div.step-preview:not(:first-child) {
   margin-left: -10px;
 }
-table .column-steps div.step-icon.more {
+.funnel-preview div.step-preview div.step-icon {
+  background-color: #fff;
+  background-image: linear-gradient(var(--color-5), var(--color-5));
+  border: 2px solid var(--color);
+  padding: 3px;
+  aspect-ratio: 1/1;
+}
+.funnel-preview div.step-preview div.step-icon svg {
+  fill: var(--color);
+  width: 100%;
+  height: 100%;
+}
+.funnel-preview div.step-preview div.step-icon.more {
   background-color: #fff;
   border-radius: 20px;
   padding: 4px;
   border: 2px solid #102640;
 }
-table .column-steps div.step-icon.action {
-  border: 2px solid #9ece38;
-  background-color: #E7F3CD;
-  border-radius: 20px;
+.funnel-preview div.step-preview div.step-icon.action {
+  --color: #9ece38;
+  --color-25: rgba(158, 206, 56, 0.25);
+  --color-5: rgba(158, 206, 56, 0.05);
+  border-radius: 5px;
 }
-table .column-steps div.step-icon.benchmark {
-  border: 2px solid #f58115;
-  background-color: #FCDFC4;
+.funnel-preview div.step-preview div.step-icon.benchmark {
+  --color: #f58115;
+  --color-25: rgba(245, 129, 21, 0.25);
+  --color-5: rgba(245, 129, 21, 0.05);
+  border-radius: 50%;
+}
+.funnel-preview div.step-preview div.step-icon.logic {
+  --color: #6c19ad;
+  --color-25: rgba(108, 25, 173, 0.25);
+  --color-5: rgba(108, 25, 173, 0.05);
   border-radius: 3px;
+  transform: rotate(45deg) scale(0.8);
 }
-table .column-steps div.step-icon svg,
-table .column-steps div.step-icon img {
+.funnel-preview div.step-preview div.step-icon.logic .gh-tooltip,
+.funnel-preview div.step-preview div.step-icon.logic svg {
+  transform: rotate(-45deg);
+}
+.funnel-preview div.step-preview div.step-icon svg,
+.funnel-preview div.step-preview div.step-icon img {
   width: 100%;
   height: 100%;
 }
 
-#wpbody-content:has(.gh-header.admin-page-header) .wrap {
+#wpbody-content:has(.gh-header.admin-page-header):has(#show-settings-link) .wrap {
   margin-top: 40px;
+}
+
+.groundhogg-admin-page .gh-header + h2.gh-nav {
+  margin: 0 0 0 -20px !important;
+  padding: 10px 0 0 20px !important;
+  background-color: #fff;
+}
+
+.gh-site {
+  /* Darks */
+  --color-dark-800: #212121;
+  --color-dark-900: #0f181e;
+  /* Gray */
+  --color-gray-50: #fafafa;
+  --color-gray-100: #e0e0e0;
+  /* Browns */
+  --color-brown-50: #fffcf1;
+  --color-brown-75: #fffcf1;
+  --color-brown-100: #fff5da;
+  --color-brown-200: #ffefb0;
+  --color-brown-300: #f7dd96;
+  --color-brown-400: #cfa756;
+  --color-brown-500: #9e743e;
+  /* Oranges */
+  --color-orange-700: #ff9431;
+  --color-orange-900: #ff7b01;
+  /* Reds */
+  --color-red-200: #f2c3c6;
+  --color-red-700: #DD2A37;
+  --color-red-900: #CA2000;
+  /* Various */
+  --color-footer: #1F1A22;
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --color-yellow: #ffca00;
+  --color-green-100: #dce9d5;
+  --color-green-400: #9FCA8F;
+  --color-green-500: #80BA6D;
+  --color-green-600: #61AA4A;
+  --color-green-900: #248B04;
+  --color-slate: #455A64;
+}
+.gh-site h3 {
+  font-size: 20px;
+}
+.gh-site p {
+  font-size: 16px;
+}
+.gh-site a {
+  color: var(--color-orange-900);
+  text-decoration: none;
+}
+.gh-site .bold {
+  font-weight: bold;
+}
+.gh-site .gh-primary-card {
+  border-radius: 0.75rem;
+  background-color: var(--color-brown-200);
+  border-style: solid;
+  border-width: 1px;
+  border-right-width: 3px;
+  border-bottom-width: 3px;
+  border-color: var(--color-dark-800);
+}
+.gh-site .gh-site-button {
+  border-radius: 0.75rem;
+  border-style: solid;
+  border-width: 1px;
+  border-right-width: 3px;
+  border-bottom-width: 3px;
+  border-color: var(--color-dark-800);
+  text-transform: uppercase;
+  padding: 0.625rem 1.25rem;
+}
+.gh-site .gh-site-button.primary {
+  background-color: var(--color-yellow);
+}
+.gh-site .gh-secondary-card {
+  border-radius: 0.75rem;
+  background-color: var(--color-brown-50);
+  border-style: solid;
+  border-width: 1px;
+  border-right-width: 3px;
+  border-bottom-width: 3px;
+  border-color: var(--color-dark-800);
+}
+
+.tour-prompt {
+  background: #fff;
+  border-radius: 10px;
+  z-index: 1000;
+  border: 1px solid #102640;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+.tour-prompt button.dismiss {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  border: none;
+  background: transparent;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+}
+.tour-prompt .gh-text {
+  font-weight: 500;
+}
+.tour-prompt.right {
+  border-top-left-radius: 0;
+}
+.tour-prompt.left {
+  border-top-right-radius: 0;
+}
+.tour-prompt.above {
+  border-bottom-left-radius: 0;
+}
+.tour-prompt.below {
+  border-top-left-radius: 0;
+}
+.tour-prompt.below-left {
+  border-top-right-radius: 0;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.tour-window {
+  z-index: 98 !important;
+  position: fixed;
+  border-style: solid;
+  border-color: rgba(16, 38, 64, 0.15);
+  border-radius: 10px;
+  background: transparent;
+  top: 0;
+  left: 0;
+}
+.tour-window .tour-window-shadow {
+  height: 100%;
+  width: 100%;
+  border-radius: 10px;
+  box-shadow: 0 0 200px 100px #102640 !important;
+  background: transparent;
+}
+
+.tour-highlighted {
+  z-index: 99 !important;
+  position: relative;
+  --gap: -10px;
+}
+.tour-highlighted::after {
+  content: "";
+  position: absolute;
+  top: var(--gap);
+  left: var(--gap);
+  right: var(--gap);
+  bottom: var(--gap);
+  background: transparent;
+  box-shadow: 0 0 200px 100px #102640 !important;
+  border-radius: 10px;
+}
+
+[data-gh-href] {
+  cursor: pointer;
+}
+
+.gh-checkbox-label:has(input.gh-checkbox-toggle) {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.number-of {
+  position: absolute;
+  transform: translate(50%, -50%);
+  top: 0;
+  right: 0;
+  font-size: 11px;
+  aspect-ratio: 1/1;
+  line-height: 1;
+  background-color: #102640;
+  color: #FFF;
+  border-radius: 50%;
+  width: 16px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
 }
 
 /*# sourceMappingURL=admin.css.map */

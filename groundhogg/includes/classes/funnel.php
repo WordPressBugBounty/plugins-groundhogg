@@ -4,6 +4,7 @@ namespace Groundhogg;
 
 use Groundhogg\DB\Funnels;
 use Groundhogg\DB\Steps;
+use Groundhogg\Utils\DateTimeHelper;
 
 class Funnel extends Base_Object_With_Meta {
 
@@ -30,6 +31,105 @@ class Funnel extends Base_Object_With_Meta {
 		$this->data        = (array) $data->data;
 		$this->meta        = (array) $data->meta;
 		$this->steps       = (array) $data->steps;
+		$this->campaigns   = (array) $data->campaigns;
+	}
+
+	public function step_flow( $echo = true ) {
+
+		$steps = $this->get_steps();
+
+		$steps = array_filter( $steps, function ( Step $step ) {
+			return $step->is_main_branch();
+		} );
+
+		if ( empty( $steps ) ) {
+			return false;
+		}
+
+		$html = '';
+
+		foreach ( $steps as $step ) {
+			$step->get_step_element()->validate_settings( $step );
+			$step_output = $step->sortable_item( $echo );
+			if ( ! $echo ) {
+				$html .= $step_output;
+			}
+		}
+
+		if ( $echo ) {
+			return true;
+		}
+
+		return $html;
+	}
+
+	public function step_settings( $echo = true ) {
+
+		$steps = $this->get_steps();
+
+		usort( $steps, function ( $a, $b ) {
+			return $a->ID - $b->ID; // sort by ID because when using morphdom that won't change dom pos
+		} );
+
+		$html = '';
+
+		foreach ( $steps as $step ) {
+			$step->get_step_element()->validate_settings( $step );
+			$html .= $step->html_v2( $echo );
+		}
+
+		return $html;
+	}
+
+	public function flow_preview( $show = 15 ) {
+
+		$allSteps = ! empty( $this->steps ) ? $this->steps : $this->get_steps();
+
+		?>
+        <div class="funnel-preview"><?php
+
+		$steps    = array_splice( $allSteps, 0, $show );
+
+		foreach ( $steps as $step ) {
+
+			// if we're here, the step type is registered
+			$step_type = Plugin::instance()->step_manager->get_element( get_array_var( $step->data, 'step_type' ) );
+
+			?>
+            <div class="step-preview">
+                <div class="step-icon <?php echo $step_type->get_type() ?> <?php echo $step_type->get_group() ?>">
+					<?php if ( $step_type->icon_is_svg() ): ?>
+						<?php echo $step_type->get_icon_svg(); ?>
+					<?php else: ?>
+                        <img src="<?php echo esc_url( $step_type->get_icon() ); ?>">
+					<?php endif; ?>
+                </div>
+                <div class="gh-tooltip top">
+					<?php _e( get_array_var( $step->data, 'step_title' ) ) ?>
+                </div>
+            </div>
+			<?php
+
+		}
+
+		if ( ! empty( $allSteps ) ) {
+			?>
+            <div class="step-preview">
+                <div class="step-icon more">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16">
+                        <path fill="#000" d="M4 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm6 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm4 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>
+                    </svg>
+                    <div class="gh-tooltip top">
+						<?php printf( _n( '%d more step...', '%d more steps', count( $allSteps ), 'groundhogg' ), count( $allSteps ) ) ?>
+                    </div>
+                </div>
+            </div>
+			<?php
+		}
+
+		?>
+        </div><?php
+
 	}
 
 	/**
@@ -95,7 +195,8 @@ class Funnel extends Base_Object_With_Meta {
 			'event_type' => Event::FUNNEL,
 			'status'     => Event::WAITING,
 		], [
-			'status' => Event::PAUSED
+			'status'         => Event::PAUSED,
+			'time_scheduled' => time()
 		] );
 	}
 
@@ -108,7 +209,8 @@ class Funnel extends Base_Object_With_Meta {
 			'event_type' => Event::FUNNEL,
 			'status'     => Event::PAUSED,
 		], [
-			'status' => Event::WAITING
+			'status'         => Event::WAITING,
+			'time_scheduled' => time()
 		] );
 	}
 
@@ -117,13 +219,16 @@ class Funnel extends Base_Object_With_Meta {
 	 */
 	public function cancel_events() {
 
+		$time = time();
+
 		// Cancel waiting events
 		event_queue_db()->update( [
 			'funnel_id'  => $this->get_id(),
 			'event_type' => Event::FUNNEL,
 			'status'     => Event::WAITING,
 		], [
-			'status' => Event::CANCELLED
+			'status'         => Event::CANCELLED,
+			'time_scheduled' => $time
 		] );
 
 		// Cancel paused events
@@ -132,7 +237,8 @@ class Funnel extends Base_Object_With_Meta {
 			'event_type' => Event::FUNNEL,
 			'status'     => Event::PAUSED,
 		], [
-			'status' => Event::CANCELLED
+			'status'         => Event::CANCELLED,
+			'time_scheduled' => $time
 		] );
 
 		// Move to history
@@ -149,10 +255,22 @@ class Funnel extends Base_Object_With_Meta {
 	 * @return bool
 	 */
 	public function update_step_status() {
+
+		// update inactive steps to active
+		if ( $this->is_active() ) {
+			return db()->steps->update( [
+				'funnel_id'   => $this->get_id(),
+				'step_status' => 'inactive'
+			], [
+				'step_status'    => 'active',
+				'date_activated' => ( new DateTimeHelper() )->ymdhis()
+			] );
+		}
+
 		return get_db( 'steps' )->update( [
 			'funnel_id' => $this->get_id()
 		], [
-			'step_status' => $this->is_active() ? 'active' : 'inactive'
+			'step_status' => 'inactive'
 		] );
 	}
 
@@ -176,108 +294,133 @@ class Funnel extends Base_Object_With_Meta {
 	}
 
 	/**
-	 * Commit all the changes from the previous update.
+	 * Initialize the levels for the steps
 	 *
-	 * - Pause all active events for this funnel
-	 * - Commit all the edited steps
-	 * - Delete any steps which are not in the last commit
-	 * - Update the state of "edited"
-	 * - Resume any remaining paused events
-	 * - Update the funnel to active
+	 * @param string $branch
+	 * @param int    $level
+	 *
+	 * @return mixed
+	 */
+	public function set_step_levels( string $branch = 'main', int $level = 1 ) {
+
+		if ( $branch === 'main' && $level === 1 ) {
+			Step::increment_step_order( 0 );
+		}
+
+		$steps = $this->get_steps();
+
+		$branch_steps = array_filter( $steps, function ( Step $step ) use ( $branch ) {
+			return $step->branch_is( $branch );
+		} );
+
+		$prev     = null;
+		$maxDepth = $level;
+
+		foreach ( $branch_steps as $step ) {
+
+			$step->update_branch_path_in_db(); // do this while we're here
+
+			if ( $step->is_benchmark() ) {
+				$step->update( [
+					'step_level' => $level,
+					'step_order' => Step::increment_step_order()
+				] );
+				$maxDepth = max( $maxDepth, $this->set_step_levels( "$step->ID", $level + 1 ) );
+				$prev     = $step;
+				continue;
+			}
+
+			if ( $prev && $prev->is_benchmark() ) {
+				$level = $maxDepth;
+			}
+
+			$step->update( [
+				'step_level' => $level,
+				'step_order' => Step::increment_step_order()
+			] );
+
+			$level ++;
+
+			if ( $step->is_branch_logic() ) {
+				$sub_steps = $step->get_sub_steps();
+				$branches  = array_unique( wp_list_pluck( $sub_steps, 'branch' ) );
+				$maxDepth  = $level;
+				foreach ( $branches as $branch ) {
+					$maxDepth = max( $maxDepth, $this->set_step_levels( $branch, $level ) );
+				}
+				$level = $maxDepth;
+			}
+
+			$prev = $step;
+		}
+
+		return max( $level, $maxDepth );
+	}
+
+	/**
+	 * Merge step changes into the real data and meta
 	 */
 	public function commit() {
 
-		// Pause any active events
-		$this->pause_events();
-
-		$edited = $this->get_meta( 'edited' );
-
-		// Exit if there were not changes.
-		if ( ! $edited ) {
-			$this->add_error( 'error', 'No changes have been made' );
-
-			return false;
+		// can't commit if not active...
+		if ( ! $this->is_active() ) {
+			return;
 		}
 
-		$edited_steps = array_map( function ( $edited_step ) {
-			return new Temp_Step( $edited_step );
-		}, $edited['steps'] );
+		$steps = $this->get_real_steps(); // use instead of ::get_steps() to avoid merged changes
 
-		// Create a copy of the "previous" steps pre-commit
-		$previous_steps = $this->get_steps();
+		// commit all the step changes
+		foreach ( $steps as $step ) {
+			$step->commit();
+		}
 
-		$loop = [];
+		$this->update_step_status();
+	}
 
-		// Loop thru all the edited steps
-		foreach ( $edited_steps as $edited_step ) {
+	/**
+	 * Clear any changes and delete inactive steps that may have been added
+	 */
+	public function uncommit() {
 
-			$loop[] = $edited_step;
+		// can't uncommit if not active...
+		if ( ! $this->is_active() ) {
+			return;
+		}
 
-			// validate the step settings through the use of the save method from the Funnel_Step()
-			$edited_step->validate();
+		$steps = $this->get_real_steps();
 
-			if ( $edited_step->has_errors() ) {
+		// commit all the step changes
+		foreach ( $steps as $step ) {
 
-				$loop[] = $edited_step->get_errors();
-
-				foreach ( $edited_step->get_errors() as $error ) {
-					$error->add_data( [ 'step' => $edited_step ] );
-					$this->add_error( $error );
-				}
+			// delete any inactive steps
+			if ( ! $step->is_active() ) {
+				$step->delete_and_commit();
+				continue;
 			}
+
+			$step->clear_changes();
+		}
+	}
+
+	/**
+	 * Handler to also delete steps
+	 *
+	 * @return bool
+	 */
+	public function delete() {
+
+		$this->update( [ 'status' => 'archived' ] );
+		$this->update_step_status();
+		$this->cancel_events();
+
+		$steps = $this->get_steps();
+
+		// delete all the steps in the funnel as well
+		foreach ( $steps as $step ) {
+			$step->delete_and_commit();
 		}
 
-		/**
-		 * If the funnel has errors at this point
-		 * - Reset the status of the funnel to active or inactive
-		 * - unpause any waiting steps
-		 * - return false
-		 */
-		if ( $this->has_errors() ) {
-
-			// unpause any paused events
-			$this->unpause_events();
-
-			return false;
-		}
-
-		// There were no errors, so we can commit the changes to the funnel
-		foreach ( $edited_steps as $edited_step ) {
-			$edited_step->commit();
-		}
-
-		// Create and ID list of all the now current steps of this funnel
-		$committed_step_ids = array_map( function ( $step ) {
-			return $step->get_id();
-		}, $edited_steps );
-
-		// Create a list of all the steps which are not in the commit
-		$steps_to_delete = array_filter( $previous_steps, function ( $step ) use ( $committed_step_ids ) {
-			// If the ID is not in the committed steps, we're deleting it.
-			return ! in_array( $step->get_id(), $committed_step_ids );
-		} );
-
-		// Loop through all the steps which need to be deleted and delete them
-		foreach ( $steps_to_delete as $step_to_delete ) {
-			$step_to_delete = new Step( $step_to_delete );
-			$step_to_delete->delete();
-		}
-
-		// Unpause any active events which haven't been+ deleted as a result of the associated step being deleted
-		$this->unpause_events();
-
-		// Update the status of the funnel to active
-		$this->update( [
-			'status' => 'active'
-		] );
-
-		$this->update_meta( [
-			'edited' => [
-				'steps' => $this->get_steps()
-			]
-		] );
-
-		return true;
+		return parent::delete();
 	}
 
 	/**
@@ -293,10 +436,9 @@ class Funnel extends Base_Object_With_Meta {
 		$updated    = parent::update( $data );
 		$new_status = $this->get_status();
 
-		$this->update_step_status();
-
-		// When the status of the funnel changes
+		// When the status of the funnel changes we must handle events and steps accordingly
 		if ( $new_status !== $old_status ) {
+			$this->update_step_status();
 			$this->update_events_from_status();
 		}
 
@@ -436,9 +578,29 @@ class Funnel extends Base_Object_With_Meta {
 	 * @return array|bool|int|object|null
 	 */
 	public function get_num_steps() {
+
+		if ( $this->is_editing() ) {
+			return count( $this->get_steps() );
+		}
+
 		return db()->steps->count( [
 			'funnel_id' => $this->get_id(),
 		] );
+	}
+
+	public function has_errors() {
+
+		$has_errors = array_any( $this->get_steps(), function ( Step $step ) {
+			$step->get_step_element()->validate_settings( $step );
+
+			return $step->has_errors() || $step->get_step_element()->has_errors();
+		} );
+
+		if ( $has_errors ) {
+			return true;
+		}
+
+		return parent::has_errors();
 	}
 
 	/**
@@ -456,9 +618,50 @@ class Funnel extends Base_Object_With_Meta {
 			'order'     => 'ASC',
 		] );
 
+		// if not editing, only active steps should be included...
+		if ( ! $this->is_editing() && $this->is_active() ) {
+			$query['step_status'] = 'active';
+		}
+
 		$steps = $this->get_steps_db()->query( $query );
 
-		return array_map_to_step( $steps );
+		$steps = array_map_to_step( $steps );
+
+		if ( $this->is_editing() ) {
+
+			foreach ( $steps as $step ) {
+				$step->merge_changes();
+			}
+
+			// filter out "deleted" steps with the status as deleted in their changes
+			$steps = array_filter( $steps, function ( $step ) {
+				return $step->step_status !== 'deleted';
+			} );
+
+			usort( $steps, function ( Step $a, Step $b ) {
+				return $a->get_order() - $b->get_order();
+			} );
+		}
+
+		return $steps;
+	}
+
+	/**
+	 * Same as get_steps, but without the is_editing() BS
+	 * @return Step[]
+	 */
+	public function get_real_steps( $query = [] ) {
+
+		$query = wp_parse_args( $query, [
+			'funnel_id' => $this->get_id(),
+			'orderby'   => 'step_order',
+			'order'     => 'ASC',
+		] );
+
+		$steps = $this->get_steps_db()->query( $query );
+		$steps = array_map_to_step( $steps );
+
+		return $steps;
 	}
 
 	/**
@@ -492,6 +695,25 @@ class Funnel extends Base_Object_With_Meta {
 		return apply_filters( 'groundhogg/funnel/export', $export, $this );
 	}
 
+	public function is_editing() {
+
+		if ( wp_doing_ajax() || wp_is_serving_rest_request() ) {
+			wp_parse_str( wp_parse_url( wp_get_referer(), PHP_URL_QUERY ), $params );
+
+			if ( get_array_var( $params, 'page' ) === 'gh_funnels'
+			     && get_array_var( $params, 'action' ) === 'edit'
+			     && isset_not_empty( $params, 'funnel' )
+			     && absint( $params['funnel'] ) === $this->get_id()
+			) {
+				return true;
+			}
+		}
+
+		return get_url_var( 'page' ) === 'gh_funnels'
+		       && get_url_var( 'action' ) === 'edit'
+		       && absint( get_url_var( 'funnel' ) ) === $this->get_id();
+	}
+
 	/**
 	 * Get the funnel as an array.
 	 *
@@ -513,12 +735,28 @@ class Funnel extends Base_Object_With_Meta {
 	}
 
 	/**
+	 * A funnel has changes if any of its steps have changes, the step is inactive or deleted
+	 *
+	 * @return bool
+	 */
+	public function has_changes() {
+		return array_any( $this->get_steps(), function ( Step $step ) {
+			return $step->has_changes() || in_array( $step->step_status, [ 'inactive', 'deleted' ] );
+		} );
+	}
+
+	/**
 	 * Return wrapper function.
 	 *
 	 * @return array|bool
 	 */
 	public function export() {
-		return $this->get_as_array();
+		// only export real steps
+		$json = $this->get_as_array();
+
+		return array_merge( $json, [
+			'steps' => $this->get_real_steps()
+		] );
 	}
 
 	/**
@@ -563,15 +801,16 @@ class Funnel extends Base_Object_With_Meta {
 
 			$_step = (object) $_step;
 
-			$data              = (array) $_step->data;
-			$data['funnel_id'] = $this->get_id();
-			$step              = new Step();
+			$data                = (array) $_step->data;
+			$data['funnel_id']   = $this->get_id();
+			$data['step_status'] = 'inactive'; // force status to inactive
 
+			$step = new Step();
 			$step->create( $data );
-			$step->update_meta( (array) $_step->meta );
-			$step->import( (array) $_step->export );
+			$step->update_meta( json_decode( json_encode( $_step->meta ), true ) );
+			$step->import( json_decode( json_encode( $_step->export ), true ) );
 
-			// Save the original ID from the donor site
+			// Save the original ID from the donor funnel
 			$step->update_meta( 'imported_step_id', $_step->ID );
 
 			$steps[ $i ] = $step;

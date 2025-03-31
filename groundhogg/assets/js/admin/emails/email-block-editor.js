@@ -537,17 +537,15 @@
   }
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Z' && e.ctrlKey && e.shiftKey) {
+    if (e.key === 'Z' && ( e.ctrlKey || e.metaKey ) && e.shiftKey) {
       History.redo()
     }
 
-    if (e.key === 'z' && e.ctrlKey && !e.shiftKey) {
+    if (e.key === 'z' && ( e.ctrlKey || e.metaKey ) && !e.shiftKey) {
       History.undo()
     }
-  })
 
-  document.addEventListener('keydown', e => {
-    if (e.key === 'y' && e.ctrlKey) {
+    if (e.key === 'y' && ( e.ctrlKey || e.metaKey ) ) {
       History.redo()
     }
   })
@@ -958,6 +956,10 @@
   }
 
   const setBlocks = (blocks = [], hasChanges = true) => {
+
+    if ( isHTMLEditor() ){
+      return;
+    }
 
     let css = renderBlocksCSS(blocks)
     let content = renderBlocksHTML(blocks)
@@ -3825,9 +3827,11 @@
                 setEmailData({
                   message_type: e.target.value,
                 })
-                // This may update the footer block
-                setBlocks(getBlocks())
-                morphBlocks()
+                if ( isBlockEditor() ){
+                  // This may update the footer block
+                  setBlocks(getBlocks())
+                  morphBlocks()
+                }
               },
             })),
           isBlockEditor() ? Control({
@@ -3843,7 +3847,7 @@
               },
             })) : null,
           Control({
-              label: 'Show in my templates',
+              label: 'Show in templates when creating new emails',
             },
             Toggle({
               id      : 'save-as-template',
@@ -5232,6 +5236,7 @@
                                       false)
                                     renderEditor()
                                     close()
+                                    TitlePrompt()
                                   }
 
                                   reader.readAsText(file)
@@ -5253,6 +5258,7 @@
                           page: 'editor',
                         })
                         morphEmailEditor()
+                        TitlePrompt()
                       },
                     },
                     'Start from scratch'),
@@ -5292,6 +5298,40 @@
       ])
   }
 
+  const TitlePrompt = () => MakeEl.ModalWithHeader({
+    header:  'Name this email',
+    onOpen: () => {
+      let input = document.getElementById( 'prompt-email-title' )
+      input.focus()
+      input.select()
+    }
+  }, ({close}) => MakeEl.Form({
+    onSubmit: e => {
+      e.preventDefault()
+      let fd = new FormData(e.currentTarget)
+      let title = fd.get( 'email_title' )
+      setEmailData({
+        title
+      })
+      morphHeader()
+      close()
+    },
+  }, [
+    Div({
+      className: 'display-flex gap-5'
+    }, [
+      Input({
+        id: 'prompt-email-title',
+        name: 'email_title',
+        value: getEmailData().title,
+      }),
+      Button({
+        className: 'gh-button primary',
+        type: 'submit'
+      }, 'Save')
+    ])
+  ]))
+
   const Template = ({
     ID,
     data,
@@ -5326,6 +5366,7 @@
             setBlocks(parseBlocksFromContent(data.content))
             setState({ page: 'editor' })
             renderEditor()
+            TitlePrompt()
           },
           onMouseenter: e => {
             const iframe = document.getElementById(`preview-${ ID }`)
@@ -7550,7 +7591,7 @@
       ]).innerHTML
     },
     defaults           : {
-      src   : 'http://via.placeholder.com/600x338',
+      src   : 'https://placehold.co/600x338?text=Image',
       alt   : 'placeholder image',
       title : 'placeholder image',
       width : 600,
@@ -9012,6 +9053,9 @@
       style = {},
       linkStyle = {},
       alignment = 'left',
+      privacyPolicy = true,
+      terms = true,
+      tel = true,
       updateBlock,
     }) => {
       return Fragment([
@@ -9025,9 +9069,31 @@
                   alignment,
                   morphControls: true,
                 }),
-
               })),
-
+            Control({ label: 'Phone Number' },
+              Toggle({
+                id      : 'include-tel',
+                checked: tel,
+                onChange: e => updateBlock({
+                  tel: e.target.checked
+                }),
+              })),
+            Control({ label: 'Privacy Policy' },
+              Toggle({
+                id      : 'include-privacy-policy',
+                checked: privacyPolicy,
+                onChange: e => updateBlock({
+                  privacyPolicy: e.target.checked
+                }),
+              })),
+            Control({ label: 'Terms' },
+              Toggle({
+                id      : 'include-terms',
+                checked: terms,
+                onChange: e => updateBlock({
+                  terms: e.target.checked
+                }),
+              })),
           ]),
         TagFontControlGroup('Font Style', 'style', style, updateBlock),
         TagFontControlGroup(__('Link Style'),
@@ -9042,6 +9108,9 @@
       style = {},
       linkStyle = {},
       alignment = 'left',
+      tel = true,
+      terms = true,
+      privacyPolicy = true
     }) => {
 
       const footerLine = (content) => makeEl('p', {
@@ -9060,6 +9129,20 @@
         unsubscribe,
       } = _BlockEditor.footer
 
+      let useLinks = [];
+
+      if ( links.tel && tel ){
+        useLinks.push( links.tel )
+      }
+
+      if ( links.privacy && privacyPolicy ){
+        useLinks.push( links.privacy )
+      }
+
+      if ( links.terms && terms ){
+        useLinks.push( links.terms )
+      }
+
       let footer = Div({
           id       : 'footer',
           className: 'footer',
@@ -9069,7 +9152,7 @@
 
           footerLine(address),
 
-          footerLine(links),
+          footerLine(useLinks.join(' | ')),
 
           getEmailData().message_type !== 'transactional' ? footerLine(unsubscribe) : null,
         ])
@@ -9086,7 +9169,11 @@
 
       return footer
     },
-    plainText: ({}) => {
+    plainText: ({
+      tel = true,
+      terms = true,
+      privacyPolicy = true
+    }) => {
 
       let {
         business_name,
@@ -9095,10 +9182,24 @@
         unsubscribe,
       } = _BlockEditor.footer
 
+      let useLinks = [];
+
+      if ( links.tel && tel ){
+        useLinks.push( links.tel )
+      }
+
+      if ( links.privacy && privacyPolicy ){
+        useLinks.push( links.privacy )
+      }
+
+      if ( links.terms && terms ){
+        useLinks.push( links.terms )
+      }
+
       return [
         `Copyright ${ business_name }`,
         address,
-        extractPlainText(links),
+        extractPlainText(useLinks.join(' | ')),
         extractPlainText(unsubscribe),
 
       ].join('  \n')
@@ -9112,6 +9213,9 @@
       linkStyle: {
         color: '#488aff',
       },
+      tel: true,
+      terms: true,
+      privacyPolicy: true
     },
   })
 
@@ -9273,37 +9377,14 @@
       }
 
       blocks = [
-        createBlock('text'),
-
-        createBlock('spacer'),
-
-        createBlock('button'),
-
-        createBlock('spacer'),
-
-        createBlock('text'),
-
-        createBlock('spacer'),
-
-        createBlock('social', {
-          socials: [
-            'facebook',
-            'twitter',
-            'instagram',
-            'linkedin',
-            'youtube',
-          ].map(i => [
-            i,
-            `https://${ i }.com`,
-          ]),
-
-          align: 'left',
+        createBlock('text', {
+          //language=HTML
+          content: `<p>Hi {first::there},</p>
+          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin egestas dolor non nulla varius, id fermentum ante euismod. Ut a sodales nisl, at maximus felis. Suspendisse potenti. Etiam fermentum magna nec diam lacinia, ut volutpat mauris accumsan. Nunc id convallis magna.</p>
+          <p>Regards,</p>
+          <p>{owner_signature}</p>`
         }),
-
-        createBlock('spacer'),
-
         createBlock('footer'),
-
       ]
 
       page = 'templates'
@@ -9471,7 +9552,13 @@
 
   // These functions help render various UI components
 
-  const morphBlocks = () => morph('#builder-content', BlockEditorContent())
+  const morphBlocks = () => {
+    if ( isHTMLEditor() ){
+      return
+    }
+
+    morph('#builder-content', BlockEditorContent())
+  }
   const removeControls = () => morph('#controls-panel', Div())
   const morphControls = () => morph('#controls-panel', ControlsPanel())
   const morphBlockEditor = () => morph('#email-block-editor', BlockEditor())

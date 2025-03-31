@@ -2,13 +2,10 @@
 
 namespace Groundhogg\Steps\Actions;
 
-use Groundhogg\Contact;
-use Groundhogg\Event;
 use Groundhogg\Step;
 use Groundhogg\Utils\DateTimeHelper;
-use function Groundhogg\force_custom_step_names;
-use function Groundhogg\get_date_time_format;
 use function Groundhogg\html;
+use function Groundhogg\one_of;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -104,9 +101,9 @@ class Delay_Timer extends Action {
 		return 'delay_timer';
 	}
 
-    public function get_sub_group() {
-	    return 'delay';
-    }
+	public function get_sub_group() {
+		return 'delay';
+	}
 
 	/**
 	 * Get the description
@@ -123,8 +120,8 @@ class Delay_Timer extends Action {
 	 * @return string
 	 */
 	public function get_icon() {
-//		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/delay-timer.png';
-		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/delay-timer.svg';
+//		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/delay-timer.png';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/delay/delay-timer.svg';
 	}
 
 	public function admin_scripts() {
@@ -136,14 +133,15 @@ class Delay_Timer extends Action {
 	 */
 	public function settings( $step ) {
 		echo html()->e( 'div', [
-			'id' => "step_{$step->ID}_delay_timer_settings"
+			'id'    => "step_{$step->ID}_delay_timer_settings",
+			'class' => 'ignore-morph'
 		], 'Delay Timer' );
 
 	}
 
 	/**
-     * Show a preview of the run time
-     *
+	 * Show a preview of the run time
+	 *
 	 * @param Step $step
 	 *
 	 * @return void
@@ -175,17 +173,105 @@ class Delay_Timer extends Action {
 		<?php
 	}
 
-    public function save( $step ) {
-        // silence is golden
-    }
-
 	public function generate_step_title( $step ) {
-	    return $step->get_meta( 'delay_preview' );
-    }
+		return $this->get_setting( 'delay_preview' ) ?: 'Wait 3 days';
+	}
+
+	public function get_settings_schema() {
+		return [
+			'delay_preview'     => [
+				'default'  => '',
+				'sanitize' => function ( $value ) {
+					return wp_kses( $value, 'data' );
+				}
+			],
+			'delay_amount'      => [
+				'default'  => 0,
+				'sanitize' => 'absint'
+			],
+			'delay_type'        => [
+				'default'  => 'days',
+				'sanitize' => function ( $value ) {
+					return one_of( $value, [ 'minutes', 'hours', 'days', 'weeks', 'months', 'years', 'none' ] );
+				}
+			],
+			'run_on_type'       => [
+				'default'  => 'any',
+				'sanitize' => function ( $value ) {
+					return one_of( $value, [ 'any', 'weekday', 'weekend', 'day_of_month', 'day_of_week' ] );
+				}
+			],
+			'run_when'          => [
+				'default'  => 'now',
+				'sanitize' => function ( $value ) {
+					return one_of( $value, [ 'now', 'later' ] );
+				}
+			],
+			'run_time'          => [
+				'default'  => '09:00:00',
+				'sanitize' => function ( $value ) {
+					return ( new DateTimeHelper( $value ) )->format( 'H:i:s' );
+				}
+			],
+			'run_time_to'       => [
+				'default'  => '17:00:00',
+				'sanitize' => function ( $value ) {
+					return ( new DateTimeHelper( $value ) )->format( 'H:i:s' );
+				}
+			],
+			'send_in_timezone'  => [
+				'default'  => false,
+				'sanitize' => 'boolval'
+			],
+			'run_on_dow_type'   => [
+				'default'  => 'any',
+				'sanitize' => function ( $value ) {
+					return one_of( $value, [ 'any', 'first', 'second', 'third', 'fourth', 'last' ] );
+				}
+			],
+			'run_on_dow'        => [
+				'default'  => [],
+				'sanitize' => function ( $value ) {
+					return array_intersect( $value, [ 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday' ] );
+				}
+			],
+			'run_on_month_type' => [
+				'default'  => 'any',
+				'sanitize' => function ( $value ) {
+					return one_of( $value, [ 'any', 'specific' ] );
+				}
+			],
+			'run_on_months'     => [
+				'default'  => [],
+				'sanitize' => function ( $value ) {
+					return array_intersect( $value, [
+						'january',
+						'february',
+						'march',
+						'april',
+						'may',
+						'june',
+						'july',
+						'august',
+						'september',
+						'october',
+						'november',
+						'december',
+					] );
+				}
+			],
+			'run_on_dom'        => [
+				'default'  => [],
+				'sanitize' => function ( $value ) {
+					return array_intersect( array_map( 'absint', $value ), range( 1, 31 ) );
+				}
+			],
+		];
+	}
 
 	/**
-     * Replaces the get_enqueue_time() method and utilizes a base timestamp
-     *
+	 * Replaces the get_enqueue_time() method and utilizes a base timestamp
+	 *
 	 * @throws \Exception
 	 *
 	 * @param Step $step
@@ -216,7 +302,7 @@ class Delay_Timer extends Action {
 		$date->setTimezone( $tz );
 
 		// The base amount of time which we need to wait for
-		if ( $settings['delay_type'] !== 'none' ) {
+		if ( $settings['delay_type'] !== 'none' && $settings['delay_amount'] ) {
 			$date->modify( sprintf( '+%d %s', $settings['delay_amount'], $settings['delay_type'] ) );
 		}
 
@@ -366,20 +452,12 @@ class Delay_Timer extends Action {
 				break;
 		}
 
+		// if the calculated time is now, lets advanced the base time by a minute...
+		// this cleverly prevents an infinite loop
+		if ( $date->isNow() ) {
+			return $this->calc_run_time( time() + MINUTE_IN_SECONDS, $step );
+		}
+
 		return $date->getTimestamp();
 	}
-
-	/**
-	 * Delay timers don't do anything, they just have the delay and enqueue the next step.
-	 *
-	 * @param $contact Contact
-	 * @param $event   Event
-	 *
-	 * @return true
-	 */
-	public function run( $contact, $event ) {
-		//do nothing
-		return true;
-	}
-
 }

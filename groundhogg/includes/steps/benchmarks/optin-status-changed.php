@@ -70,8 +70,7 @@ class Optin_Status_Changed extends Benchmark {
 	 * @return string
 	 */
 	public function get_icon() {
-//		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/tag-applied.png';
-		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/optin-status-changed.svg';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/crm/optin-status-changed.svg';
 	}
 
 
@@ -86,7 +85,7 @@ class Optin_Status_Changed extends Benchmark {
 			'id'          => $this->setting_id_prefix( 'from_status' ),
 			'name'        => $this->setting_name_prefix( 'from_status' ) . '[]',
 			'data'        => Preferences::get_preference_names(),
-			'selected'    => $this->get_setting( 'from_status' ),
+			'selected'    => $this->get_setting( 'from_status', [] ),
 			'multiple'    => true,
 			'placeholder' => __( 'Any status', 'groundhogg' )
 		] );
@@ -97,7 +96,7 @@ class Optin_Status_Changed extends Benchmark {
 			'id'          => $this->setting_id_prefix( 'status' ),
 			'name'        => $this->setting_name_prefix( 'status' ) . '[]',
 			'data'        => Preferences::get_preference_names(),
-			'selected'    => $this->get_setting( 'status' ),
+			'selected'    => $this->get_setting( 'status', [] ),
 			'multiple'    => true,
 			'placeholder' => __( 'Any status', 'groundhogg' )
 		] );
@@ -105,15 +104,27 @@ class Optin_Status_Changed extends Benchmark {
 		?><p></p><?php
 	}
 
-	/**
-	 * Save the step settings
-	 *
-	 * @param $step Step
-	 */
-	public function save( $step ) {
+	public function sanitize_statuses( $statuses ) {
+		if ( ! is_array( $statuses ) || empty( $statuses ) ) {
+			return [];
+		}
 
-		$this->save_setting( 'status', wp_parse_id_list( $this->get_posted_data( 'status' ) ) );
-		$this->save_setting( 'from_status', wp_parse_id_list( $this->get_posted_data( 'from_status' ) ) );
+		return array_intersect( wp_parse_id_list( $statuses ), array_keys( Preferences::get_preference_names() ) );
+	}
+
+	public function get_settings_schema() {
+		return [
+			'from_status' => [
+				'default'      => [],
+				'if_undefined' => [],
+				'sanitize'     => [ $this, 'sanitize_statuses' ]
+			],
+			'status'      => [
+				'default'      => [],
+				'if_undefined' => [],
+				'sanitize'     => [ $this, 'sanitize_statuses' ]
+			]
+		];
 	}
 
 	public function generate_step_title( $step ) {
@@ -182,16 +193,16 @@ class Optin_Status_Changed extends Benchmark {
 		$from_status_setting = $this->get_setting( 'from_status', [] );
 		$to_status_setting   = $this->get_setting( 'status', [] );
 
-        // from status is not empty and given from is not present
-        if ( ! empty( $from_status_setting ) && ! in_array( $from, $from_status_setting ) ){
-            return false;
-        }
-
-		// to status is not empty and given to is not present
-		if ( ! empty( $to_status_setting ) && ! in_array( $to, $to_status_setting ) ){
+		// from status is not empty and given from is not present
+		if ( ! empty( $from_status_setting ) && ! in_array( $from, $from_status_setting ) ) {
 			return false;
 		}
 
-        return true;
+		// to status is not empty and given to is not present
+		if ( ! empty( $to_status_setting ) && ! in_array( $to, $to_status_setting ) ) {
+			return false;
+		}
+
+		return true;
 	}
 }

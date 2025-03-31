@@ -79,20 +79,16 @@ class Send_Email extends Action {
 	 * @return string
 	 */
 	public function get_icon() {
-		return GROUNDHOGG_ASSETS_URL . '/images/funnel-icons/send-email.svg';
+		return GROUNDHOGG_ASSETS_URL . 'images/funnel-icons/comms/send-email.svg';
 	}
 
-	/**
-	 * Display the settings
-	 *
-	 * @param $step Step
-	 */
 	public function settings( $step ) {
-
-		echo html()->e( 'div', [ 'id' => 'step_' . $step->get_id() . '_send_email' ], '', false )
-
-		?><p></p><?php
+		// TODO: Implement settings() method.
 	}
+
+	protected function after_settings( Step $step ) {
+	    echo html()->e( 'div', [ 'id' => 'step_' . $step->get_id() . '_send_email', 'class' => 'gh-panel email-preview ignore-morph' ], '', false );
+    }
 
 	public function validate_settings( Step $step ) {
 		$email = new Email( $this->get_setting( 'email_id' ) );
@@ -101,21 +97,27 @@ class Send_Email extends Action {
 			$step->add_error( 'email_dne', __( 'You have not selected an email!', 'groundhogg' ) );
 		}
 
-		if ( ( $email->is_draft() && $step->get_funnel()->is_active() ) ) {
-			$step->add_error( 'email_in_draft_mode', __( 'The selected email is in draft mode! It will not be sent and will cause automation to stop.' ) );
+		if ( $email->exists() && $email->is_draft() ) {
+			$step->add_error( 'email_in_draft_mode', __( 'The selected email is in draft mode! It will not be sent and will cause automation to stop. <b>Publish it</b> to solve the problem.' ) );
 		}
 	}
 
-	/**
-	 * Save the settings
-	 *
-	 * @param $step Step
-	 */
-	public function save( $step ) {
-		$this->save_setting( 'skip_if_confirmed', ( bool ) $this->get_posted_data( 'skip_if_confirmed', false ) );
-
-		$reply_in_thread = $this->get_posted_data( 'reply_in_thread', false );
-		$this->save_setting( 'reply_in_thread', absint( $reply_in_thread ) );
+	public function get_settings_schema() {
+		return [
+			'skip_if_confirmed' => [
+				'default'      => false,
+				'sanitize'     => 'boolval',
+				'if_undefined' => false
+			],
+			'reply_in_thread'   => [
+				'default'  => false,
+				'sanitize' => 'absint'
+			],
+			'email_id'          => [
+				'default'  => 0,
+				'sanitize' => 'absint'
+			]
+		];
 	}
 
 	/**
@@ -161,9 +163,9 @@ class Send_Email extends Action {
 	public function set_thread_subject( $subject ) {
 		return sprintf( __( 'Re: %s', 'groundhogg' ), $this->subject );
 	}
-
 	protected $message_id;
 	protected $subject;
+
 	protected $from;
 
 	/**
@@ -235,7 +237,7 @@ class Send_Email extends Action {
 
 		$sent = $email->send( $contact, $event );
 
-        // Thread stuff only if email was sent successfully
+		// Thread stuff only if email was sent successfully
 		if ( $sent === true ) {
 
 			$subject = $email->get_merged_subject_line();
@@ -362,58 +364,6 @@ class Send_Email extends Action {
 		$step->update_meta( 'email_id', $email->get_id() );
 	}
 
-	/**
-	 * Create a new email and set the step email_id to the ID of the new email.
-	 *
-	 * @param $step Step
-	 * @param $args array list of args to provide criteria for import.
-	 */
-	public function legacy_import( $args, $step ) {
-
-		if ( ! isset_not_empty( $args, 'content' ) || ! isset_not_empty( $args, 'subject' ) ) {
-			return;
-		}
-
-		if ( ! isset_not_empty( $args, 'content' ) ) {
-			$args['pre_header'] = '';
-		}
-
-		$email_id = get_db( 'emails' )->add( [
-			'content'    => $args['content'],
-			'subject'    => $args['subject'],
-			'pre_header' => $args['pre_header'],
-			'title'      => get_array_var( $args, 'title', $args['subject'] ),
-			'from_user'  => get_current_user_id(),
-			'author'     => get_current_user_id()
-		] );
-
-		if ( $email_id ) {
-			$step->update_meta( 'email_id', $email_id );
-		}
-	}
-
-
-	/**
-	 * Export all tag related steps
-	 *
-	 * @param $args array of args
-	 * @param $step Step
-	 *
-	 * @return array of tag names
-	 */
-	public function export( $args, $step ) {
-		$email_id = absint( $step->get_meta( 'email_id' ) );
-
-		$email = new Email( $email_id );
-
-		if ( ! $email->exists() ) {
-			return $args;
-		}
-
-		$args['email'] = $email;
-
-		return $args;
-	}
 
 	/**
 	 * We have to fix email threading
@@ -445,6 +395,58 @@ class Send_Email extends Action {
 	}
 
 	/**
+	 * Create a new email and set the step email_id to the ID of the new email.
+	 *
+	 * @param $step Step
+	 * @param $args array list of args to provide criteria for import.
+	 */
+	public function legacy_import( $args, $step ) {
+
+		if ( ! isset_not_empty( $args, 'content' ) || ! isset_not_empty( $args, 'subject' ) ) {
+			return;
+		}
+
+		if ( ! isset_not_empty( $args, 'content' ) ) {
+			$args['pre_header'] = '';
+		}
+
+		$email_id = get_db( 'emails' )->add( [
+			'content'    => $args['content'],
+			'subject'    => $args['subject'],
+			'pre_header' => $args['pre_header'],
+			'title'      => get_array_var( $args, 'title', $args['subject'] ),
+			'from_user'  => get_current_user_id(),
+			'author'     => get_current_user_id()
+		] );
+
+		if ( $email_id ) {
+			$step->update_meta( 'email_id', $email_id );
+		}
+	}
+
+	/**
+	 * Export all tag related steps
+	 *
+	 * @param $args array of args
+	 * @param $step Step
+	 *
+	 * @return array of tag names
+	 */
+	public function export( $args, $step ) {
+		$email_id = absint( $step->get_meta( 'email_id' ) );
+
+		$email = new Email( $email_id );
+
+		if ( ! $email->exists() ) {
+			return $args;
+		}
+
+		$args['email'] = $email->export();
+
+		return $args;
+	}
+
+	/**
 	 * Duplicate the email if passed
 	 *
 	 * @param $new      Step
@@ -454,7 +456,7 @@ class Send_Email extends Action {
 	 */
 	public function duplicate( $new, $original ) {
 
-		if ( ! get_post_var( 'duplicate_email' ) ) {
+		if ( ! get_post_var( '__duplicate_email' ) ) {
 			return;
 		}
 

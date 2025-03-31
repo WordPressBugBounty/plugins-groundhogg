@@ -2,12 +2,13 @@
 
 namespace Groundhogg\DB;
 
-// Exit if accessed directly
+use Groundhogg\DB\Traits\Event_Log;
 use Groundhogg\DB\Traits\Event_Log_Filters;
 use Groundhogg\Event;
 use Groundhogg\Event_Queue_Item;
 use function Groundhogg\get_db;
 
+// Exit if accessed directly
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -26,6 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Event_Queue extends DB {
 
+	use Event_Log;
 	use Event_Log_Filters;
 
 	public function __construct() {
@@ -69,11 +71,8 @@ class Event_Queue extends DB {
 		return 'event_queue_item';
 	}
 
-	/**
-	 * @return string
-	 */
-	public function get_date_key() {
-		return 'time';
+	public function create_object( $object ) {
+		return new Event_Queue_Item( $object );
 	}
 
 	public function count_unprocessed() {
@@ -115,6 +114,7 @@ class Event_Queue extends DB {
 			'error_message'  => 'error_message',
 			'priority'       => 'priority',
 			'status'         => 'status',
+			'args'           => 'args',
 		];
 
 		$history_columns = implode( ',', array_values( $column_map ) );
@@ -133,7 +133,6 @@ class Event_Queue extends DB {
 
 		$this->cache_set_last_changed();
 	}
-
 
 	/**
 	 * Get columns and formats
@@ -158,6 +157,7 @@ class Event_Queue extends DB {
 			'priority'       => '%d',
 			'claim'          => '%s',
 			'time_claimed'   => '%d',
+			'args'           => '%s',
 		);
 	}
 
@@ -184,101 +184,8 @@ class Event_Queue extends DB {
 			'priority'       => 10,
 			'claim'          => '',
 			'time_claimed'   => 0,
+			'args'           => '',
 		);
-	}
-
-	/**
-	 * Add a activity
-	 *
-	 * @access  public
-	 * @since   2.1
-	 */
-	public function add( $data = array() ) {
-
-		$args = wp_parse_args(
-			$data,
-			$this->get_column_defaults()
-		);
-
-		if ( empty( $args['time'] ) ) {
-			return false;
-		}
-
-		return $this->insert( $args );
-	}
-
-	/**
-	 * Get all the queued events
-	 */
-	public function get_queued_event_ids() {
-		global $wpdb;
-
-		$results = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT * FROM $this->table_name WHERE time <= %d AND status = %s"
-				, time(), 'waiting' )
-		);
-
-		return wp_parse_id_list( wp_list_pluck( $results, 'ID' ) );
-	}
-
-
-	/**
-	 * Clean up DB events when this happens.
-	 */
-	protected function add_additional_actions() {
-		add_action( 'groundhogg/db/post_delete/contact', [ $this, 'contact_deleted' ] );
-		add_action( 'groundhogg/db/post_delete/funnel', [ $this, 'funnel_deleted' ] );
-		add_action( 'groundhogg/db/post_delete/step', [ $this, 'step_deleted' ] );
-		parent::add_additional_actions();
-	}
-
-	/**
-	 * Delete events for a contact that was just deleted...
-	 *
-	 * @param $id
-	 *
-	 * @return false|int
-	 */
-	public function contact_deleted( $id ) {
-
-		if ( ! is_numeric( $id ) ) {
-			return false;
-		}
-
-		return $this->bulk_delete( [ 'contact_id' => $id ] );
-	}
-
-	/**
-	 * Delete events for a funnel that was just deleted...
-	 *
-	 * @param $id
-	 *
-	 * @return false|int
-	 */
-	public function funnel_deleted( $id ) {
-
-		if ( ! is_numeric( $id ) ) {
-			return false;
-		}
-
-		return $this->bulk_delete( [ 'funnel_id' => $id ] );
-	}
-
-	/**
-	 * Delete events for a step that was just deleted...
-	 *
-	 * @param $id
-	 *
-	 * @return false|int
-	 */
-	public function step_deleted( $id ) {
-
-		if ( ! is_numeric( $id ) ) {
-			return false;
-		}
-
-		return $this->bulk_delete( [ 'step_id' => $id ] );
 	}
 
 	/**
@@ -326,6 +233,7 @@ class Event_Queue extends DB {
         status varchar(20) NOT NULL,
         claim varchar(20) NOT NULL,
         time_claimed bigint(20) unsigned NOT NULL DEFAULT 0,
+        args text NOT NULL,
         PRIMARY KEY (ID),
         KEY time_idx (time),
         KEY contact_idx (contact_id),
@@ -333,9 +241,5 @@ class Event_Queue extends DB {
         KEY step_idx (step_id),
         KEY claim_idx (claim)
 		) {$this->get_charset_collate()};";
-	}
-
-	public function create_object( $object ) {
-		return new Event_Queue_Item( $object );
 	}
 }

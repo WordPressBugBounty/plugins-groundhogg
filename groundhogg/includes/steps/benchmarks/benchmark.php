@@ -4,7 +4,11 @@ namespace Groundhogg\Steps\Benchmarks;
 
 use Groundhogg\Contact;
 use Groundhogg\Event;
+use Groundhogg\Step;
 use Groundhogg\Steps\Funnel_Step;
+use function Groundhogg\array_all;
+use function Groundhogg\db;
+use function Groundhogg\get_post_var;
 use function Groundhogg\is_a_contact;
 use function Groundhogg\isset_not_empty;
 use function Groundhogg\process_events;
@@ -29,6 +33,24 @@ abstract class Benchmark extends Funnel_Step {
 	 * @var array
 	 */
 	protected $data = [];
+
+	/**
+	 * List of arguments to be passed later to benchmark enqueue
+	 *
+	 * @var array
+	 */
+	protected $args = [];
+
+	/**
+	 * Set any arguments for later
+	 *
+	 * @param array $args
+	 *
+	 * @return void
+	 */
+	protected function set_args( array $args ) {
+		$this->args = array_merge( $this->args, $args );
+	}
 
 	/**
 	 * Add arbitrary data
@@ -56,7 +78,53 @@ abstract class Benchmark extends Funnel_Step {
 		return $default;
 	}
 
+	/**
+	 * Convert the data to args friendly data, if present
+	 *
+	 * @return array
+	 */
+	protected function data_as_args() {
+
+		$args = [];
+
+		foreach ( $this->data as $key => $value ) {
+
+			// ignore these
+			if ( in_array( $key, [ 'contact', 'contacts' ] ) ) {
+				continue;
+			}
+
+			// if it's a simple value we can keep it
+			if ( is_numeric( $value ) || is_string( $value ) ) {
+				$args[ $key ] = $value;
+				continue;
+			}
+
+			if ( is_object( $value ) ) {
+
+				if ( property_exists( $value, 'ID' ) ) {
+					$args[ $key ] = $value->ID;
+					continue;
+				}
+
+				if ( property_exists( $value, 'id' ) ) {
+					$args[ $key ] = $value->id;
+					continue;
+				}
+
+				if ( method_exists( $value, 'get_id' ) ) {
+					$args[ $key ] = $value->get_id();
+					continue;
+				}
+
+			}
+		}
+
+		return $args;
+	}
+
 	public function __construct() {
+
 		// Setup the main complete function
 		// Accepts no arguments, but requires that child implementations setup the data ahead of time.
 		foreach ( $this->get_complete_hooks() as $hook => $args ) {
@@ -134,12 +202,13 @@ abstract class Benchmark extends Funnel_Step {
 
 				$this->set_current_contact( $contact );
 
-				if ( $this->can_complete_step() && $step->can_complete( $this->get_current_contact() ) ) {
-					$step->enqueue( $this->get_current_contact() );
+				if ( $this->can_complete_step() ) {
 
+					$this->args = array_merge( $this->data_as_args(), $this->args );
+
+					$step->benchmark_enqueue( $this->get_current_contact(), $this->args );
 				}
 			}
-
 		}
 
 		// Only process events if flag to complete is true
@@ -169,4 +238,124 @@ abstract class Benchmark extends Funnel_Step {
 		return true;
 	}
 
+	/**
+	 * @param Step $step
+	 *
+	 * @return void
+	 */
+	public function sortable_item( $step ) {
+
+		$siblings = $step->get_siblings_of_same_level();
+
+		if ( empty( $siblings ) ) {
+			$is_first = true;
+			$is_last  = true;
+		} else {
+			$is_first = array_all( $siblings, function ( Step $sibling ) use ( $step ) {
+				return $step->get_order() < $sibling->get_order();
+			} );
+			$is_last  = array_all( $siblings, function ( Step $sibling ) use ( $step ) {
+				return $step->get_order() > $sibling->get_order();
+			} );
+		}
+
+		// if the previous step was not a benchmark, we should open the horizontal benchmark group
+		if ( $is_first ) {
+
+			?>
+            <div class="sortable-item benchmarks <?php echo $step->is_starting() ? 'starting' : '' ?>"><?php
+
+			if ( ! $step->is_starting() ) {
+				$this->add_step_button( 'before-group-' . $step->ID );
+				?>
+                <div class="flow-line"></div>
+                <?php
+			}
+
+			?>
+            <div class="step-branch benchmarks" data-branch="<?php _e( $step->branch ) ?>">
+			<?php
+		} else {
+			?><span class="benchmark-or">OR</span><?php
+		}
+
+		$sortable_classes = [ 'sortable-item benchmark' ];
+		if ( $step->can_passthru() ) {
+			$sortable_classes[] = 'passthru';
+		}
+
+		$sub_steps = $step->get_sub_steps();
+
+		?>
+        <div class="<?php echo implode( ' ', $sortable_classes ) ?>" data-type="<?php esc_attr_e( $step->get_type() ); ?>" data-group="<?php esc_attr_e( $step->get_group() ); ?>">
+			<?php $this->__sortable_item( $step ); ?>
+			<?php if ( ! empty( $sub_steps ) || ! $is_last || ! $is_first ): ?>
+                <div class="step-branch" data-branch="<?php esc_attr_e( $step->ID ); ?>">
+					<?php
+
+					if ( ! empty( $sub_steps ) ) {
+						?>
+                        <div class="flow-line"></div><?php
+					}
+
+					foreach ( $sub_steps as $sub_step ) {
+						$sub_step->get_step_element()->validate_settings( $sub_step );
+						$sub_step->sortable_item();
+					}
+
+					$this->set_current_step( $step );
+
+					if ( empty( $sub_steps ) ) {
+						?>
+                        <div class="flow-line"></div><?php
+					}
+
+					$this->add_step_button( 'end-inside-' . $step->ID );
+
+					?>
+                </div>
+			<?php endif; ?>
+        </div>
+		<?php
+
+		// if the next step is not a benchmark, close the benchmark group
+		if ( $is_last ) {
+			$this->add_step_button( [ 'id' => 'add-to-group-after-' . $step->ID, 'tooltip' => 'Add trigger', 'class' => 'add-benchmark' ] );
+			?></div></div><?php
+		}
+	}
+
+	public function delete( Step $step ) {
+
+		$branch_steps = $step->get_sub_steps();
+
+		foreach ( $branch_steps as $branch_step ) {
+			$branch_step->delete(); // this might change the current step
+		}
+
+		// reset to the current step
+		$this->set_current_step( $step );
+	}
+
+	public function duplicate( $new, $original ) {
+
+		// don't duplicate sub steps
+		if ( get_post_var( '__ignore_inner' ) ) {
+			return;
+		}
+
+		// get the OG sub steps
+		$og_sub_steps = $original->get_sub_steps();
+
+		foreach ( $og_sub_steps as $sub_step ) {
+			// duplicate the previous step
+			$new_sub_step = $sub_step->duplicate( [
+				'step_status' => 'inactive', // must be inactive to start,
+				'branch'      => $new->ID,
+				'funnel_id'   => $new->funnel_id,
+			] );
+		}
+
+		$this->set_current_step( $original );
+	}
 }

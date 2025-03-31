@@ -228,6 +228,23 @@ class Main_Updater extends Old_Updater {
 					db()->notes->create_table();
 				}
 			],
+			'4.0'    => [
+				'automatic'   => true,
+				'description' => __( 'Database table upgrades for 4.0.', 'groundhogg' ),
+				'callback'    => function () {
+					db()->events->create_table(); // add args
+					db()->event_queue->create_table(); // add args
+					db()->steps->create_table();
+					db()->steps->update( [ 'branch' => '' ], [ 'branch' => 'main' ] );
+
+					$funnelQuery = new Table_Query( 'funnels' );
+					$funnels = $funnelQuery->get_objects( Funnel::class );
+					foreach ( $funnels as $funnel ) {
+						$funnel->set_step_levels(); // set the initial step levels
+						$funnel->commit();
+					}
+				}
+			],
 		];
 	}
 
