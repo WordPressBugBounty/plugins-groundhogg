@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.7
 Requires PHP: 7.1
-Stable tag: 4.0.2
+Stable tag: 4.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -349,6 +349,13 @@ Well, that's up to you! We'll never say Groundhogg is better than anyone, but it
 You can purchase a premium plan for access to support and our premium extensions & integrations on our [pricing page](https://www.groundhogg.io/pricing/).
 
 == Changelog ==
+
+= 4.1 (2025-04-08) =
+* ADDED Flow Simulation tool to simulate a contact moving through a flow. Makes testing flows way easier.
+ * You can also run simulations via the WP CLI.
+* FIXED Filters in logic steps sometimes not appearing.
+* FIXED Background task progress for large tasks not updating, causing them to never complete.
+* FIXED Branch names for multi-branch logic incorrect if nested inside another multi-branch.
 
 = 4.0.2 (2025-04-01) =
 * FIXED Multi-Branch not always returning the correct branch.

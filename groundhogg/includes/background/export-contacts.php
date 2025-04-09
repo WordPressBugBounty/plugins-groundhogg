@@ -73,9 +73,11 @@ class Export_Contacts extends Task {
 	 *
 	 * @return void
 	 */
-	protected function openFile() {
-		// File path is known, open the file in add mode
-		$this->filePointer = fopen( $this->filePath, 'a' );
+	protected function maybeOpenFile() {
+		if ( ! isset( $this->filePointer ) || ! $this->filePointer ) {
+			// File path is known, open the file in add mode
+			$this->filePointer = fopen( $this->filePath, 'a' );
+		}
 	}
 
 	/**
@@ -83,9 +85,7 @@ class Export_Contacts extends Task {
 	 */
 	public function can_run() {
 
-		if ( ! isset( $this->filePointer ) ) {
-			$this->openFile();
-		}
+		$this->maybeOpenFile();
 
 		return user_can( $this->user_id, 'export_contacts' ) && $this->filePointer;
 	}
@@ -97,11 +97,13 @@ class Export_Contacts extends Task {
 	 */
 	public function process(): bool {
 
-		$query_args = array_merge( [
+		$this->maybeOpenFile();
+
+		$query_args = array_merge( $this->query, [
 			'limit'      => self::BATCH_LIMIT,
 			'offset'     => $this->batch * self::BATCH_LIMIT,
 			'found_rows' => true,
-		], $this->query );
+		] );
 
 		$query    = new Contact_Query( $query_args );
 		$contacts = $query->query( null, true );
@@ -154,11 +156,11 @@ class Export_Contacts extends Task {
 
 	public function __serialize(): array {
 		return [
+			'batch'    => $this->batch,
 			'user_id'  => $this->user_id,
 			'filePath' => $this->filePath,
 			'query'    => $this->query,
 			'columns'  => $this->columns,
-			'batch'    => $this->batch,
 			'items'    => $this->items,
 		];
 	}
