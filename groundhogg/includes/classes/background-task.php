@@ -5,6 +5,7 @@ namespace Groundhogg\Classes;
 use Groundhogg\Background\Task;
 use Groundhogg\Base_Object;
 use Groundhogg\Utils\Limits;
+use Groundhogg\Utils\Micro_Time_Tracker;
 use function Groundhogg\get_db;
 
 class Background_Task extends Base_Object {
@@ -31,6 +32,15 @@ class Background_Task extends Base_Object {
 		$this->theTask = maybe_unserialize( $this->task );
 		$this->time    = absint( $this->time );
 		$this->user_id = absint( $this->user_id );
+	}
+
+	/**
+	 * If the class for theTask is incomplete.
+	 *
+	 * @return bool
+	 */
+	public function is_incomplete_class() {
+		return is_a( $this->theTask, \__PHP_Incomplete_Class::class, true );
 	}
 
 	protected function get_db() {
@@ -63,7 +73,13 @@ class Background_Task extends Base_Object {
 	 * @throws \Exception
 	 * @return bool
 	 */
-	public function process() {
+	public function process( $max_time = 60 ) {
+
+		// class is incomplete, meaning theTask handler class is undefined
+		if ( $this->is_incomplete_class() ) {
+			$this->update( [ 'status' => 'failed' ] );
+			throw new \Exception( 'Task handler is undefined.' );
+		}
 
 		// If the status is already in progress then this does nothing
 		$this->update( [ 'status' => 'in_progress' ] );
@@ -75,22 +91,20 @@ class Background_Task extends Base_Object {
 
 		// Can the task be run
 		if ( ! $this->theTask->can_run() ) {
+			$this->update( [ 'status' => 'failed' ] );
 			throw new \Exception( 'Task can\'t run.' );
 		}
+
+		$timer = new Micro_Time_Tracker();
+		$timer->set_start();
 
 		Limits::start();
 
 		$complete = false;
 
 		// While there is still more of the task to do
-		while ( ! Limits::limits_exceeded() && $complete === false ) {
+		while ( ! Limits::limits_exceeded() && $complete === false && $timer->time_elapsed() < $max_time ) {
 			$complete = $this->theTask->process();
-
-			// update the task as it's being processed
-//			$this->update( [
-//				'task' => $this->theTask
-//			] );
-
 			Limits::processed_action();
 		}
 

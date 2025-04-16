@@ -795,10 +795,13 @@ class Replacements implements \JsonSerializable {
 			return $content;
 		}
 
-		return preg_replace_callback( self::PATTERN . 's', [
+		$content = preg_replace_callback( self::PATTERN . 's', [
 			$this,
 			'do_replacement'
 		], $content );
+
+        // keep doing passes until no more to do
+        return $this->tackle_replacements( $content );
 	}
 
 	/**
@@ -897,14 +900,6 @@ class Replacements implements \JsonSerializable {
 		$code    = $parts['code'];
 		$default = $parts['default'];
 
-        $code_key = md5serialize( $code, $arg, $default );
-
-		// Did we already do this code during the current process?
-        // if we didn't it'll get added to the stack within Replacements::did_code().
-		if ( $this->did_code( $code_key ) ) {
-			return '';
-		}
-
 		// The code exists and is set
 		if ( $this->has_replacement( $code ) ) {
 
@@ -937,6 +932,12 @@ class Replacements implements \JsonSerializable {
 				$text = $default;
 			}
 
+			// Did we already do this code during the current process?
+			// if we didn't it'll get added to the stack within Replacements::did_code().
+			if ( $this->did_code( $cache_key ) ) {
+				return '';
+			}
+
 			// tackle inner replacements within the returned text
 			$text = $this->tackle_replacements( $text );
 
@@ -949,7 +950,7 @@ class Replacements implements \JsonSerializable {
 
 			wp_cache_set( $cache_key, $value, 'groundhogg/replacements' );
 
-			$this->remove_code_to_stack( $code_key );
+			$this->remove_code_to_stack( $cache_key );
 
 			return $value;
 		}
@@ -984,12 +985,19 @@ class Replacements implements \JsonSerializable {
 			$text = $default;
 		}
 
+
+		// Did we already do this code during the current process?
+		// if we didn't it'll get added to the stack within Replacements::did_code().
+		if ( $this->did_code( $cache_key ) ) {
+			return '';
+		}
+
 		// tackle inner replacements within the returned text
 		$text = $this->tackle_replacements( $text );
 
 		wp_cache_set( $cache_key, $text, 'groundhogg/replacements' );
 
-		$this->remove_code_to_stack( $code_key );
+		$this->remove_code_to_stack( $cache_key );
 
 		return $text;
 	}
@@ -2366,7 +2374,7 @@ class Replacements implements \JsonSerializable {
 				$rows = [];
 
 				$columnTable = sprintf( '<table class="email-columns %s responsive" role="presentation" width="100%%" style="width: 100%%; table-layout: fixed" cellpadding="0" cellspacing="0">', $props['layout'] );
-				$columnGap   = sprintf( '<td class="email-columns-cell gap" style="width: %1$dpx;height: %1$dpx" width="%1$d" height="%1$d">%2$s</td>', $props['gap'], str_repeat( '&nbsp;', 3 ) );
+				$columnGap   = sprintf( '<td class="email-columns-cell gap" style="width: %1$dpx;height: %1$dpx;line-height: 1;font-size: %1$dpx;" width="%1$d" height="%1$d">%2$s</td>', $props['gap'], str_repeat( '&nbsp;', 3 ) );
 
 				$thumbnail = function ( $thumbnail_size ) {
 

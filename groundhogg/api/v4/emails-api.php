@@ -14,6 +14,7 @@ use Groundhogg\Plugin;
 use WP_REST_Request;
 use WP_REST_Server;
 use function Groundhogg\array_map_to_contacts;
+use function Groundhogg\array_trim;
 use function Groundhogg\base64_json_decode;
 use function Groundhogg\do_replacements;
 use function Groundhogg\email_kses;
@@ -25,6 +26,7 @@ use function Groundhogg\get_object_ids;
 use function Groundhogg\is_sending;
 use function Groundhogg\is_template_site;
 use function Groundhogg\map_to_class;
+use function Groundhogg\maybe_explode;
 use function Groundhogg\process_events;
 use function Groundhogg\send_email_notification;
 use function Groundhogg\track_activity;
@@ -93,6 +95,14 @@ class Emails_Api extends Base_Object_Api {
 			[
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => [ $this, 'render_replacements' ],
+				'permission_callback' => [ $this, 'update_permissions_callback' ]
+			],
+		] );
+
+		register_rest_route( self::NAME_SPACE, "/{$route}/block-preview/", [
+			[
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => [ $this, 'parse_blocks' ],
 				'permission_callback' => [ $this, 'update_permissions_callback' ]
 			],
 		] );
@@ -212,10 +222,27 @@ class Emails_Api extends Base_Object_Api {
 	 */
 	public function render_block( \WP_REST_Request $request ) {
 
-		$block = $request->get_param( 'block_type' );
 		$props = base64_json_decode( $request->get_param( 'props' ) );
+		$html  = Block_Registry::instance()->render_block( $props, '' );
 
-		$html = Block_Registry::instance()->render_block( $block, $props );
+		return self::SUCCESS_RESPONSE( [
+			'content' => $html
+		] );
+	}
+
+	/**
+	 * Render a dynamic block
+	 *
+	 * @param \WP_REST_Request $request
+	 *
+	 * @return \WP_REST_Response
+	 */
+	public function parse_blocks( \WP_REST_Request $request ) {
+
+		define( 'GH_DOING_BLOCK_PREVIEW', true );
+
+		$content = email_kses( $request->get_param( 'html' ) );
+		$html    = Block_Registry::instance()->parse_blocks( $content );
 
 		return self::SUCCESS_RESPONSE( [
 			'content' => $html
@@ -537,7 +564,7 @@ class Emails_Api extends Base_Object_Api {
 
 		$test_type = $request->get_param( 'type' ) ?: 'design';
 
-		$to = array_filter( array_map( 'sanitize_email', wp_parse_list( $request->get_param( 'to' ) ) ) );
+		$to = array_filter( array_map( 'sanitize_email', array_trim( maybe_explode( $request->get_param( 'to' ) ) ) ) );
 
 		if ( empty( $to ) ) {
 			return self::ERROR_401( 'error', 'Invalid email address provided' );
@@ -568,13 +595,19 @@ class Emails_Api extends Base_Object_Api {
 
 				$contact = new Contact( [ 'email' => $email_address ] );
 
-				enqueue_event( [
+				$event = enqueue_event( [
 					'email_id'   => $email->get_id(),
 					'contact_id' => $contact->get_id(),
 					'event_type' => Event::TEST_EMAIL,
 					'priority'   => 1,
 					'status'     => Event::WAITING,
 				] );
+
+				if ( ! $event ) {
+					return self::ERROR_401( 'error', 'Failed to enqueue test email event.', [
+						'email' => $email_address,
+					] );
+				}
 
 				$result = process_events( $contact );
 

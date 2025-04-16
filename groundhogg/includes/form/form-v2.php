@@ -14,6 +14,7 @@ use function Groundhogg\array_to_atts;
 use function Groundhogg\current_contact_and_logged_in_user_match;
 use function Groundhogg\do_replacements;
 use function Groundhogg\file_access_url;
+use function Groundhogg\format_custom_field;
 use function Groundhogg\get_array_var;
 use function Groundhogg\get_contactdata;
 use function Groundhogg\get_current_contact;
@@ -75,6 +76,16 @@ function basic_field_with_label( $field, $input ) {
  * @return string
  */
 function basic_input( $field, $contact, $tag = 'input' ) {
+
+	$field = wp_parse_args( $field, [
+		'id'          => '',
+		'type'        => 'text',
+		'name'        => '',
+		'placeholder' => '',
+		'className'   => '',
+		'required'    => false,
+		'value'       => '',
+	] );
 
 	$property = $field['name'];
 
@@ -205,7 +216,7 @@ function standard_dropdown_callback( $field, $posted_data, &$data, &$meta, &$tag
  */
 function standard_multiselect_callback( $field, $posted_data, &$data, &$meta, &$tags ) {
 
-	$selections = $posted_data[$field['name']];
+	$selections = $posted_data[ $field['name'] ];
 
 	if ( ! is_array( $selections ) ) {
 		return;
@@ -950,6 +961,12 @@ class Form_v2 extends Step {
 						return is_array( $opt ) ? $opt[0] : $opt;
 					}, $field['options'] );
 
+
+					// no options given
+					if ( ! isset( $posted_data[ $field['name'] ] ) ){
+						return true;
+					}
+
 					return empty( $posted_data[ $field['name'] ] ) || in_array( $posted_data[ $field['name'] ], $options ) ? true : new \WP_Error( 'invalid_selection', __( 'Invalid selection', 'groundhogg' ) );
 				},
 				'before'   => __NAMESPACE__ . '\standard_dropdown_callback',
@@ -1007,11 +1024,17 @@ class Form_v2 extends Step {
 						}, $field['options'] ) );
 				},
 				'validate' => function ( $field, $posted_data ) {
+
 					$options = array_map( function ( $opt ) {
 						return is_array( $opt ) ? $opt[0] : $opt;
 					}, $field['options'] );
 
-					$selections = $posted_data[ $field['name'] ] ?: [];
+					// no options given
+					if ( ! isset( $posted_data[ $field['name'] ] ) ){
+						return true;
+					}
+
+					$selections = $posted_data[ $field['name'] ];
 
 					return count( array_intersect( $selections, $options ) ) === count( $selections ) ? true : new \WP_Error( 'invalid_selections', __( 'Invalid selections', 'groundhogg' ) );
 				},
@@ -1356,7 +1379,7 @@ class Form_v2 extends Step {
 						return;
 					}
 
-					return Form_v2::before_create_contact( array_merge( $property, [
+					Form_v2::before_create_contact( array_merge( $property, [
 						'value'     => $field['value'],
 						'id'        => $field['id'],
 						'className' => $field['className'],
@@ -1386,7 +1409,7 @@ class Form_v2 extends Step {
 
 					$name = $property['name'];
 
-					return $submission->$name;
+					return format_custom_field( $property, $submission->$name );
 				}
 			],
 
@@ -1874,7 +1897,7 @@ class Form_v2 extends Step {
 		$theme        = $this->get_meta( 'theme' );
 		$accent_color = $this->get_meta( 'accent_color' );
 
-		if ( ! $accent_color ){
+		if ( ! $accent_color ) {
 			$accent_color = '#000000'; // default to black
 		}
 
