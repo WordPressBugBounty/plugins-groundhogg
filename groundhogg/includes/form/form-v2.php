@@ -28,6 +28,7 @@ use function Groundhogg\isset_not_empty;
 use function Groundhogg\managed_page_url;
 use function Groundhogg\parse_tag_list;
 use function Groundhogg\process_events;
+use function Groundhogg\the_funnel;
 use function Groundhogg\utils;
 use function Groundhogg\Ymd;
 
@@ -1610,6 +1611,9 @@ class Form_v2 extends Step {
 			'fill'    => false
 		], $atts );
 
+		// set the funnel
+		the_funnel( $this->get_funnel() );
+
 		// Init the fields for the first time if empty
 		if ( empty( self::$fields ) ) {
 			self::register_fields();
@@ -1794,6 +1798,10 @@ class Form_v2 extends Step {
 
 		if ( ! $field_type ) {
 			return '';
+		}
+
+		if ( isset_not_empty( $field, 'value') ){
+			$field['value'] = do_replacements( $field['value'], $this->contact );
 		}
 
 		$inner_html = self::render_input( $field, $this->contact );

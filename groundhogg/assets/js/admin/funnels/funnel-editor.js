@@ -52,6 +52,36 @@
 
   if (typeof Funnel !== 'undefined' && Funnel.is_editor) {
 
+    FunnelsStore.itemsFetched([Funnel])
+
+    const syncReplacementCodes = () => {
+
+      let flowReplacements = getFunnel().meta.replacements || {}
+
+      // remove all replacements under this_flow from the replacements object
+      // re-add replacements direct from meta
+
+      // Filter out keys in Groundhogg.replacements that start with "this_flow"
+      Groundhogg.replacements.codes = Object.entries(Groundhogg.replacements.codes).reduce((acc, [key, value]) => {
+        if (value.group !== 'this_flow') {
+          acc[key] = value
+        }
+        return acc
+      }, {})
+
+      Groundhogg.replacements.groups.this_flow = 'This Flow'
+
+      for (const [key, value] of Object.entries(flowReplacements)) {
+        Groundhogg.replacements.codes[`__this_flow_${ key }`] = {
+          code  : `this_flow.${ key }`,
+          desc  : '',
+          name  : key,
+          group : 'this_flow',
+          insert: `{this_flow.${ key }}`,
+        }
+      }
+    }
+
     const createPlaceholderEl = (data) => {
 
       let {
@@ -219,6 +249,182 @@
           ]),
       ])
 
+    const FlowSettings = () => {
+
+      const State = Groundhogg.createState({
+        saving: false,
+      })
+
+      let funnel = getFunnel()
+
+      let {
+        description = '',
+        replacements = {},
+      } = funnel.meta
+      let { campaigns = [] } = funnel
+      CampaignsStore.itemsFetched( campaigns )
+      let campaignIds = campaigns.map(c => c.ID)
+
+      return MakeEl.Div({
+        id: 'flow-settings',
+      }, morph => {
+
+        return Div({
+          className: 'display-flex gap-20 column',
+        }, [
+          Div({
+            className: 'gh-panel',
+          }, [
+            Div({
+              className: 'gh-panel-header',
+            }, [
+              MakeEl.H2({}, 'General Settings'),
+            ]),
+            Div({
+              className: 'inside',
+            }, [
+              `<p>Add a simple description.</p>`,
+              Textarea({
+                id       : 'funnel-description',
+                className: 'full-width',
+                onInput  : e => {
+                  description = e.target.value
+                },
+                value    : description,
+              }),
+            ]),
+          ]),
+          Div({
+            className: 'gh-panel',
+          }, [
+            Div({
+              className: 'gh-panel-header',
+            }, [
+              MakeEl.H2({}, 'Campaigns'),
+            ]),
+            Div({
+              className: 'inside',
+            }, [
+              `<p>Use <b>campaigns</b> to organize your flows. Use terms like <code>Black Friday</code> or <code>Sales</code>.</p>`,
+              ItemPicker({
+                id          : 'pick-campaigns',
+                noneSelected: 'Add a campaign...',
+                selected    : campaigns.map(({
+                  ID,
+                  data,
+                }) => ( {
+                  id  : ID,
+                  text: data.name,
+                } )),
+                tags        : true,
+                fetchOptions: async (search) => {
+                  let campaigns = await CampaignsStore.fetchItems({
+                    search,
+                    limit: 20,
+                  })
+
+                  return campaigns.map(({
+                    ID,
+                    data,
+                  }) => ( {
+                    id  : ID,
+                    text: data.name,
+                  } ))
+                },
+                createOption: async value => {
+                  let campaign = await CampaignsStore.create({
+                    data: {
+                      name: value,
+                    },
+                  })
+
+                  return {
+                    id  : campaign.ID,
+                    text: campaign.data.name,
+                  }
+                },
+                onChange    : items => {
+                  campaignIds = items.map(item => item.id)
+                  campaigns = campaignIds.map(id => CampaignsStore.get(id))
+                },
+              }),
+            ]),
+          ]),
+          Div({
+            className: 'gh-panel',
+          }, [
+            Div({
+              className: 'gh-panel-header',
+            }, [
+              MakeEl.H2({}, 'Flow Replacements'),
+            ]),
+            Div({
+              className: 'inside',
+            }, [
+              `<p>${ __(
+                'Define custom replacements that are only used in the context of this flow. Usage is <code>{this_flow.replacement_key}</code>.') }</p>`,
+              MakeEl.InputRepeater({
+                id      : 'flow-replacements-editor',
+                rows    : Object.entries(replacements),
+                cells   : [
+                  props => Input({
+                    ...props,
+                    placeholder: 'Key',
+                  }),
+                  props => Input({
+                    ...props,
+                    placeholder: 'Value',
+                  }),
+
+                ],
+                onChange: rows => {
+                  replacements = {}
+                  rows.forEach(([key, val]) => replacements[key] = val)
+                },
+              }),
+            ]),
+          ]),
+          Div({
+            className: 'display-flex flex-end',
+          }, Button({
+            id       : 'save-settings',
+            className: 'gh-button primary',
+            disabled : State.saving,
+            onClick  : async e => {
+
+              State.set({
+                saving: true,
+              })
+
+              morph()
+
+              await FunnelsStore.patch(getFunnel().ID, {
+                campaigns: campaignIds,
+                meta     : {
+                  description,
+                  replacements,
+                },
+              })
+
+              State.set({
+                saving: false,
+              })
+
+              morph()
+
+              syncReplacementCodes()
+
+              dialog({
+                message: 'Changes saved!',
+              })
+            },
+          }, State.saving ? '<span class="gh-spinner"></span>' : 'Save Settings')),
+        ])
+      })
+    }
+
+    const morphSettings = () => morphdom(document.getElementById('flow-settings'), FlowSettings())
+
     $.extend(Funnel, {
 
       sortables      : null,
@@ -232,6 +438,106 @@
 
       stepCallbacks: {},
 
+      views: [
+        {
+          match  : /^\d+$/, // step settings,
+          handler: function (matches) {
+            this.startEditing(parseInt(matches[0]))
+            this.showSettings()
+          },
+        },
+        {
+          match  : /^simulator$/,
+          handler: function () {
+            this.showSettings()
+            this.showSimulator()
+          },
+        },
+        {
+          match  : /^add$/,
+          handler: function (matches) {
+            if (this.addCurrentGroup) {
+              window.location.hash = `add/${ this.addCurrentGroup }`
+            }
+            else {
+              window.location.hash = `add/all`
+            }
+          },
+        },
+        {
+          match  : /^add\/(action|logic|benchmark|all)$/,
+          handler: function (matches) {
+            this.showSettings()
+            this.showAddStep()
+
+            this.addCurrentGroup = matches[1]
+
+            this.clearSearch()
+            this.setCurrentGroupButtonToCurrent()
+            this.filterStepTypes()
+
+            setTimeout(() => {
+              scrollIntoViewIfNeeded(this.addEl, document.querySelector(`.fixed-inside`))
+            }, 300)
+          },
+        },
+        {
+          match  : /^settings$/,
+          handler: function (id) {
+            this.showSettings()
+            this.startEditing(null)
+            morphSettings()
+          },
+        },
+        {
+          match  : /^share$/,
+          handler: function (id) {
+
+          },
+        },
+        {
+          match  : /^$/, // no hash
+          handler: function (id) {
+            this.hideSettings()
+          },
+        },
+      ],
+
+      clearSearch () {
+        this.addSearch = ''
+        $('#step-search').val('')
+      },
+
+      handleHashChange () {
+        const hash = window.location.hash.substring(1)
+        for (const view of this.views) {
+          const result = view.match.exec(hash)
+          if (result) {
+            document.getElementById('step-settings-inner').dataset.view = hash || 'settings'
+            view.handler.apply(this, [result])
+            return
+          }
+        }
+      },
+
+      filterStepTypes () {
+        $(`.select-step`).addClass('visible')
+
+        // filter by addGroup
+        if (this.addCurrentGroup !== 'all') {
+          $(`.select-step:not(:has([data-group="${ this.addCurrentGroup }" i]))`).removeClass('visible')
+        }
+
+        if (this.addSearch) {
+          $(`.select-step:not([data-keywords*="${ this.addSearch }" i])`).removeClass('visible')
+        }
+      },
+
+      setCurrentGroupButtonToCurrent () {
+        $('button.step-filter').removeClass('current')
+        $(`button.step-filter[data-group="${ this.addCurrentGroup }"]`).addClass('current')
+      },
+
       /**
        * Register letious step callbacks
        *
@@ -242,8 +548,6 @@
       },
 
       init: async function () {
-
-        let self = this
 
         let $document = $(document)
         let $form = $('#funnel-form')
@@ -412,47 +716,22 @@
             return
           }
 
-          this.startEditing(e.currentTarget.dataset.id, true)
-          this.showSettings()
+          window.location.hash = e.currentTarget.dataset.id
         })
 
         $document.on('click', '#step-flow', e => {
           if (!Groundhogg.element.clickedIn(e, '.step,.add-step')) {
-            this.clearAddEl()
-            this.startEditing(null)
-            this.hideSettings()
+            window.location.hash = ''
           }
         })
 
-        const filterStepTypes = () => {
-          $(`.select-step`).addClass('visible')
-
-          // filter by addGroup
-          if (this.addCurrentGroup !== 'all') {
-            $(`.select-step:not(:has([data-group="${ this.addCurrentGroup }" i]))`).removeClass('visible')
-          }
-
-          if (this.addSearch) {
-            $(`.select-step:not([data-keywords*="${ this.addSearch }" i])`).removeClass('visible')
-          }
-        }
-
-        const setCurrentGroupButtonToCurrent = () => {
-          $('button.step-filter').removeClass('current')
-          $(`button.step-filter[data-group="${ this.addCurrentGroup }"]`).addClass('current')
-        }
-
         $document.on('click', 'button.step-filter:not(.current)', e => {
-          this.addCurrentGroup = e.currentTarget.dataset.group
-          setCurrentGroupButtonToCurrent()
-          this.addSearch = ''
-          $('#step-search').val('')
-          filterStepTypes()
+          window.location.hash = `add/${ e.currentTarget.dataset.group }`
         })
 
         $('#step-search').on('input', e => {
           this.addSearch = e.target.value
-          filterStepTypes()
+          this.filterStepTypes()
         })
 
         $document.on('mousedown', '.step-element.premium', e => {
@@ -486,6 +765,8 @@
           )
         })
 
+        // clicking on an add-step icon in the flow
+        // handles both moving and non-moving state
         $document.on('click', 'button.add-step', e => {
 
           this.clearAddEl()
@@ -514,27 +795,18 @@
             return
           }
 
-          this.showAddStep()
-
           if (this.addEl.matches('.add-benchmark')) {
-            this.addCurrentGroup = 'benchmark'
-            setCurrentGroupButtonToCurrent()
-            filterStepTypes()
+            window.location.hash = `add/benchmark`
           }
-
-          if (this.addEl.matches('.add-action')) {
-            if (this.addCurrentGroup === 'benchmark') {
-              this.addCurrentGroup = 'action'
-              setCurrentGroupButtonToCurrent()
-              filterStepTypes()
-            }
+          else if (this.addEl.matches('.add-action')) {
+            window.location.hash = `add/action`
           }
-
-          setTimeout(() => {
-            scrollIntoViewIfNeeded(this.addEl, document.querySelector(`.fixed-inside`))
-          }, 300)
+          else {
+            window.location.hash = `add/${ this.addCurrentGroup }`
+          }
         })
 
+        // clicking on a step element icon to add it into the flow at the highlighted position
         $document.on('click', '.step-element.step-draggable:not(.premium)', e => {
 
           if (!this.addEl) {
@@ -614,7 +886,7 @@
           }
 
           this.saveQuietly({
-            shouldMorphSettings: ! e.target.matches( '.no-morph' )
+            shouldMorphSettings: !e.target.matches('.no-morph'),
           })
         })
 
@@ -704,34 +976,22 @@
         })
 
         $('#funnel-simulate').on('click', e => {
-          this.showSimulator()
+          window.location.hash = 'simulator'
+        })
+
+        $('#funnel-settings').on('click', e => {
+          window.location.hash = 'settings'
         })
 
         if (window.innerWidth > 600) {
           this.makeSortable()
         }
 
-        const dealWithHash = () => {
-          let hash = window.location.hash.substring(1)
+        morphSettings()
 
-          if (hash === 'add') {
-            this.showAddStep()
-          }
-          else if (hash === 'simulator') {
-            this.showSimulator()
-          }
-          else {
-            this.startEditing(parseInt(window.location.hash.substring(1)))
-          }
-
-          this.showSettings()
-        }
-
-        if (window.location.hash) {
-          dealWithHash()
-        }
-
-        window.addEventListener('hashchange', dealWithHash)
+        this.handleHashChange = this.handleHashChange.bind(this)
+        window.addEventListener('hashchange', this.handleHashChange)
+        this.handleHashChange()
 
         let header = document.querySelector('.funnel-editor-header > .actions')
 
@@ -744,89 +1004,7 @@
                 key     : 'settings',
                 text    : 'Settings',
                 onSelect: e => {
-                  Modal({}, ({ close }) => {
-
-                    let funnel = FunnelsStore.get(this.id)
-
-                    let { description = '' } = funnel.meta
-                    let { campaigns = [] } = funnel
-
-                    let campaignIds = campaigns.map(c => c.ID)
-
-                    return Div({}, [
-                      `<h2>Flow Settings</h2>`,
-                      `<p>Use <b>campaigns</b> to organize your flows. Use terms like <code>Black Friday</code> or <code>Sales</code>.</p>`,
-                      ItemPicker({
-                        id          : 'pick-campaigns',
-                        noneSelected: 'Add a campaign...',
-                        selected    : campaigns.map(({
-                          ID,
-                          data,
-                        }) => ( {
-                          id  : ID,
-                          text: data.name,
-                        } )),
-                        tags        : true,
-                        fetchOptions: async (search) => {
-                          let campaigns = await CampaignsStore.fetchItems({
-                            search,
-                            limit: 20,
-                          })
-
-                          return campaigns.map(({
-                            ID,
-                            data,
-                          }) => ( {
-                            id  : ID,
-                            text: data.name,
-                          } ))
-                        },
-                        createOption: async value => {
-                          let campaign = await CampaignsStore.create({
-                            data: {
-                              name: value,
-                            },
-                          })
-
-                          return {
-                            id  : campaign.ID,
-                            text: campaign.data.name,
-                          }
-                        },
-                        onChange    : items => campaignIds = items.map(item => item.id),
-                      }),
-                      `<p>Add a simple description.</p>`,
-                      Textarea({
-                        id       : 'funnel-description',
-                        className: 'full-width',
-                        onInput  : e => {
-                          description = e.target.value
-                        },
-                        value    : description,
-                      }),
-                      Div({
-                        className: 'display-flex flex-end',
-                      }, Button({
-                        id       : 'save-settings',
-                        className: 'gh-button primary',
-                        onClick  : async e => {
-
-                          close()
-
-                          await FunnelsStore.patch(this.id, {
-                            campaigns: campaignIds,
-                            meta     : {
-                              description,
-                            },
-                          })
-
-                          dialog({
-                            message: 'Changes saved!',
-                          })
-                        },
-                      }, 'Save')),
-                    ])
-                  })
+                  window.location.hash = 'settings'
                 },
               },
               {
@@ -973,6 +1151,8 @@
 
         // add initial state to history
         this.addCurrentStepsToUndoRedoHistory()
+
+        syncReplacementCodes()
       },
 
       addCurrentStepsToUndoRedoHistory () {
@@ -1009,11 +1189,11 @@
           quiet = true,
           moreData = () => {},
           restore = '',
-          shouldMorphSettings = true
+          shouldMorphSettings = true,
         } = args
 
         if (quiet && this.saving) {
-          this.saveQuietly( args ) // this will debounce until it works
+          this.saveQuietly(args) // this will debounce until it works
           return
         }
 
@@ -1094,7 +1274,7 @@
             this.makeSortable()
           }
 
-          if ( shouldMorphSettings ){
+          if (shouldMorphSettings) {
             morphdom(document.querySelector('.step-settings'), Div({}, response.data.settings), {
               childrenOnly     : true,
               onBeforeElUpdated: function (fromEl, toEl) {
@@ -1171,7 +1351,7 @@
         })
       },
 
-      saveQuietly: Groundhogg.functions.debounce(( args = {} ) => Funnel.save({ quiet: true, ...args }), 750),
+      saveQuietly: Groundhogg.functions.debounce((args = {}) => Funnel.save({ quiet: true, ...args }), 750),
 
       updateBranches () {
         document.querySelectorAll(`input[name*="[branch]"][type="hidden"]`).forEach(input => {
@@ -1295,31 +1475,24 @@
       showAddStep () {
         this.showSettings()
         this.startEditing(null)
-        document.getElementById( 'step-settings-inner' ).dataset.show = 'add'
-
-        history.pushState(null, null, '#add')
       },
 
-      showSimulator() {
+      showSimulator () {
 
-        if ( ! this.steps.length ){
+        if (!this.steps.length) {
           Groundhogg.element.errorDialog({
-            message: 'You must add steps to the flow first.'
+            message: 'You must add steps to the flow first.',
           })
           return
         }
 
         this.showSettings()
         Groundhogg.simulator.state.set({
-          current: this.editing ? parseInt( this.editing ) : this.steps[0].ID
+          current: this.editing ? parseInt(this.editing) : this.steps[0].ID,
         })
         this.startEditing(null)
-        document.getElementById( 'step-settings-inner' ).dataset.show = 'simulator'
         Groundhogg.simulator.morph()
-
-        history.pushState(null, null, '#simulator')
       },
-
 
       /**
        * Given an element delete it
@@ -1557,26 +1730,12 @@
 
           document.getElementById(`step-${ this.editing }`).classList.add('editing')
           document.getElementById(`settings-${ this.editing }`).classList.add('editing')
-          document.getElementById( 'step-settings-inner' ).dataset.show = 'edit'
 
           this.stepSettingsCallbacks()
 
           setTimeout(() => {
             scrollIntoViewIfNeeded(document.getElementById(`step-${ this.editing }`), document.querySelector(`.fixed-inside`))
           }, 300)
-
-          const step = this.getActiveStep()
-
-          if (!step) {
-            return
-          }
-
-          if (hps) {
-            history.pushState(null, null, `#${ step.ID }`)
-          }
-          else {
-            history.replaceState(null, null, `#${ step.ID }`)
-          }
         }
       },
 

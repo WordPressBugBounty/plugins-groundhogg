@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.8
 Requires PHP: 7.1
-Stable tag: 4.1.1.2
+Stable tag: 4.1.2
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -349,6 +349,12 @@ Well, that's up to you! We'll never say Groundhogg is better than anyone, but it
 You can purchase a premium plan for access to support and our premium extensions & integrations on our [pricing page](https://www.groundhogg.io/pricing/).
 
 == Changelog ==
+
+= 4.1.2 (2025-05-06) =
+* ADDED Custom replacements for Emails and Flows.
+* TWEAKED Moved flow settings to the editor panel instead of modal.
+* FIXED Email picker in flow not showing selected template after creating a new email (display issue only).
+* FIXED Make sure file name is sanitized when deleting exports/imports. Credit to WordFence & Phat Do.
 
 = 4.1.1.2 (2025-04-21) =
 * FIXED Confirmation links not working in WordPress 6.8 due to password hashing changes.
