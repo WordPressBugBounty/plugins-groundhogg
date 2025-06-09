@@ -6,6 +6,55 @@ use Groundhogg\Form\Form_Fields;
 use Groundhogg\Utils\DateTimeHelper;
 
 /**
+ * Hijack WP-Cron to prioritize Groundhogg's cron jobs and have them run before everyone else,
+ * because other devs are bad and they always break cron for some reason.
+ *
+ * @param array|null $jobs
+ *
+ * @return array
+ */
+function groundhogg_cron_jobs_go_first( $crons ) {
+
+	if ( $crons === null ) {
+		$crons = _get_cron_array();
+	}
+
+	// get the regular cron array to run
+	$gmt_time    = microtime( true );
+	$gh_first = [];
+	$others   = [];
+
+	foreach ( $crons as $timestamp => $cronhooks ) {
+		if ( $timestamp > $gmt_time ) {
+			break;
+		}
+
+		$gh_hooks     = [];
+		$non_gh_hooks = [];
+
+		foreach ( $cronhooks as $hook => $data ) {
+			if ( str_starts_with( $hook, 'groundhogg/' ) || str_starts_with( $hook, 'gh_' ) ) {
+				$gh_hooks[ $hook ] = $data;
+			} else {
+				$non_gh_hooks[ $hook ] = $data;
+			}
+		}
+
+		$merged = $gh_hooks + $non_gh_hooks;
+
+		if ( ! empty( $gh_hooks ) ) {
+			$gh_first[ $timestamp ] = $merged;
+		} else {
+			$others[ $timestamp ] = $merged;
+		}
+	}
+
+	return $gh_first + $others;
+}
+
+add_filter( 'pre_get_ready_cron_jobs', __NAMESPACE__ . '\groundhogg_cron_jobs_go_first' );
+
+/**
  * Do replacements on the block content if replacements is enabled for the current post
  *
  * @param string $content
@@ -370,7 +419,7 @@ function _responsive_tag_compat_callback( $matches ) {
  */
 function add_review_link_in_footer( $text ) {
 
-	if ( ! is_string( $text ) || is_white_labeled() || ! is_admin_groundhogg_page() || ! apply_filters( 'groundhogg/footer/show_text', true ) ){
+	if ( ! is_string( $text ) || is_white_labeled() || ! is_admin_groundhogg_page() || ! apply_filters( 'groundhogg/footer/show_text', true ) ) {
 		return $text;
 	}
 
@@ -420,6 +469,7 @@ function more_allowed_css( $attr ) {
 	$attr[] = 'outline';
 	$attr[] = 'table-layout';
 	$attr[] = 'background-repeat';
+	$attr[] = 'background';
 
 	return $attr;
 }
@@ -451,7 +501,20 @@ function more_allowed_tags( $tags ) {
 	$tags['xml'] = [];
 	$tags['w']   = [];
 	$tags['o']   = [];
-	$tags['v']   = [ 'xmlns:v' => true, 'xmlns:w' => true, 'esdevVmlButton' => true, 'arcsize' => true, 'stroke' => true, 'fillcolor' => true, ];
+	$tags['v']   = [
+		'xmlns:v'        => true,
+		'xmlns:w'        => true,
+		'esdevVmlButton' => true,
+		'arcsize'        => true,
+		'stroke'         => true,
+		'fillcolor'      => true,
+		'inset'          => true,
+		'style'          => true,
+		'fill'           => true,
+		'type'           => true,
+		'src'            => true,
+		'color'          => true,
+	];
 
 	// Common unsupported tags
 	unset( $tags['script'] );

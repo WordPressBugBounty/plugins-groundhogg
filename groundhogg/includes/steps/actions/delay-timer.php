@@ -25,7 +25,9 @@ class DelayDateTime extends DateTimeHelper {
 	}
 
 	public function useMax() {
-		$this->setTimestamp( $this->max );
+        if ( $this->max ){
+	        $this->setTimestamp( $this->max );
+        }
 	}
 
 	/**
@@ -204,7 +206,7 @@ class Delay_Timer extends Action {
 			'run_when'          => [
 				'default'  => 'now',
 				'sanitize' => function ( $value ) {
-					return one_of( $value, [ 'now', 'later' ] );
+					return one_of( $value, [ 'now', 'later', 'between' ] );
 				}
 			],
 			'run_time'          => [

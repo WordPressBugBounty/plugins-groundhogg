@@ -324,6 +324,7 @@
           backgroundPosition = '',
           backgroundSize = '',
           backgroundRepeat = '',
+          direction = 'ltr',
         } = getEmailMeta()
 
         let style = {
@@ -331,10 +332,8 @@
         }
 
         if (backgroundImage) {
-          style.backgroundImage = `url(${ backgroundImage })`
-          style.backgroundSize = backgroundSize
-          style.backgroundRepeat = backgroundRepeat
-          style.backgroundPosition = backgroundPosition
+          delete style.backgroundColor
+          style.background = `url('${ backgroundImage }') ${ backgroundPosition } / ${ backgroundSize } ${ backgroundRepeat } ${ backgroundColor }`
         }
 
         return Div({
@@ -343,6 +342,7 @@
           },
           Div({
               className: `template-boxed ${ alignment }`,
+              dir      : direction,
               style    : {
                 maxWidth: `${ width || 640 }px`,
 
@@ -361,6 +361,7 @@
           backgroundPosition = '',
           backgroundSize = '',
           backgroundRepeat = '',
+          direction = 'ltr',
         } = getEmailMeta()
 
         let style = {
@@ -368,14 +369,13 @@
         }
 
         if (backgroundImage) {
-          style.backgroundImage = `url(${ backgroundImage })`
-          style.backgroundSize = backgroundSize
-          style.backgroundRepeat = backgroundRepeat
-          style.backgroundPosition = backgroundPosition
+          delete style.backgroundColor
+          style.background = `url('${ backgroundImage }') ${ backgroundPosition } / ${ backgroundSize } ${ backgroundRepeat } ${ backgroundColor }`
         }
 
         return Div({
             className: `template-full-width-contained`,
+            dir      : direction,
             style,
           },
           blocks)
@@ -391,6 +391,7 @@
           backgroundPosition = '',
           backgroundSize = '',
           backgroundRepeat = '',
+          direction = 'ltr',
         } = getEmailMeta()
 
         let style = {
@@ -398,14 +399,13 @@
         }
 
         if (backgroundImage) {
-          style.backgroundImage = `url(${ backgroundImage })`
-          style.backgroundSize = backgroundSize
-          style.backgroundRepeat = backgroundRepeat
-          style.backgroundPosition = backgroundPosition
+          delete style.backgroundColor
+          style.background = `url('${ backgroundImage }') ${ backgroundPosition } / ${ backgroundSize } ${ backgroundRepeat } ${ backgroundColor }`
         }
 
         return Div({
             className: `template-full-width`,
+            dir      : direction,
             style,
           },
           blocks)
@@ -975,30 +975,29 @@
       return
     }
 
-    setIsGeneratingHTML(true)
-    let css = renderBlocksCSS(blocks)
-    let content = renderBlocksHTML(blocks)
-    let plain_text = renderBlocksPlainText(blocks)
-    setIsGeneratingHTML(false)
-
     setState({
       blocks,
     })
 
-    setEmailData({
+    if (hasChanges) {
+
+      setIsGeneratingHTML(true)
+      let css = renderBlocksCSS(blocks)
+      let content = renderBlocksHTML(blocks)
+      let plain_text = renderBlocksPlainText(blocks)
+      setIsGeneratingHTML(false)
+
+      setEmailData({
         content,
         plain_text,
-      },
-      hasChanges)
+      }, hasChanges)
 
-    setEmailMeta({
-        css,
-        blocks: true,
-        type  : 'blocks',
-      },
-      hasChanges)
+      setEmailMeta({
+          css,
+          blocks: true,
+          type  : 'blocks',
+        }, hasChanges)
 
-    if (hasChanges) {
       updatePreview()
     }
 
@@ -1885,10 +1884,8 @@
       }
 
       if (backgroundImage) {
-        style.backgroundImage = `url(${ backgroundImage })`
-        style.backgroundSize = backgroundSize
-        style.backgroundRepeat = backgroundRepeat
-        style.backgroundPosition = backgroundPosition
+        delete style.backgroundColor
+        style.background = `url(${ backgroundImage }) ${ backgroundPosition } / ${ backgroundSize } ${ backgroundRepeat } ${ backgroundColor }`
       }
 
       return style
@@ -1932,6 +1929,8 @@
         ...style, ...parseBorderStyle(el.style),
 
       }
+
+      // console.log( style )
 
       return style
 
@@ -2635,6 +2634,40 @@
       classes.push('hide-in-browser')
     }
 
+    // MSO bg image compat
+    if (backgroundImage) {
+
+      let el = document.getElementById(`b-${ block.id }`)
+
+      if (el) {
+        let computed = getComputedStyle( el )
+        let vmlWidth = computed.width // contains px
+        let vmlHeight = computed.height // contains px
+
+        html = Fragment([
+          `<!--[if gte mso 9]>
+      <v:rect
+        xmlns:v="urn:schemas-microsoft-com:vml"
+        fill="true"
+        stroke="false"
+        style="width:${ vmlWidth }; height:${ vmlHeight };"
+      >
+        <v:fill
+          type="frame"
+          src="${ backgroundImage }"
+          color="${ backgroundColor }"
+        />
+        <v:textbox inset="0,0,0,0">
+      <![endif]-->`,
+          html,
+          `<!--[if gte mso 9]>
+        </v:textbox>
+      </v:rect>
+      <![endif]-->`,
+        ])
+      }
+    }
+
     return Tr({},
       [
         BlockStartComment(block),
@@ -2649,6 +2682,7 @@
             background: backgroundImage,
             valign    : 'top',
           },
+
           html),
         BlockEndComment(block),
 
@@ -3507,12 +3541,12 @@
     Groundhogg.replacements.groups.this_email = 'This Email'
 
     for (const [key, value] of Object.entries(emailReplacements)) {
-      Groundhogg.replacements.codes[`__this_email_${key}`] = {
-        code: `this_email.${key}`,
-        desc: '',
-        name: key,
-        group: 'this_email',
-        insert: `{this_email.${key}}`,
+      Groundhogg.replacements.codes[`__this_email_${ key }`] = {
+        code  : `this_email.${ key }`,
+        desc  : '',
+        name  : key,
+        group : 'this_email',
+        insert: `{this_email.${ key }}`,
       }
     }
   }
@@ -3675,6 +3709,7 @@
 
     let {
       alignment = 'left',
+      direction = 'ltr',
       width = 600,
       backgroundColor = 'transparent',
       backgroundImage = '',
@@ -3725,7 +3760,7 @@
             },
           })),
         templateIs(BOXED) ? Control({
-            label: 'Alignment',
+            label: 'Body Alignment',
           },
           AlignmentButtons({
             id        : 'template-align',
@@ -3739,6 +3774,23 @@
               'center',
             ],
           })) : null,
+        Control({
+            label: 'Text Direction',
+          },
+          AlignmentButtons({
+            id        : 'text-direction',
+            alignment : direction === 'ltr' ? 'left' : 'right',
+            onChange  : direction => {
+              updateSettings({
+                reRender : true,
+                direction: direction === 'right' ? 'rtl' : 'ltr',
+              })
+            },
+            directions: [
+              'left',
+              'right',
+            ],
+          })),
         `<hr/>`,
         Control({
             label: 'Background Color',
@@ -3783,6 +3835,7 @@
     let {
       from_select = 0,
       message_type = 'marketing',
+      is_template = 0,
     } = getEmailData()
 
     let fromOptions = [
@@ -3936,7 +3989,7 @@
             },
             Toggle({
               id      : 'save-as-template',
-              checked : Boolean(parseInt(getEmailData().is_template)),
+              checked : Boolean(is_template),
               onChange: e => {
                 setEmailData({
                   is_template: e.target.checked,
@@ -6866,8 +6919,9 @@
                     savedReplies: true,
                     posttags    : blockEl.closest('[data-type="queryloop"]') && true,
                     tinymce     : {
-                      content_style: tinyMceCSS(),
+                      content_style : tinyMceCSS(),
                       height, // inline: true,
+                      directionality: getEmailMeta().direction ?? 'ltr',
                     },
                     quicktags   : true,
                   },
@@ -6899,17 +6953,17 @@
       id,
       ...block
     }) => textContent(block),
-    css: ({
+    css      : ({
       p,
       h1,
       h2,
       h3,
       a,
-      selector = ''
+      selector = '',
     }) => {
 
-        //language=CSS
-        return `
+      //language=CSS
+      return `
           ${ selector } h1 {
               ${ fontStyle(h1) }
           }
@@ -6931,7 +6985,7 @@
               ${ fontStyle(a) }
           }
       `
-      },
+    },
     plainText: ({ content }) => extractPlainText(content),
     gutenberg: ({ content }) => {
       content = convertToGutenbergBlocks(content)
@@ -9737,6 +9791,16 @@
     })
   }
 
+  function fixStyleQuotes (htmlString) {
+    return htmlString.replace(
+      // capture style="…"
+      /(\bstyle\s*=\s*")([^"]*)(")/gi,
+      (_, prefix, contents, suffix) =>
+        // replace inside only the contents
+        prefix + contents.replace(/&quot;/g, '\'') + suffix,
+    )
+  }
+
   /**
    * Renders the blocks in their final HTML format
    *
@@ -9759,6 +9823,9 @@
     html = html.replaceAll(new RegExp(`&quot;(${ subFontsWithSpaces.join('') })&quot;`,
         'g'),
       '\'$1\'')
+
+    html = fixStyleQuotes(html)
+
     return html
   }
 

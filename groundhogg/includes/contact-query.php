@@ -1053,6 +1053,18 @@ class Contact_Query extends Table_Query {
 	}
 
 	/**
+	 * Correctly alias function name
+	 *
+	 * @param       $filter
+	 * @param Where $where
+	 *
+	 * @return void
+	 */
+	public static function filter_email_link_clicked( $filter, Where $where ) {
+		self::filter_link_clicked( $filter, $where );
+	}
+
+	/**
 	 * IF they opened the email
 	 *
 	 * @param       $filter
@@ -2254,6 +2266,7 @@ class Contact_Query extends Table_Query {
 			Preferences::UNSUBSCRIBED,
 			Preferences::SPAM,
 			Preferences::HARD_BOUNCE,
+			Preferences::BLOCKED,
 		] );
 
 		if ( Plugin::instance()->preferences->is_confirmation_strict() ) {
