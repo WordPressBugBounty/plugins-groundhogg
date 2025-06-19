@@ -5816,6 +5816,11 @@ function sanitize_payload( $payload ) {
 
 	return map_deep( $payload, function ( $param ) {
 
+		// booleans
+		if ( is_bool( $param ) ){
+			return $param;
+		}
+
 		// Might be a float
 		// Might be int
 		// if first digit is 0, treat as string
@@ -6656,11 +6661,19 @@ function enqueue_email_block_editor_assets( $extra = [] ) {
 
 	}, get_post_types( [ 'public' => true ], false ) );
 
+    $block_defaults = get_option( 'gh_email_editor_block_defaults' );
+    if ( ! is_array( $block_defaults ) ) {
+        $block_defaults = [
+            'version' => '1.0'
+        ];
+    }
+
 	$localized = array_merge( [
 		'footer'        => compact( 'business_name', 'address', 'links', 'unsubscribe' ),
 		'colorPalette'  => get_option( 'gh_email_editor_color_palette', [] ),
 		'globalFonts'   => get_option( 'gh_email_editor_global_fonts', [] ),
 		'globalSocials' => get_option( 'gh_email_editor_global_social_accounts', [] ),
+		'blockDefaults' => $block_defaults,
 		'imageSizes'    => array_values( get_intermediate_image_sizes() ),
 		'assets'        => [
 			'logo' => has_custom_logo() ? wp_get_attachment_image_src( get_theme_mod( 'custom_logo' ), 'full' ) : false,
@@ -8283,10 +8296,13 @@ function html2markdown( $string, $clean_up = true, $tidy_up = true ) {
 		$dom = new \DOMDocument(); // FIX ENCODING https://stackoverflow.com/a/8218649
 
 		if ( function_exists( 'iconv' ) ) {
-			@$dom->loadHTML( htmlspecialchars_decode( iconv( 'UTF-8', 'ISO-8859-1', htmlentities( $markdown, ENT_COMPAT, 'UTF-8' ) ), ENT_QUOTES ) );
-		} else {
-			@$dom->loadHTML( $markdown );
+            $decoded = htmlspecialchars_decode( iconv( 'UTF-8', 'ISO-8859-1', htmlentities( $markdown, ENT_COMPAT, 'UTF-8' ) ), ENT_QUOTES );
+            if ( ! empty( $decoded ) ) {
+                $markdown = $decoded;
+            }
 		}
+
+		@$dom->loadHTML( $markdown );
 
 		$markdown = $dom->saveHTML();
 		// preg_match() IS NOT SO NICE, BUT WORKS FOR ME
