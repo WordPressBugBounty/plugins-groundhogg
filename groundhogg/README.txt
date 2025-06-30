@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.8
 Requires PHP: 7.1
-Stable tag: 4.2
+Stable tag: 4.2.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -348,7 +348,17 @@ Well, that's up to you! We'll never say Groundhogg is better than anyone, but it
 = Where can I upgrade to premium? =
 You can purchase a premium plan for access to support and our premium extensions & integrations on our [pricing page](https://www.groundhogg.io/pricing/).
 
+= How can I report security bugs? =
+
+You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage and handle any security vulnerabilities. [Report a security vulnerability.]( https://patchstack.com/database/vdp/9e5fb9d9-417e-4ba2-a0bf-8b7529b7122b )
+
 == Changelog ==
+
+= 4.2.1 (2025-06-30) =
+* HARDENED User ID syncing so that the correct user is always linked with the correct contact
+* HARDENED Sanitization for Query::addJoin()
+* HARDENED Removed sensitive data from the WP User object when returned via JSON.
+* FIXED Email content empty if importing an email template and making no content changes.
 
 = 4.2 (2025-06-11) =
 * ADDED Alter default appearance of emails blocks in the email editor settings.
