@@ -51,7 +51,8 @@
     Select,
     Input,
     Div,
-    makeEl
+    makeEl,
+    InputRepeater
   } = MakeEl
 
   const {
@@ -2433,6 +2434,69 @@
   ContactFilterRegistry.registerFilter(CurrentDateCompareFilterFactory('current_datetime', 'Current Date & Time', 'datetime-local', formatDateTime ))
   ContactFilterRegistry.registerFilter(CurrentDateCompareFilterFactory('current_date', 'Current Date', 'date', formatDate ))
   ContactFilterRegistry.registerFilter(CurrentDateCompareFilterFactory('current_time', 'Current Time', 'time', ( time ) => formatTime(`2000-01-01T${time}`) ))
+
+  registerFilterGroup( 'submissions', 'Submissions' )
+
+  ContactFilterRegistry.registerFilter( createPastDateFilter( 'form_submissions', 'Form Submissions', 'submissions', {
+    edit: ({
+      form_id = '',
+      form_type = '',
+      meta_filters = [],
+      updateFilter = () => {}
+    }) => {
+
+      return Fragment([
+
+        Input({
+          placeholder: 'ID',
+          id: 'form_id',
+          name: 'form_id',
+          value: form_id,
+          onChange: e => updateFilter({
+            form_id: e.target.value
+          })
+        }),
+
+        Input({
+          placeholder: 'Type',
+          id: 'type',
+          name: 'type',
+          value: form_type,
+          onChange: e => updateFilter({
+            form_type: e.target.value
+          })
+        }),
+
+        `<label>${ __('Filter by submission meta', 'groundhogg') }</label>`,
+        InputRepeater({
+          id: 'submission-meta-filters',
+          rows: meta_filters,
+          cells: [
+            props => Input({...props, placeholder: 'Key'}),
+            ({
+              value,
+              ...props
+            }) => Select({
+              selected: value,
+              options : AllComparisons,
+              ...props,
+            }),
+            props => Input({...props, placeholder: 'Value'}),
+          ],
+          fillRow: () => [
+            '',
+            'equals',
+            ''
+          ],
+          onChange: rows => {
+            updateFilter({
+              meta_filters: rows
+            })
+          }
+        })
+      ])
+    }
+  } ) )
 
   if (!Groundhogg.filters) {
     Groundhogg.filters = {}
