@@ -4,6 +4,7 @@ namespace Groundhogg;
 
 use Groundhogg\Classes\Activity;
 use Groundhogg\Classes\Page_Visit;
+use Groundhogg\DB\Meta_DB;
 use Groundhogg\DB\Query\Filters;
 use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\Form\Posted_Data;
@@ -11,6 +12,7 @@ use Groundhogg\Lib\Mobile\Mobile_Validator;
 use Groundhogg\Queue\Event_Queue;
 use Groundhogg\Queue\Process_Contact_Events;
 use Groundhogg\Utils\DateTimeHelper;
+use Groundhogg\Utils\Replacer;
 use WP_Error;
 
 
@@ -2046,9 +2048,9 @@ function count_csv_rows( $file_path ) {
 
 	while ( ! $file->eof() ) {
 		$line = $file->fgets();
-        if ( ! empty( $line ) ) {
-	        $rows ++;
-        }
+		if ( ! empty( $line ) ) {
+			$rows ++;
+		}
 	}
 
 	$file = null;
@@ -4222,7 +4224,7 @@ function is_pro_features_active() {
 /**
  * Fetches the master license, if one is available
  *
- * @return void
+ * @return string
  */
 function get_master_license() {
 	return get_option( 'gh_master_license' );
@@ -4853,6 +4855,8 @@ function generate_permissions_key( $contact = false, $usage = 'preferences', $ex
 	}
 
 	$key = wp_generate_password( 20, false );
+
+    add_redaction( $key ) ;
 
 	// Generate the permissions_key
 	get_db( 'permissions_keys' )->add( [
@@ -5818,7 +5822,7 @@ function sanitize_payload( $payload ) {
 	return map_deep( $payload, function ( $param ) {
 
 		// booleans
-		if ( is_bool( $param ) ){
+		if ( is_bool( $param ) ) {
 			return $param;
 		}
 
@@ -6662,12 +6666,12 @@ function enqueue_email_block_editor_assets( $extra = [] ) {
 
 	}, get_post_types( [ 'public' => true ], false ) );
 
-    $block_defaults = get_option( 'gh_email_editor_block_defaults' );
-    if ( ! is_array( $block_defaults ) ) {
-        $block_defaults = [
-            'version' => '1.0'
-        ];
-    }
+	$block_defaults = get_option( 'gh_email_editor_block_defaults' );
+	if ( ! is_array( $block_defaults ) ) {
+		$block_defaults = [
+			'version' => '1.0'
+		];
+	}
 
 	$localized = array_merge( [
 		'footer'        => compact( 'business_name', 'address', 'links', 'unsubscribe' ),
@@ -7225,7 +7229,7 @@ function parse_tag_list( $maybe_tags, $as = 'ID', $create = true ) {
 	} else if ( is_string( $maybe_tags ) ) {
 		// it's a comma separated list
 		if ( str_contains( $maybe_tags, ',' ) ) {
-			$tags = parse_tag_list( wp_parse_list( $maybe_tags ), 'tags' );
+			$tags = parse_tag_list( maybe_explode( $maybe_tags ), 'tags' );
 		} else {
 
 			// if create is true, use the query and create method, otherwise use the slug
@@ -8076,9 +8080,9 @@ function the_thing( $key, $set_thing = null ) {
  */
 function maybe_init_things_from_referrer() {
 
-    if ( ! doing_rest() && ! wp_doing_ajax() ){
-        return;
-    }
+	if ( ! doing_rest() && ! wp_doing_ajax() ) {
+		return;
+	}
 
 	$params = [];
 	wp_parse_str( wp_parse_url( wp_get_referer(), PHP_URL_QUERY ), $params );
@@ -8086,28 +8090,28 @@ function maybe_init_things_from_referrer() {
 	$page   = $params['page'] ?? null;
 	$action = $params['action'] ?? null;
 
-    // if the action isn't edit we don't have to do anything
-    if ( $action !== 'edit' ){
-        return;
-    }
+	// if the action isn't edit we don't have to do anything
+	if ( $action !== 'edit' ) {
+		return;
+	}
 
-    if ( $page === 'gh_funnels' && isset( $params['funnel'] ) ) {
-        $funnel = new Funnel( $params['funnel'] );
-        if ( $funnel->exists() && current_user_can( 'edit_funnel', $funnel ) ) {
-            the_funnel( $funnel );
-        }
-    }
+	if ( $page === 'gh_funnels' && isset( $params['funnel'] ) ) {
+		$funnel = new Funnel( $params['funnel'] );
+		if ( $funnel->exists() && current_user_can( 'edit_funnel', $funnel ) ) {
+			the_funnel( $funnel );
+		}
+	}
 
 	if ( $page === 'gh_emails' && isset( $params['email'] ) ) {
 		$email = new Email( $params['email'] );
-		if ( $email->exists() && current_user_can( 'edit_email', $email ) ){
+		if ( $email->exists() && current_user_can( 'edit_email', $email ) ) {
 			the_email( $email );
 		}
 	}
 
 	if ( $page === 'gh_contacts' && isset( $params['contact'] ) ) {
 		$contact = get_contactdata( $params['contact'] );
-		if ( $contact && current_user_can( 'view_contact', $contact ) ){
+		if ( $contact && current_user_can( 'view_contact', $contact ) ) {
 			the_thing( 'contact', $contact );
 		}
 	}
@@ -8305,10 +8309,10 @@ function html2markdown( $string, $clean_up = true, $tidy_up = true ) {
 		$dom = new \DOMDocument(); // FIX ENCODING https://stackoverflow.com/a/8218649
 
 		if ( function_exists( 'iconv' ) ) {
-            $decoded = htmlspecialchars_decode( iconv( 'UTF-8', 'ISO-8859-1', htmlentities( $markdown, ENT_COMPAT, 'UTF-8' ) ), ENT_QUOTES );
-            if ( ! empty( $decoded ) ) {
-                $markdown = $decoded;
-            }
+			$decoded = htmlspecialchars_decode( iconv( 'UTF-8', 'ISO-8859-1', htmlentities( $markdown, ENT_COMPAT, 'UTF-8' ) ), ENT_QUOTES );
+			if ( ! empty( $decoded ) ) {
+				$markdown = $decoded;
+			}
 		}
 
 		@$dom->loadHTML( $markdown );
@@ -8608,6 +8612,7 @@ function ajax_send_plugin_feedback() {
  */
 function add_self_removing_filter( string $filter, callable $callback, int $priority = 10, int $args = 1 ) {
 	_deprecated_function( __FUNCTION__, '4.2', __NAMESPACE__ . '\add_filter_use_once' );
+
 	return add_filter_use_once( $filter, $callback, $priority, $args );
 }
 
@@ -8757,7 +8762,7 @@ function search_and_replace_in_file( $file_path, $search, $replace ) {
 }
 
 /**
- * Count the number of lines in a peric of text
+ * Count the number of lines in a piece of text
  *
  * @param $text
  *
@@ -8772,7 +8777,7 @@ function count_newlines( $text ) {
  *
  * @throws \Exception
  *
- * @param $user_id int sync based on a specific user ID
+ * @param $user_id    int sync based on a specific user ID
  * @param $contact_id int sync based on a specific contact ID
  *
  * @return bool|int|\mysqli_result|null
@@ -8818,9 +8823,145 @@ function safe_user_id_sync( int $user_id = 0, int $contact_id = 0 ) {
 	}
 
 	// Update the user_id col from the ID in the table
-	$updated = $query->update( [
+	return $query->update( [
 		'user_id' => "$join->alias.ID"
 	] );
+}
 
-	return $updated;
+/**
+ * Get the redactor
+ *
+ * @param $reset
+ *
+ * @return Replacer|mixed
+ */
+function redactor( $reset = false ) {
+
+	static $instance;
+
+	if ( ! $instance || $reset ) {
+		$instance = new Replacer();
+	}
+
+	return $instance;
+}
+
+// automatically reset the redactor whenever a new event is starting to get processed
+add_action( 'groundhogg/event/run/before', fn() => redactor( true ) );
+add_action( 'retrieve_password_key', fn( $user_login, $key ) => add_redaction( $key ), 10, 2 );
+
+/**
+ * Returns the replacement for redaction of the provided value in any format
+ *
+ * @param mixed $value
+ *
+ * @return mixed
+ */
+function get_redaction_replacement( $value ) {
+	return map_deep( $value, fn( $item ) => preg_replace( '/[^\s]/u', '█', $value ) );
+}
+
+/**
+ * Adds a redaction to the redactor so when redact() is used, it's redacted
+ *
+ * @param string $text
+ *
+ * @return void
+ */
+function add_redaction( string $text ) {
+	redactor()->add( $text, get_redaction_replacement( $text ) );
+}
+
+/**
+ * Given a string, process any redactions
+ *
+ * @param string $text
+ *
+ * @return string
+ */
+function redact( string $text ) {
+	return redactor()->replace( $text );
+}
+
+/**
+ * Creates the redaction record for the meta in question
+ *
+ * @param Meta_DB $table
+ * @param int     $object_id
+ * @param string  $meta_key
+ * @param int     $ttl
+ *
+ * @return int the row ID of the newly created meta record
+ */
+function schedule_meta_redaction( Meta_DB $table, int $object_id, string $meta_key, int $ttl ) {
+
+	// delete any already schedule redactions for this key value pair
+	$table->delete( [
+		'meta_key'                  => "_redact_$meta_key",
+		$table->get_object_id_col() => $object_id,
+	] );
+
+	return $table->insert( [
+		'meta_key'                  => "_redact_$meta_key",
+		'meta_value'                => time() + $ttl,
+		$table->get_object_id_col() => $object_id,
+	] );
+}
+
+/**
+ * Given a table, update the various entries to be redacted based on the _redact_ timestamp
+ * It will also delete the _redact_ keys
+ *
+ * @param $table
+ *
+ * @return void
+ */
+function redact_meta_table( $table ) {
+
+	global $wpdb;
+
+	$table      = db()->get_db( $table );
+	$table_name = $table->table_name;
+	$id_col     = $table->get_object_id_col();
+
+    $time = time();
+
+
+	global $wpdb;
+
+	$mysql_version = $wpdb->db_version(); // e.g., "5.7.42" or "8.0.36"
+
+	if ( version_compare( $mysql_version, '8.0.4', '>=' ) ) {
+		// Use REGEXP_REPLACE
+		// do redactions
+		$sql = <<<SQL
+            UPDATE {$table_name} AS meta
+            JOIN {$table_name} AS expires
+              ON meta.$id_col = expires.$id_col
+              AND expires.meta_key = CONCAT('_redact_', meta.meta_key)
+            SET meta.meta_value = REGEXP_REPLACE(meta.meta_value, '[^[:space:]]', '█')
+            WHERE expires.meta_value < {$time}
+        SQL;
+	} else {
+		// Use REPEAT(█, CHAR_LENGTH(...))
+		$sql = <<<SQL
+            UPDATE {$table_name} AS meta
+            JOIN {$table_name} AS expires
+              ON meta.$id_col = expires.$id_col
+              AND expires.meta_key = CONCAT('_redact_', meta.meta_key)
+            SET meta.meta_value = REPEAT('█', CHAR_LENGTH(meta.meta_value))
+            WHERE expires.meta_value < {$time}
+        SQL;
+	}
+
+	$wpdb->query( $sql );
+
+	// delete leftover _redact_ entries
+	$wpdb->query( "
+        DELETE FROM {$table_name}
+        WHERE meta_key LIKE '_redact_%'
+          AND meta_value < {$time}
+    " );
+
+	$table->cache_set_last_changed();
 }

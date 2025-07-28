@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.8
 Requires PHP: 7.1
-Stable tag: 4.2.2.1
+Stable tag: 4.2.3
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -353,6 +353,16 @@ You can purchase a premium plan for access to support and our premium extensions
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage and handle any security vulnerabilities. [Report a security vulnerability.]( https://patchstack.com/database/vdp/9e5fb9d9-417e-4ba2-a0bf-8b7529b7122b )
 
 == Changelog ==
+
+= 4.2.3 (2025-07-28) =
+* ADDED The new `{redact}` replacement code that will redact details from email logs. You can also use the function `Groundhogg\add_redaction( "my text" );` to add redactions programmatically.
+* ADDED Form Submission, Webhook Request, and Webhook Response search filters to filter by historical submission data.
+* ADDED Redaction option for form fields in the advanced tab. Will automatically redact sensitive information from submissions and contact meta after desired time period.
+* TWEAKED Re-ordered the tools page tabs so that sync tools appear first.
+* TWEAKED Changing the label while editing an existing custom field does automatically edit the internal name.
+* TWEAKED When changing the internal name of an existing custom field a warning is shown.
+* FIXED Some search filters requiring joins with 3rd party tables not working if join column is not correctly aliased.
+* FIXED Dropdown fields not showing as pre-filled if the current value in the contact record contained a space.
 
 = 4.2.2.1 (2025-07-07) =
 * FIXED Fatal error when uploading new contact CSV import.

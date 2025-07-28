@@ -8,6 +8,7 @@ use Groundhogg\Properties;
 use Groundhogg\Step;
 use Groundhogg\Submission;
 use Groundhogg\Utils\DateTimeHelper;
+use function Groundhogg\add_redaction;
 use function Groundhogg\array_filter_splice;
 use function Groundhogg\array_find;
 use function Groundhogg\array_to_atts;
@@ -1337,7 +1338,11 @@ class Form_v2 extends Step {
 				},
 				'retrieve' => function ( Submission $submission, $field ) {
 					$value    = standard_meta_retrieve( $submission, $field );
-					$dateTime = new DateTimeHelper( $value );
+					try {
+						$dateTime = new DateTimeHelper( $value );
+					} catch (\Throwable $e){
+						return '';
+					}
 
 					return $dateTime->wpDateFormat();
 				}
@@ -2243,6 +2248,31 @@ class Form_v2 extends Step {
 		$submission_data = array_merge( $data, $meta, $submission_additional );
 		$submission->add_posted_data( $submission_data );
 
+		// handle redactions
+		$redacted_fields = array_filter( $fields, fn( $field ) => isset_not_empty( $field, 'redact' ) );
+		foreach ( $redacted_fields as $field ) {
+
+			// identify the internal name used in the submission
+			if ( isset_not_empty( $field, 'name' ) ) {
+				$key = $field['name'];
+			} else if ( $field['type'] === 'custom_field' ) {
+				$property = Properties::instance()->get_field( $field['property'] );
+				if ( ! $property ) {
+					continue;
+				}
+				$key = $property['name'];
+			} else {
+				continue;
+			}
+
+			// ttl is provided in hours from the form settings
+			$ttl = absint( get_array_var( $field, 'redact', 1 ) ) * HOUR_IN_SECONDS;
+
+			// schedule redaction in both the contact and in the submission
+			$submission->schedule_meta_redaction( $key, $ttl );
+			$contact->schedule_meta_redaction( $key, $ttl );
+		}
+
 		/**
 		 * Trigger any benchmarks from here
 		 *
@@ -2343,9 +2373,17 @@ class Form_v2 extends Step {
 				continue;
 			}
 
+			$label = isset_not_empty( $field, 'label' ) ? $field['label'] : ( $field['name'] ?? $field['type'] );
+			$value = $this->retrieve_field_submission_answer( $submission, $field );
+
+			// maybe redact the value from email logs
+			if ( isset_not_empty( $field, 'redact' ) ){
+				add_redaction( $value );
+			}
+
 			$answers[] = [
-				'label' => isset_not_empty( $field, 'label' ) ? $field['label'] : ( $field['name'] ?? $field['type'] ),
-				'value' => $this->retrieve_field_submission_answer( $submission, $field )
+				'label' => $label,
+				'value' => $value,
 			];
 		}
 

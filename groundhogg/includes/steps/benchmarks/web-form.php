@@ -196,6 +196,11 @@ class Web_Form extends Benchmark {
 			'checked'       => 'boolval',
 			'multiple'      => 'boolval',
 			'enabled'       => 'boolval',
+			'redact' => function ( $value ) {
+				$value = absint( $value );
+
+				return one_of( $value, [ 0, 1, 6, 12, 24 ] );
+			},
 			'file_types'    => function ( $value ) {
 				return array_map( 'sanitize_text_field', $value );
 			},
@@ -276,7 +281,8 @@ class Web_Form extends Benchmark {
 			],
 			'enable_ajax'     => [
 				'default'  => false,
-				'sanitize' => 'boolval'
+				'sanitize' => 'boolval',
+				'initial'  => true
 			],
 			'accent_color'    => [
 				'default'  => '',
@@ -289,6 +295,7 @@ class Web_Form extends Benchmark {
 			'success_message' => [
 				'default'  => '',
 				'sanitize' => 'wp_kses_post',
+                'initial'  => __( 'Thanks! Check your inbox for further details.', 'groundhogg' )
 			],
 			'success_page'    => [
 				'default'  => '',

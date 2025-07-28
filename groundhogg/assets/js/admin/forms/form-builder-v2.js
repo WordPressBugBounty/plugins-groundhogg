@@ -306,7 +306,6 @@
         })
       },
     },
-
     checked: {
       type: 'checked',
       edit ({ checked = false }) {
@@ -330,7 +329,6 @@
         })
       },
     },
-
     multiple: {
       type: 'multiple',
       edit ({ multiple = false }) {
@@ -400,6 +398,34 @@
         $('#hide-label').on('change', (e) => {
           updateField({
             hide_label: e.target.checked,
+          })
+        })
+      },
+    },
+    redact   : {
+      type: 'redact',
+      edit ({ redact = 0 }) {
+        //language=HTML
+        return `<label for="hide-label">Redact this field?</label>
+        <div class="setting">${ select({
+            id       : 'should-redact',
+            name     : 'should_redact',
+            className: 'should-redact',
+            options : {
+                0 : 'Don\'t redact',
+                1 : 'After 1 hour',
+                6 : 'After 6 hours',
+                12: 'After 12 hours',
+                24: 'After 1 day',
+            },
+            selected: redact,
+        }) }
+        </div>`
+      },
+      onMount (field, updateField) {
+        $('#should-redact').on('change', (e) => {
+          updateField({
+            redact: e.target.value,
           })
         })
       },
@@ -742,7 +768,6 @@
         }).mount()
       },
     },
-
   }
 
   /**
@@ -821,6 +846,11 @@
     Settings.value.type,
     Settings.id.type,
     Settings.className.type,
+  ]
+
+  const standardAdvancedSettingsWithRedact = [
+    ...standardAdvancedSettings,
+    Settings.redact.type,
   ]
 
   const fieldPreview = ({
@@ -1113,7 +1143,7 @@
         // Settings.required.type,
         // Settings.columnWidth.type,
       ],
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: (field) => fieldPreview({
         ...field,
         type: 'hidden',
@@ -1125,14 +1155,14 @@
       group: 'custom',
       name: 'Text',
       content: standardMetaContentSettings,
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: (field) => fieldPreview(field),
     },
     url: {
       group: 'custom',
       name: 'URL',
       content: standardMetaContentSettings,
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: (field) => fieldPreview({
         ...field,
         type: 'url',
@@ -1162,7 +1192,7 @@
       group: 'custom',
       name: 'Textarea',
       content: standardMetaContentSettings,
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: ({
         type = 'text',
         id = uuid(),
@@ -1199,7 +1229,7 @@
       group: 'custom',
       name: 'Number',
       content: standardMetaContentSettings,
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: (field) => fieldPreview({
         ...field,
         type: 'number',
@@ -1494,7 +1524,7 @@
         Settings.required.type,
         Settings.columnWidth.type,
       ],
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: (field) => fieldPreview({
         ...field,
         type: 'date',
@@ -1511,7 +1541,7 @@
         Settings.required.type,
         Settings.columnWidth.type,
       ],
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: (field) => fieldPreview({
         ...field,
         type: 'datetime-local',
@@ -1528,7 +1558,7 @@
         Settings.required.type,
         Settings.columnWidth.type,
       ],
-      advanced: standardAdvancedSettings,
+      advanced: standardAdvancedSettingsWithRedact,
       preview: (field) => fieldPreview({
         ...field,
         type: 'time',
@@ -1569,6 +1599,7 @@
         Settings.value.type,
         Settings.id.type,
         Settings.className.type,
+        Settings.redact.type
       ],
       preview: ({
         id = uuid(),
