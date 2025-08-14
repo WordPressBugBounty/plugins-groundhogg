@@ -75,8 +75,8 @@ managed_page_head( __( 'Email Archive', 'groundhogg' ), 'archive' );
 
 ?>
     <div class="box">
-        <h1 class="no-margin-top"><?php _e( 'Email Archive', 'groundhogg' ); ?></h1>
-        <p><?php _e( 'Below is a list of all the emails you\'ve received in the past. Use the pagination to browse. Emails are ordered by date starting with the most recently received.', 'groundhogg' ); ?></p>
+        <h1 class="no-margin-top"><?php esc_html_e( 'Email Archive', 'groundhogg' );; ?></h1>
+        <p><?php esc_html_e( 'Below is a list of all the emails you\'ve received in the past. Use the pagination to browse. Emails are ordered by date starting with the most recently received.', 'groundhogg' );; ?></p>
 
 		<?php
 
@@ -146,13 +146,28 @@ managed_page_head( __( 'Email Archive', 'groundhogg' ), 'archive' );
 		if ( $search ):
 
 			?>
-            <p><?php printf( __( 'You\'ve received %s emails matching %s.', 'groundhogg' ), bold_it( number_format_i18n( $total_events ) ), bold_it( esc_html( $search ) ) ); ?></p>
+            <p><?php
+				printf(
+				    /* translators: 1: number of emails received, 2: search term */
+                    esc_html__( 'You\'ve received %1$s emails matching %2$s.', 'groundhogg' ),
+					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                    bold_it( esc_html( number_format_i18n( $total_events ) ) ),
+					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                    bold_it( esc_html( $search ) )
+                ); ?></p>
 		<?php
 
 		else:
 
 			?>
-            <p><?php printf( __( 'You\'ve received %s emails from us.', 'groundhogg' ), bold_it( number_format_i18n( $total_events ) ) ); ?></p>
+            <p><?php
+				printf(
+				    /* translators: 1: number of emails received */
+                    esc_html__( 'You\'ve received %s emails from us.', 'groundhogg' ),
+                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                    bold_it( esc_html( number_format_i18n( $total_events ) ) )
+                );
+                ?></p>
 		<?php
 
 		endif;

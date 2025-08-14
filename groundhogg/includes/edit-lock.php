@@ -2,6 +2,8 @@
 
 namespace Groundhogg;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
 /**
  * Helper functions for handling edit locking among any base_object UI.
  * based on the edit lock system in WP core post.php wp_set_edit_lock()
@@ -23,8 +25,9 @@ function row_item_locked_text( Base_Object_With_Meta $object ) {
 		$user          = get_userdata( $lock_holder );
 		$locked_avatar = get_avatar( $user->ID, 18 );
 		/* translators: %s: User's display name. */
-		$locked_text = esc_html( sprintf( __( '%s is currently editing' ), $user->display_name ) );
+		$locked_text = esc_html( sprintf( __( '%s is currently editing', 'groundhogg' ), $user->display_name ) );
 
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped above
 		echo '<div class="locked-info"><span class="locked-avatar">' . $locked_avatar . '</span> <span class="locked-text">' . $locked_text . "</span></div>\n";
 	}
 }
@@ -42,7 +45,7 @@ function use_edit_lock( Base_Object_With_Meta $object, $can_take_over = true ) {
 	if ( get_url_var( 'take-over' ) == 1 && $can_take_over ){
 		check_admin_referer( 'take-over' );
 		set_lock( $object );
-		wp_redirect( $object->admin_link() );
+		wp_safe_redirect( $object->admin_link() );
 		die();
 	}
 
@@ -63,7 +66,7 @@ function use_edit_lock( Base_Object_With_Meta $object, $can_take_over = true ) {
 		$error = [
 			'name'          => $user->display_name,
 			/* translators: %s: User's display name. */
-			'text'          => sprintf( __( '%s is currently editing.' ), $user->display_name ),
+			'text' => esc_html( sprintf( __( '%s is currently editing.', 'groundhogg' ), $user->display_name ) ),
 			'avatar_src'    => get_avatar_url( $user->ID, array( 'size' => 64 ) ),
 			'avatar_src_2x' => get_avatar_url( $user->ID, array( 'size' => 128 ) ),
 		];
@@ -72,7 +75,7 @@ function use_edit_lock( Base_Object_With_Meta $object, $can_take_over = true ) {
 			$error['take_over'] = add_query_arg( [
 				'take-over' => 1,
 				'_wpnonce'  => wp_create_nonce( 'take-over' )
-			], $_SERVER['REQUEST_URI'] );
+			], get_request_uri() );
 		}
 
 		// Send the lock error
@@ -189,7 +192,7 @@ function maybe_refresh_lock( array $response, array $data, $screen_id ) {
 		$error = [
 			'name'          => $user->display_name,
 			/* translators: %s: User's display name. */
-			'text'          => sprintf( __( '%s is currently editing.' ), $user->display_name ),
+			'text' => esc_html( sprintf( __( '%s is currently editing.', 'groundhogg' ), $user->display_name ) ),
 			'avatar_src'    => get_avatar_url( $user->ID, array( 'size' => 64 ) ),
 			'avatar_src_2x' => get_avatar_url( $user->ID, array( 'size' => 128 ) ),
 		];

@@ -5,6 +5,8 @@ namespace Groundhogg\Admin\Emails;
 use Groundhogg;
 use Groundhogg\Admin\Admin_Page;
 use Groundhogg\Email;
+use Groundhogg_Email_Services;
+use WP_Error;
 use function Groundhogg\get_db;
 use function Groundhogg\get_request_var;
 use function Groundhogg\get_url_var;
@@ -47,12 +49,12 @@ class Emails_Page extends Admin_Page {
 		if ( $this->is_current_page() && in_array( $this->get_current_action(), [ 'add', 'edit' ] ) ) {
 			add_action( 'in_admin_header', array( $this, 'prevent_notices' ) );
 		}
-    }
+	}
 
 	public function admin_title( $admin_title, $title ) {
 		switch ( $this->get_current_action() ) {
 			case 'add':
-				$admin_title = sprintf( "%s &lsaquo; %s", __( 'Add' ), $admin_title );
+				$admin_title = sprintf( "%s &lsaquo; %s", esc_html__( 'Add' , 'groundhogg' ), $admin_title );
 				break;
 			case 'edit':
 				$email_id = Groundhogg\get_request_var( 'email' );
@@ -62,7 +64,7 @@ class Emails_Page extends Admin_Page {
 				}
 
 				$email       = new Email( absint( $email_id ) );
-				$admin_title = sprintf( "%s &lsaquo; %s &lsaquo; %s", $email->get_title(), __( 'Edit' ), $admin_title );
+				$admin_title = sprintf( "%s &lsaquo; %s &lsaquo; %s", esc_html( $email->get_title() ), esc_html__( 'Edit' , 'groundhogg' ), $admin_title );
 				break;
 		}
 
@@ -95,7 +97,7 @@ class Emails_Page extends Admin_Page {
 
 			$email_id = absint( Groundhogg\get_request_var( 'email' ) );
 			$email    = new Email( $email_id );
-            $email->enable_test_mode();
+			$email->enable_test_mode();
 
 			if ( ! $email->exists() ) {
 				$email->title = 'My new email';
@@ -106,7 +108,7 @@ class Emails_Page extends Admin_Page {
 				'email'    => $email
 			] );
 
-            Groundhogg\use_edit_lock( $email );
+			Groundhogg\use_edit_lock( $email );
 		}
 
 		if ( $this->current_action_is( 'view' ) ) {
@@ -122,8 +124,8 @@ class Emails_Page extends Admin_Page {
 					'message_type' => [
 						'Message Type',
 						[
-							\Groundhogg_Email_Services::MARKETING     => 'Marketing',
-							\Groundhogg_Email_Services::TRANSACTIONAL => 'Transactional',
+							Groundhogg_Email_Services::MARKETING     => 'Marketing',
+							Groundhogg_Email_Services::TRANSACTIONAL => 'Transactional',
 						]
 					]
 				]
@@ -152,14 +154,11 @@ class Emails_Page extends Admin_Page {
 		switch ( $this->get_current_action() ) {
 			case 'add':
 				return _x( 'Add Email', 'page_title', 'groundhogg' );
-				break;
 			case 'edit':
 				return _x( 'Edit Email', 'page_title', 'groundhogg' );
-				break;
 			case 'view':
 			default:
 				return _x( 'Emails', 'page_title', 'groundhogg' );
-				break;
 		}
 	}
 
@@ -179,12 +178,12 @@ class Emails_Page extends Admin_Page {
 		return [
 			[
 				'link'   => $this->admin_url( [ 'action' => 'add' ] ),
-				'action' => __( 'Add New', 'groundhogg' ),
+				'action' => esc_html__( 'Add New', 'groundhogg' ),
 				'target' => '_self',
 			],
 			[
 				'link'   => Groundhogg\admin_page_url( 'gh_broadcasts', $broadcast_args ),
-				'action' => __( 'Broadcast', 'groundhogg' ),
+				'action' => esc_html__( 'Broadcast', 'groundhogg' ),
 				'target' => '_self',
 			],
 		];
@@ -210,7 +209,7 @@ class Emails_Page extends Admin_Page {
 		$this->add_notice(
 			esc_attr( 'restored' ),
 			sprintf( "%s %d %s",
-				__( 'Restored' ),
+				__( 'Restored' , 'groundhogg' ),
 				count( $this->get_items() ),
 				__( 'Emails', 'groundhogg' ) ),
 			'success'
@@ -222,7 +221,7 @@ class Emails_Page extends Admin_Page {
 	/**
 	 * Duplicate an email
 	 *
-	 * @return string|\WP_Error
+	 * @return string|WP_Error
 	 */
 	public function process_duplicate() {
 		if ( ! current_user_can( 'add_emails' ) ) {
@@ -234,14 +233,14 @@ class Emails_Page extends Admin_Page {
 		$email = new Email( $email_id );
 
 		if ( ! $email->exists() ) {
-			return new \WP_Error( 'error', 'Email does not exist.' );
+			return new WP_Error( 'error', 'Email does not exist.' );
 		}
 
 		$new = $email->duplicate();
 
-        if ( ! $new->exists() ){
-	        return new \WP_Error( 'error', 'Failed to duplicate email' );
-        }
+		if ( ! $new->exists() ) {
+			return new WP_Error( 'error', 'Failed to duplicate email' );
+		}
 
 		return $new->admin_link();
 	}
@@ -269,7 +268,7 @@ class Emails_Page extends Admin_Page {
 		$this->add_notice(
 			esc_attr( 'deleted' ),
 			sprintf( "%s %d %s",
-				__( 'Deleted' ),
+				__( 'Deleted' , 'groundhogg' ),
 				count( $emails ),
 				__( 'Emails', 'groundhogg' ) ),
 			'success'
@@ -281,7 +280,7 @@ class Emails_Page extends Admin_Page {
 	/**
 	 * Delete an email
 	 *
-	 * @return false|\WP_Error
+	 * @return false|WP_Error
 	 */
 	public function process_delete() {
 		if ( ! current_user_can( 'delete_emails' ) ) {
@@ -297,6 +296,7 @@ class Emails_Page extends Admin_Page {
 
 		$this->add_notice(
 			esc_attr( 'deleted' ),
+            /* translators: %d: the number of emails that were deleted */
 			sprintf( _nx( 'Deleted %d email', 'Deleted %d emails', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 			'success'
 		);
@@ -324,7 +324,7 @@ class Emails_Page extends Admin_Page {
 		$this->add_notice(
 			esc_attr( 'trashed' ),
 			sprintf( "%s %d %s",
-				__( 'Trashed' ),
+				__( 'Trashed' , 'groundhogg' ),
 				count( $this->get_items() ),
 				__( 'Emails', 'groundhogg' ) ),
 			'success'
@@ -345,7 +345,7 @@ class Emails_Page extends Admin_Page {
 		$email = new Email( absint( get_url_var( 'email' ) ) );
 
 		if ( ! $email->exists() ) {
-			return new \WP_Error( 'error', 'Email could not be exported.' );
+			return new WP_Error( 'error', 'Email could not be exported.' );
 		}
 
 		Groundhogg\download_json( $email, $email->get_title() );
@@ -357,35 +357,38 @@ class Emails_Page extends Admin_Page {
         <form method="get" class="search-form">
 			<?php html()->hidden_GET_inputs( true ); ?>
 
-	        <?php if ( ! get_url_var( 'include_filters' ) ):
-		        echo html()->input( [
-			        'type' => 'hidden',
-			        'name' => 'include_filters'
-		        ] );
-	        endif; ?>
+			<?php if ( ! get_url_var( 'include_filters' ) ):
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+				echo html()->input( [
+					'type' => 'hidden',
+					'name' => 'include_filters'
+				] );
+			endif; ?>
 
-            <label class="screen-reader-text" for="gh-post-search-input"><?php esc_attr_e( 'Search' ); ?>:</label>
+            <label class="screen-reader-text" for="gh-post-search-input"><?php esc_html_e( 'Search', 'groundhogg' ); ?>:</label>
 
             <div style="float: right" class="gh-input-group">
                 <input type="search" id="gh-post-search-input" name="s"
-                       value="<?php esc_attr_e( get_request_var( 's' ) ); ?>">
+                       value="<?php echo esc_attr( get_request_var( 's' ) ); ?>">
 				<?php
 
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 				echo html()->dropdown( [
 					'options'           => [
-						'title'   => __( 'Title', 'groundhogg' ),
-						'subject' => __( 'Subject', 'groundhogg' ),
-						'content' => __( 'Content', 'groundhogg' ),
+						'title'   => esc_html__( 'Title', 'groundhogg' ),
+						'subject' => esc_html__( 'Subject', 'groundhogg' ),
+						'content' => esc_html__( 'Content', 'groundhogg' ),
 					],
-					'option_none'       => __( 'Everywhere', 'groundhogg' ),
+					'option_none'       => esc_html__( 'Everywhere', 'groundhogg' ),
 					'option_none_value' => '',
 					'name'              => 'search_columns',
+					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 					'selected'          => get_request_var( 'search_columns' )
 				] );
 
 				?>
                 <button type="submit" id="search-submit"
-                        class="gh-button primary small"><?php esc_attr_e( 'Search' ); ?></button>
+                        class="gh-button primary small"><?php esc_html_e( 'Search', 'groundhogg' ); ?></button>
             </div>
         </form>
 		<?php

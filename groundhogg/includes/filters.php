@@ -5,6 +5,8 @@ namespace Groundhogg;
 use Groundhogg\Form\Form_Fields;
 use Groundhogg\Utils\DateTimeHelper;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
 /**
  * Hijack WP-Cron to prioritize Groundhogg's cron jobs and have them run before everyone else,
  * because other devs are bad and they always break cron for some reason.
@@ -63,6 +65,10 @@ add_filter( 'pre_get_ready_cron_jobs', __NAMESPACE__ . '\groundhogg_cron_jobs_go
  */
 function do_replacements_when_rendering_blocks( $content, $parsed_block, \WP_Block $block ) {
 
+	if ( ! isset( $parsed_block['attrs'] ) ) {
+		return $content;
+	}
+
 	if ( isset_not_empty( $parsed_block['attrs'], 'ghReplacements' ) && ! empty( $content ) ) {
 		$content = do_replacements( $content );
 	}
@@ -83,6 +89,10 @@ add_filter( 'render_block', __NAMESPACE__ . '\do_replacements_when_rendering_blo
  * @return string
  */
 function handle_conditional_content_block_filters( $content, $parsed_block, \WP_Block $block ) {
+
+	if ( ! isset( $parsed_block['attrs'] ) ) {
+		return $content;
+	}
 
 	// Content restriction is not enabled for this block
 	if ( ! isset_not_empty( $parsed_block['attrs'], 'ghRestrictContent' )
@@ -421,7 +431,8 @@ function add_review_link_in_footer( $text ) {
 		return $text;
 	}
 
-	return preg_replace( "/<\/span>/", sprintf( __( ' | Like Groundhogg? <a target="_blank" href="%s">Leave a Review</a>!</span>' ), __( 'https://wordpress.org/support/plugin/groundhogg/reviews/#new-post' ) ), $text );
+	/* translators: %s: link to leave a review */
+	return preg_replace( "/<\/span>/", sprintf( __( ' | Like Groundhogg? <a target="_blank" href="%s">Leave a Review</a>!</span>', 'groundhogg' ), 'https://wordpress.org/support/plugin/groundhogg/reviews/#new-post' ), $text );
 }
 
 add_filter( 'admin_footer_text', __NAMESPACE__ . '\add_review_link_in_footer' );
@@ -564,8 +575,6 @@ function email_kses( $content ) {
 		'{auto_login_link.http',
 		'replacement', // hacky trick to allow replacements in URI elements
 	];
-
-	include_once __DIR__ . '/kses.php';
 
 	$content = kses( $content, 'post', array_merge( $basic_protocols, $wacky_protocols ) );
 
@@ -763,7 +772,7 @@ function maybe_refresh_local_time( array $response, array $data, $screen_id ) {
 
 	$today   = new DateTimeHelper();
 	$local   = new DateTimeHelper( 'now', $contact->get_time_zone( false ) );
-	$display = $today->wpDateFormat() === $local->wpDateFormat() ? $local->wpTimeFormat() : $local->wpDateTimeFormat();
+	$display = $today->wpDateFormat() === $local->wpDateFormat() ? $local->time_i18n() : $local->wpDateTimeFormat();
 
 	$display = html()->e( 'abbr', [ 'title' => $local->wpDateTimeFormat() ], $display );
 

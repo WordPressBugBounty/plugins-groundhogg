@@ -9,7 +9,9 @@
  * @since       File available since Release 1.0.20
  */
 
-use function Groundhogg\managed_page_url;status_header( 200 );
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
+status_header( 200 );
 nocache_headers();
 
 header( "Content-Type: application/javascript" );

@@ -97,7 +97,7 @@ class Notices {
 
 		foreach ( $show as $notice ) {
 			?>
-            <div class="notice notice-<?php esc_attr_e( $notice['type'] ); ?> is-dismissible">
+            <div class="notice notice-<?php echo esc_attr( $notice['type'] ); ?> is-dismissible">
                 <div class="display-flex gap-10">
 					<?php groundhogg_icon( 24 ); ?>
                     <div class="notice-message">
@@ -201,6 +201,7 @@ class Notices {
 
 			$this->add(
 				'incorrect-permalinks',
+                /* translators: %s: link to permalink settings */
 				sprintf( __( "Your site permalink structure is currently set to <code>Plain</code>. This setting is not compatible with Groundhogg. Change your permalink structure to any other setting to avoid issues. We recommend <code>Post name</code>.</p><p>%s", 'groundhogg' ), $change_permalink_button ),
 				'warning',
 				'administrator',
@@ -469,9 +470,9 @@ class Notices {
 
 		$notices = $this->get_stored_notices();
 
-		if ( ! $notices ) {
-			$notices = [];
-		}
+        if ( empty( $notices ) ) {
+            return;
+        }
 
 		foreach ( $notices as $code => $notice ) {
 
@@ -505,7 +506,7 @@ class Notices {
 	 */
 	public function print_notice( $notice ) {
 		?>
-        <div id="<?php esc_attr_e( $notice['code'] ); ?>" class="notice notice-<?php esc_attr_e( $notice['type'] ); ?> is-dismissible">
+        <div id="<?php echo esc_attr( $notice['code'] ); ?>" class="notice notice-<?php echo esc_attr( $notice['type'] ); ?> is-dismissible">
 			<?php echo wp_kses_post( wpautop( $notice['message'] ) ); ?>
 			<?php if ( $notice['type'] === 'error' && ! empty( $notice['data'] ) ): ?>
                 <p>

@@ -2,16 +2,15 @@
 
 namespace Groundhogg\Admin\Tools;
 
+use Exception;
 use Groundhogg\Admin\Tabbed_Admin_Page;
 use Groundhogg\background\Export_Contacts_Last_Id;
 use Groundhogg\background\Import_Contacts;
 use Groundhogg\background\Sync_Users_Last_Id;
 use Groundhogg\Background_Tasks;
 use Groundhogg\Bulk_Jobs\Create_Users;
-use Groundhogg\DB\Query\Table_Query;
-use Groundhogg\Extension_Upgrader;
+use Groundhogg\Bulk_Jobs\Export_Contacts;
 use Groundhogg\Files;
-use Groundhogg\License_Manager;
 use Groundhogg\Plugin;
 use Groundhogg\Properties;
 use Groundhogg\Queue\Event_Queue;
@@ -19,16 +18,19 @@ use WP_Error;
 use function Groundhogg\action_input;
 use function Groundhogg\action_url;
 use function Groundhogg\admin_page_url;
+use function Groundhogg\bold_it;
+use function Groundhogg\code_it;
 use function Groundhogg\count_csv_rows;
 use function Groundhogg\enqueue_filter_assets;
 use function Groundhogg\export_header_pretty_name;
 use function Groundhogg\files;
-use function Groundhogg\get_array_var;
 use function Groundhogg\get_db;
 use function Groundhogg\get_exportable_fields;
 use function Groundhogg\get_post_var;
 use function Groundhogg\get_request_query;
+use function Groundhogg\get_request_uri;
 use function Groundhogg\get_request_var;
+use function Groundhogg\get_sanitized_FILE;
 use function Groundhogg\get_url_var;
 use function Groundhogg\gh_cron_installed;
 use function Groundhogg\html;
@@ -36,6 +38,7 @@ use function Groundhogg\install_gh_cron_file;
 use function Groundhogg\is_groundhogg_network_active;
 use function Groundhogg\is_option_enabled;
 use function Groundhogg\isset_not_empty;
+use function Groundhogg\kses;
 use function Groundhogg\nonce_url_no_amp;
 use function Groundhogg\notices;
 use function Groundhogg\safe_user_id_sync;
@@ -45,6 +48,10 @@ use function Groundhogg\utils;
 use function Groundhogg\validate_tags;
 use function Groundhogg\verify_admin_ajax_nonce;
 use function Groundhogg\white_labeled_name;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+} // Exit if accessed directly
 
 /**
  * Created by PhpStorm.
@@ -60,7 +67,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 	public $importer;
 
 	/**
-	 * @var \Groundhogg\Bulk_Jobs\Export_Contacts
+	 * @var Export_Contacts
 	 */
 	public $exporter;
 
@@ -184,7 +191,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 	}
 
 	public function get_name() {
-		return __( 'Tools' );
+		return esc_html__( 'Tools' , 'groundhogg' );
 	}
 
 	public function get_cap() {
@@ -217,14 +224,14 @@ class Tools_Page extends Tabbed_Admin_Page {
 		if ( $this->get_current_tab() === 'import' ) {
 			$actions[] = [
 				'link'   => $this->admin_url( [ 'action' => 'add', 'tab' => 'import' ] ),
-				'action' => __( 'Import New List', 'groundhogg' ),
+				'action' => esc_html__( 'Import New List', 'groundhogg' ),
 			];
 		}
 
 		if ( $this->get_current_tab() === 'export' ) {
 			$actions[] = [
 				'link'   => $this->admin_url( [ 'action' => 'choose_columns', 'tab' => 'export' ] ),
-				'action' => __( 'Export All Contacts', 'groundhogg' ),
+				'action' => esc_html__( 'Export All Contacts', 'groundhogg' ),
 			];
 		}
 
@@ -235,32 +242,32 @@ class Tools_Page extends Tabbed_Admin_Page {
 	protected function get_tabs() {
 		$tabs = [
 			[
-				'name' => __( 'Tools', 'groundhogg' ),
+				'name' => esc_html__( 'Tools', 'groundhogg' ),
 				'slug' => 'misc',
 				'cap'  => 'manage_options'
 			],
 			[
-				'name' => __( 'System Info & Debug' ),
+				'name' => esc_html__( 'System Info & Debug' , 'groundhogg' ),
 				'slug' => 'system',
 				'cap'  => 'manage_options'
 			],
 			[
-				'name' => __( 'Import' ),
+				'name' => esc_html__( 'Import' , 'groundhogg' ),
 				'slug' => 'import',
 				'cap'  => 'import_contacts'
 			],
 			[
-				'name' => __( 'Export' ),
+				'name' => esc_html__( 'Export' , 'groundhogg' ),
 				'slug' => 'export',
 				'cap'  => 'export_contacts'
 			],
 			[
-				'name' => __( 'Cron Setup', 'groundhogg' ),
+				'name' => esc_html__( 'Cron Setup', 'groundhogg' ),
 				'slug' => 'cron',
 				'cap'  => 'manage_options'
 			],
 			[
-				'name' => __( 'Rest API Playground', 'groundhogg' ),
+				'name' => esc_html__( 'Rest API Playground', 'groundhogg' ),
 				'slug' => 'api',
 				'cap'  => 'manage_options'
 			],
@@ -303,7 +310,7 @@ class Tools_Page extends Tabbed_Admin_Page {
         <p></p>
 		<?php if ( get_url_var( 'show_sys_info' ) ): ?>
             <pre class="code" style="width: 100%;height:max-content;"
-                 id="system-info-textarea"><?php echo groundhogg_tools_sysinfo_get(); ?></pre>
+                 id="system-info-textarea"><?php echo esc_html( groundhogg_tools_sysinfo_get() ); ?></pre>
 			<?php
 			return;
 		endif; ?>
@@ -312,20 +319,22 @@ class Tools_Page extends Tabbed_Admin_Page {
 
 			return;
 		endif; ?>
-		<?php if ( get_url_var( 'action' ) === 'view_updates' && get_request_var( 'confirm' ) === 'yes' ):
-
-			?>
-            <p><?php _e( '<b>WARNING:</b> Re-performing previous updates can cause unexpected issues and should be done with caution. We recommend you backup your site, or export your contact list before proceeding.', 'groundhogg' ); ?></p>
+		<?php if ( get_url_var( 'action' ) === 'view_updates' && get_request_var( 'confirm' ) === 'yes' ): ?>
+            <p><?php esc_html_e( '⚠️ Re-performing previous updates can cause unexpected issues and should be done with caution. We recommend you backup your site, or export your contact list before proceeding.', 'groundhogg' ); ?></p>
 			<?php
 
-			echo html()->e( 'a', [
+			html( 'a', [
 				'class' => 'big-button button-primary',
 				'href'  => add_query_arg( [
 					'updater'             => sanitize_text_field( get_request_var( 'updater' ) ),
 					'manual_update'       => sanitize_text_field( get_request_var( 'manual_update' ) ),
 					'manual_update_nonce' => wp_create_nonce( 'gh_manual_update' ),
-				], $_SERVER['REQUEST_URI'] )
-			], sprintf( __( 'Yes, perform update %s', 'groundhogg' ), sanitize_text_field( get_request_var( 'manual_update' ) ) ) );
+				], get_request_uri() )
+			], sprintf(
+				/* translators: 1: version number to update to */
+				esc_html__( 'Yes, perform update %s', 'groundhogg' ),
+				sanitize_text_field( get_request_var( 'manual_update' ) )
+			) );
 
 			return;
 		endif; ?>
@@ -333,42 +342,45 @@ class Tools_Page extends Tabbed_Admin_Page {
 			<?php do_action( 'groundhogg/admin/tools/system_status/before' ); ?>
             <div class="gh-panel">
                 <div class="gh-panel-header">
-                    <h2 class="hndle"><?php _e( 'Download System Info', 'groundhogg' ); ?></h2>
+                    <h2 class="hndle"><?php esc_html_e( 'Download System Info', 'groundhogg' ); ?></h2>
                 </div>
                 <div class="inside">
-                    <p><?php _e( 'Download System Info when requesting support.', 'groundhogg' ); ?></p>
+                    <p><?php esc_html_e( 'Download System Info when requesting support.', 'groundhogg' ); ?></p>
                     <a class="gh-button primary"
-                       href="<?php echo admin_url( '?gh_download_sys_info=1' ) ?>"><?php _e( 'Download System Info', 'groundhogg' ); ?></a>
+                       href="<?php echo esc_url( admin_url( '?gh_download_sys_info=1' ) ) ?>"><?php esc_html_e( 'Download System Info', 'groundhogg' ); ?></a>
                     <a class="gh-button secondary"
-                       href="<?php echo admin_page_url( 'gh_tools', [
+                       href="<?php echo esc_url( admin_page_url( 'gh_tools', [
 						   'tab'           => 'system',
 						   'show_sys_info' => 1
-					   ] ) ?>"><?php _e( 'View System Info', 'groundhogg' ); ?></a>
+					   ] ) ) ?>"><?php esc_html_e( 'View System Info', 'groundhogg' ); ?></a>
                 </div>
             </div>
             <div class="gh-panel">
                 <div class="gh-panel-header">
-                    <h2 class="hndle"><?php _e( 'Safe Mode', 'groundhogg' ); ?></h2>
+                    <h2 class="hndle"><?php esc_html_e( 'Safe Mode', 'groundhogg' ); ?></h2>
                 </div>
                 <div class="inside">
-                    <p><?php printf( __( 'Safe mode will temporarily disable any non %s related plugins for debugging purposes for your account only. Other users will not be impacted.', 'groundhogg' ), white_labeled_name() ); ?></p>
+                    <p><?php
+                        /* translators: 1: plugin/brand name */
+                        echo esc_html( sprintf( __( 'Safe mode will temporarily disable any non %s related plugins for debugging purposes for your account only. Other users will not be impacted.', 'groundhogg' ), white_labeled_name() ) );
+                        ?></p>
 					<?php
 
 					maybe_install_safe_mode_plugin();
 
 					if ( ! groundhogg_is_safe_mode_enabled() ):
 
-						echo html()->e( 'a', [
+						html( 'a', [
 							'href'  => nonce_url_no_amp( $this->admin_url( [ 'action' => 'enable_safe_mode' ] ), 'enable_safe_mode' ),
 							'class' => 'gh-button danger text danger-confirm',
-						], __( 'Enable Safe Mode' ) );
+						], esc_html__( 'Enable Safe Mode', 'groundhogg' ) );
 
 					else:
 
-						echo html()->e( 'a', [
+						html( 'a', [
 							'href'  => nonce_url_no_amp( $this->admin_url( [ 'action' => 'disable_safe_mode' ] ), 'disable_safe_mode' ),
 							'class' => [ 'gh-button primary' ]
-						], __( 'Disable Safe Mode' ) );
+						], esc_html__( 'Disable Safe Mode', 'groundhogg' ) );
 
 					endif;
 
@@ -377,24 +389,29 @@ class Tools_Page extends Tabbed_Admin_Page {
             </div>
             <div class="gh-panel">
                 <div class="gh-panel-header">
-                    <h2 class="hndle"><?php _e( 'Install Help', 'groundhogg' ); ?></h2>
+                    <h2 class="hndle"><?php esc_html_e( 'Install Help', 'groundhogg' ); ?></h2>
                 </div>
                 <div class="inside">
-                    <p><?php _e( 'In the event there were installation issues you can run the install process from here.', 'groundhogg' ); ?></p>
+                    <p><?php esc_html_e( 'In the event there were installation issues you can run the install process from here.', 'groundhogg' ); ?></p>
                     <form method="get">
 						<?php html()->hidden_GET_inputs() ?>
 						<?php wp_nonce_field( 'gh_manual_install', 'manual_install_nonce' ) ?>
                         <div class="gh-input-group">
-							<?php echo html()->dropdown( [
+							<?php
+
+                            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                            echo html()->dropdown( [
 								'name'        => 'manual_install',
+	                            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped downstream
 								'options'     => apply_filters( 'groundhogg/admin/tools/install', [] ),
 								'required'    => true,
-								'option_none' => __( 'Select plugin to run install', 'groundhogg' )
+								'option_none' => esc_html__( 'Select plugin to run install', 'groundhogg' )
 							] );
 
+							// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 							echo html()->submit( [
 								'class' => 'gh-button primary',
-								'text'  => __( 'Run installation', 'groundhogg' )
+								'text'  => esc_html__( 'Run installation', 'groundhogg' )
 							] )
 							?>
                         </div>
@@ -403,24 +420,29 @@ class Tools_Page extends Tabbed_Admin_Page {
             </div>
             <div class="gh-panel">
                 <div class="gh-panel-header">
-                    <h2 class="hndle"><?php _e( 'Previous Updates', 'groundhogg' ); ?></h2>
+                    <h2 class="hndle"><?php esc_html_e( 'Previous Updates', 'groundhogg' ); ?></h2>
                 </div>
                 <div class="inside">
-                    <p><?php _e( 'Run previous update paths in case of a failed update.', 'groundhogg' ); ?></p>
+                    <p><?php esc_html_e( 'Run previous update paths in case of a failed update.', 'groundhogg' ); ?></p>
                     <form method="get">
 						<?php html()->hidden_GET_inputs() ?>
 						<?php action_input( 'view_updates' ) ?>
                         <div class="gh-input-group">
-							<?php echo html()->dropdown( [
+							<?php
+
+							// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                            echo html()->dropdown( [
 								'name'        => 'updater',
 								'required'    => true,
+	                            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped downstream
 								'options'     => apply_filters( 'groundhogg/admin/tools/updaters', [] ),
-								'option_none' => __( 'Select plugin to view updates', 'groundhogg' )
+								'option_none' => esc_html__( 'Select plugin to view updates', 'groundhogg' )
 							] );
 
+							// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 							echo html()->submit( [
 								'class' => 'gh-button primary',
-								'text'  => __( 'View Updates' )
+								'text'  => esc_html__( 'View Updates' , 'groundhogg' )
 							] )
 
 							?>
@@ -432,10 +454,10 @@ class Tools_Page extends Tabbed_Admin_Page {
 			if ( is_multisite() && is_main_site() && is_groundhogg_network_active() ) : ?>
                 <div class="gh-panel">
                     <div class="gh-panel-header">
-                        <h2 class="hndle"><?php _e( 'Network Upgrades', 'groundhogg' ); ?></h2>
+                        <h2 class="hndle"><?php esc_html_e( 'Network Upgrades', 'groundhogg' ); ?></h2>
                     </div>
                     <div class="inside">
-                        <p><?php _e( 'Process database upgrades network wide so they do not have to be done by each subsite owner.' ); ?></p>
+                        <p><?php esc_html_e( 'Process database upgrades network wide so they do not have to be done by each subsite owner.', 'groundhogg' ); ?></p>
 						<?php
 
 						do_action( 'groundhogg/admin/tools/network_updates' );
@@ -447,31 +469,41 @@ class Tools_Page extends Tabbed_Admin_Page {
 			<?php if ( is_super_admin() ): ?>
                 <div class="gh-panel">
                     <div class="gh-panel-header">
-                        <h2 class="hndle"><span>⚠️ <?php _e( 'Reset', 'groundhogg' ); ?></span></h2>
+                        <h2 class="hndle"><span>⚠️ <?php esc_html_e( 'Reset', 'groundhogg' ); ?></span></h2>
                     </div>
                     <div class="inside">
-                        <p><?php printf( __( 'Want to start from scratch? You can reset your %s installation to when you first installed it.', 'groundhogg' ), white_labeled_name() ); ?></p>
-                        <p><?php _e( 'To confirm you want to reset, type <code>reset</code> into the text box below.', 'groundhogg' ); ?></p>
+                  						<p><?php
+                                            /* translators: %s: plugin/brand name */
+                                            echo esc_html( sprintf( __( 'Want to start from scratch? You can reset your %s installation to when you first installed it.', 'groundhogg' ), white_labeled_name() ) ); ?></p>
+                  						<p><?php
+                                            /* translators: %s: the literal confirmation word */
+                                            printf( esc_html__('To confirm you want to reset, type %s into the text box below.', 'groundhogg' ),
+	                                            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- safe HTML
+                                                code_it( 'reset' ) );
+                                            ?></p>
                         <form method="post" class="danger-permanent">
 							<?php wp_nonce_field( 'reset' ) ?>
 							<?php action_input( 'reset' ) ?>
                             <div class="gh-input-group">
 
-								<?php echo html()->input( [
+								<?php
+								// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                                echo html()->input( [
 									'class'       => 'input',
 									'name'        => 'reset_confirmation',
 									'placeholder' => 'Type "reset" to confirm.',
 									'required'    => true,
 								] );
 
+								// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 								echo html()->submit( [
 									'class' => 'gh-button danger',
-									'text'  => __( '⚠️ Reset', 'groundhogg' )
+									'text'  => esc_html__( '⚠️ Reset', 'groundhogg' )
 								] )
 								?>
                             </div>
                         </form>
-                        <p><?php _e( 'This cannot be undone.', 'groundhogg' ); ?></p>
+                        <p><?php esc_html_e( 'This cannot be undone.', 'groundhogg' ); ?></p>
                     </div>
                 </div>
 			<?php endif; ?>
@@ -488,7 +520,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 		maybe_install_safe_mode_plugin();
 
 		if ( groundhogg_enable_safe_mode() ) {
-			$this->add_notice( 'safe_mode_enabled', __( 'Safe mode has been enabled.' ) );
+			$this->add_notice( 'safe_mode_enabled', esc_html__( 'Safe mode has been enabled.' , 'groundhogg' ) );
 		} else {
 			$this->add_notice( new WP_Error( 'error', 'Could not enable safe mode due to a possible fatal error.' ) );
 		}
@@ -499,7 +531,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 		maybe_install_safe_mode_plugin();
 
 		if ( groundhogg_disable_safe_mode() ) {
-			$this->add_notice( 'safe_mode_disabled', __( 'Safe mode has been disabled.' ) );
+			$this->add_notice( 'safe_mode_disabled', __( 'Safe mode has been disabled.' , 'groundhogg' ) );
 		}
 	}
 
@@ -560,7 +592,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 			$this->wp_die_no_access();
 		}
 
-		$file = $_FILES['import_file'];
+		$file = get_sanitized_FILE( 'import_file' );
 
 		$result = files()->safe_file_upload( $file, [
 			'csv' => 'text/csv',
@@ -570,7 +602,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 			return $result;
 		}
 
-		return wp_redirect( $this->admin_url( [
+		return wp_safe_redirect( $this->admin_url( [
 			'action' => 'map',
 			'tab'    => 'import',
 			'import' => urlencode( basename( $result['file'] ) ),
@@ -594,8 +626,9 @@ class Tools_Page extends Tabbed_Admin_Page {
 
 		$file_name = sanitize_file_name( get_post_var( 'import' ) );
 
-		$tags = [ sprintf( '%s - %s', __( 'Import' ), date_i18n( 'Y-m-d H:i:s' ) ) ];
+		$tags = [ sprintf( '%1$s - %2$s', __( 'Import' , 'groundhogg' ), date_i18n( 'Y-m-d H:i:s' ) ) ];
 
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce is handled upstream
 		if ( isset_not_empty( $_POST, 'tags' ) ) {
 			$tags = array_merge( $tags, get_post_var( 'tags' ) );
 		}
@@ -622,7 +655,8 @@ class Tools_Page extends Tabbed_Admin_Page {
 
 		$time = human_time_diff( time(), time() + ( ceil( $rows / 1000 ) * MINUTE_IN_SECONDS ) );
 
-		$this->add_notice( 'success', sprintf( __( 'Your contacts are being imported in the background! <i>We\'re estimating it will take ~%s.</i> We\'ll let you know when it\'s done!', 'groundhogg' ), $time ) );
+			/* translators: 1: estimated time until import completes */
+			$this->add_notice( 'success', sprintf( __( 'Your contacts are being imported in the background! <i>We\'re estimating it will take ~%s.</i> We\'ll let you know when it\'s done!', 'groundhogg' ), $time ) );
 
 		return admin_page_url( 'gh_tools', [ 'tab' => 'import' ] );
 	}
@@ -641,8 +675,8 @@ class Tools_Page extends Tabbed_Admin_Page {
 		foreach ( $files as $file_name ) {
 			$filepath = files()->get_csv_imports_dir( sanitize_file_name( $file_name ) );
 
-			if ( ! file_exists( $filepath ) || ! unlink( $filepath ) ) {
-                return new WP_Error( 'failed', 'Unable to delete file.' );
+			if ( ! file_exists( $filepath ) || ! wp_delete_file( $filepath ) ) {
+				return new WP_Error( 'failed', 'Unable to delete file.' );
 			}
 		}
 
@@ -700,100 +734,241 @@ class Tools_Page extends Tabbed_Admin_Page {
 		$meta_keys                 = array_diff( array_values( get_db( 'contactmeta' )->get_keys() ), array_keys( $default_exportable_fields ), $custom_properties );
 
 		?>
-        <p><?php _e( "Select which information you want to appear in your CSV file.", 'groundhogg' ); ?></p>
-
-        <form method="post">
-			<?php action_input( 'choose_columns', true, true ); ?>
-
-            <h3><?php _e( 'Name your export', 'groundhogg' ) ?></h3>
-
-			<?php echo html()->input( [
-				'name'        => 'file_name',
-				'placeholder' => 'My export...',
-				'required'    => true,
-				'value'       => sanitize_file_name( sprintf( 'export-%s', current_time( 'Y-m-d' ) ) )
-			] ); ?>
-
-            <h3><?php _e( 'Basic Contact Information', 'groundhogg' ) ?></h3>
-			<?php
-
-			html()->export_columns_table( $default_exportable_fields );
-
-			$tabs = Properties::instance()->get_tabs();
-
-			foreach ( $tabs as $tab ):
-
-				?><h2><?php esc_html_e( $tab['name'] ); ?></h2><?php
-
-				$groups = Properties::instance()->get_groups( $tab['id'] );
-
-				foreach ( $groups as $group ):
-					?><h4><?php esc_html_e( $group['name'] ); ?></h4><?php
-
-					$columns = [];
-					$fields  = Properties::instance()->get_fields( $group['id'] );
-
-					foreach ( $fields as $field ) {
-						$columns[ $field['id'] ] = $field['label'];
-					}
-
-					html()->export_columns_table( $columns );
-				endforeach;
-
-			endforeach;
-
-			do_action( 'groundhogg/admin/tools/export' );
-
-			?>
-
-			<?php if ( ! empty( $meta_keys ) ): ?>
-
-                <h3><?php _e( 'Custom Meta Information', 'groundhogg' ) ?></h3>
+        <div class="display-flex" style="gap: 40px">
+            <div id="select-columns">
+                <h2><?php esc_html_e( "Select columns", 'groundhogg' );  ?></h2>
+                <p><?php esc_html_e( "Select which information you want to appear in your CSV file.", 'groundhogg' ); ?></p>
 				<?php
 
-				html()->export_columns_table( array_combine( $meta_keys, array_map( '\Groundhogg\key_to_words', $meta_keys ) ) );
+				html( 'p', [
+                        'style' => [ 'text-align' => 'right' ],
+                ], [
+					bold_it( esc_html__( 'Search fields', 'groundhogg' ) ),
+					'&nbsp;',
+					html()->input( [
+						'type'        => 'search',
+						'name'        => 'field_search',
+						'class'       => 'search-field',
+						'id'          => 'field-search',
+						'placeholder' => __( 'Search fields...', 'groundhogg' ),
+					] )
+				] )
 
-			endif;
-			?>
-            <table class="form-table">
-                <tbody>
-                <tr>
-                    <th><?php _e( 'Select the kind of column headers you want.', 'groundhogg' ) ?></th>
-                    <td>
-						<?php
+				?>
+                <h3><?php esc_html_e( 'Basic Contact Information', 'groundhogg' ); ?></h3>
+				<?php
 
-						echo html()->dropdown( [
-							'name'        => 'header_type',
-							'options'     => [
-								'basic'  => __( 'Field IDs' ),
-								'pretty' => __( 'Pretty Names' ),
-							],
-							'option_none' => false
-						] );
+				html()->export_columns_table( $default_exportable_fields );
 
-						echo html()->description( __( "Choose <b>Fields IDs</b> for <code>first_name</code> and <b>Pretty Names</b> for <code>First Name</code>.", 'groundhogg' ) )
+				$tabs = Properties::instance()->get_tabs();
 
-						?>
-                    </td>
-                </tr>
-                </tbody>
-            </table>
-			<?php submit_button( sprintf( _nx( 'Export %s contact', 'Export %s contacts', $count, 'action', 'groundhogg' ), number_format_i18n( $count ) ) ); ?>
-        </form>
+				foreach ( $tabs as $tab ):
+
+					$groups = Properties::instance()->get_groups( $tab['id'] );
+
+					foreach ( $groups as $group ):
+						?><h3><?php echo esc_html( $tab['name'] ); ?>: <?php echo esc_html( $group['name'] ); ?></h3><?php
+
+						$columns = [];
+						$fields  = Properties::instance()->get_fields( $group['id'] );
+
+						foreach ( $fields as $field ) {
+							$columns[ $field['name'] ] = $field['label'];
+						}
+
+						html()->export_columns_table( $columns );
+					endforeach;
+
+				endforeach;
+
+				do_action( 'groundhogg/admin/tools/export' );
+
+                if ( ! empty( $meta_keys ) ): ?>
+                    <h3><?php esc_html_e( 'Custom Meta Information', 'groundhogg' ); ?></h3>
+					<?php
+
+                    // ignore keys that were included with properties
+					$meta_keys = array_filter( $meta_keys, function ( $key ) {
+                        return Properties::instance()->get_field( $key ) === false;
+                    } );
+
+                    $meta_keys = array_combine( $meta_keys, array_map( '\Groundhogg\key_to_words', $meta_keys ) );
+
+					html()->export_columns_table( $meta_keys );
+
+				endif;
+				?>
+            </div>
+            <form id="export-preview" method="post">
+				<?php action_input( 'choose_columns', true, true ); ?>
+                <h3><?php esc_html_e( 'Name your export', 'groundhogg' ); ?></h3>
+				<?php
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+				echo html()->input( [
+					'name'        => 'file_name',
+					'placeholder' => 'My export...',
+					'required'    => true,
+					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped downstream
+					'value'       => sanitize_file_name( sprintf( 'export-%s', current_time( 'Y-m-d' ) ) )
+				] );
+
+				?>
+                <div class="sticky-preview">
+                    <h2><?php esc_html_e( 'Export preview', 'groundhogg' ); ?></h2>
+	                <?php
+
+	                html()->export_columns_table( [] )
+
+	                ?>
+                    <table class="form-table">
+                        <tbody>
+                        <tr>
+                            <th><?php esc_html_e( 'Select the kind of column headers you want.', 'groundhogg' ); ?></th>
+                            <td>
+				                <?php
+
+				                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+				                echo html()->dropdown( [
+					                'name'        => 'header_type',
+					                'options'     => [
+						                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped downstream
+						                'basic'  => __( 'Field IDs', 'groundhogg' ),
+						                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped downstream
+						                'pretty' => __( 'Pretty Names', 'groundhogg' ),
+					                ],
+					                'option_none' => false
+				                ] );
+
+				                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- kses used
+				                echo html()->description( kses( __( "Choose <b>Fields IDs</b> for <code>first_name</code> and <b>Pretty Names</b> for <code>First Name</code>.", 'groundhogg' ), 'simple' ) )
+
+				                ?>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+	                <?php
+	                html( html()->button( [
+		                'type'  => 'submit',
+		                'class' => 'gh-button primary',
+		                /* translators: 1: number of contacts to export */
+		                'text'  => esc_html( sprintf( _nx( 'Export %s contact', 'Export %s contacts', $count, 'action', 'groundhogg' ), number_format_i18n( $count ) ) )
+	                ] ) );
+	                ?>
+                </div>
+            </form>
+        </div>
+        <style>
+            #wpbody-content td {
+                vertical-align: middle;
+            }
+            #export-preview .check-column input {
+                /*display: none;*/
+                visibility: hidden;
+            }
+
+        </style>
         <script>
           ( function ($) {
 
+            document.querySelector('#select-columns').addEventListener('change', function (e) {
+              if (e.target.matches('input[type="checkbox"]')) {
+                build_export_preview();
+              }
+            });
+
+            function build_export_preview() {
+              const scope = document.querySelector('#select-columns');
+              const preview_container = document.querySelector('#export-preview');
+              if (!scope || !preview_container) return;
+
+              // Ensure preview table exists
+              let preview_table = preview_container.querySelector('table');
+
+              const preview_tbody = preview_table.tBodies[0] || preview_table.appendChild(document.createElement('tbody'));
+              preview_tbody.innerHTML = ''; // clear old preview
+
+              // Get all checked checkboxes in tbody rows (exclude the preview table)
+              const checked_boxes = Array.from(scope.querySelectorAll('tbody input[type="checkbox"]:checked'))
+
+              // Deduplicate rows in case a row has multiple checkboxes
+              const rows = [];
+              checked_boxes.forEach(cb => {
+                const tr = cb.closest('tr');
+                if (tr && !rows.includes(tr)) rows.push(tr);
+              });
+
+              // Clone rows directly (keeping controls intact)
+              rows.forEach(row => {
+                const clone = row.cloneNode(true);
+                clone.style.display = '';
+                let input = clone.querySelector('input')
+                input.type = 'hidden';
+                input.insertAdjacentElement('afterend', MakeEl.Button({
+                  className: 'gh-button danger text',
+                  dataName: input.name,
+                  type: 'button',
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    fontSize: '12px',
+                    height: '18px',
+                    width: '18px',
+                    padding: '0'
+                  },
+                  onClick: e => {
+                    $(document.querySelector(`#select-columns input[name="${e.target.dataset.name}"]`)).prop('checked', false );
+                    e.target.closest('tr').remove();
+                  }
+                }, [ '✕', MakeEl.ToolTip( 'Remove', 'left' ) ] ))
+
+                preview_tbody.appendChild(clone);
+              });
+            }
+
             $('.select-all').on('change', function (e) {
-
               let $checks = $(e.target).closest('table').find('input')
-
-              if ($(this).is(':checked')) {
-                $checks.prop('checked', true)
-              }
-              else {
-                $checks.prop('checked', false)
-              }
+              $checks.prop('checked', $(this).is(':checked'))
             })
+
+            document.getElementById('field-search').addEventListener('input', function () {
+              const search_value = this.value.toLowerCase()
+              const tables = document.querySelectorAll('#select-columns table')
+
+              tables.forEach(table => {
+                const rows = table.querySelectorAll('tbody tr')
+                let visible_count = 0
+
+                rows.forEach(row => {
+                  const row_text = row.textContent.toLowerCase()
+                  if (row_text.includes(search_value)) {
+                    row.style.display = ''
+                    visible_count++
+                  }
+                  else {
+                    row.style.display = 'none'
+                  }
+                })
+
+                if (visible_count === 0) {
+                  table.style.display = 'none'
+                  const prev_h3 = table.previousElementSibling
+                  if (prev_h3 && prev_h3.tagName.toLowerCase() === 'h3') {
+                    prev_h3.style.display = 'none'
+                  }
+                }
+                else {
+                  table.style.display = ''
+                  const prev_h3 = table.previousElementSibling
+                  if (prev_h3 && prev_h3.tagName.toLowerCase() === 'h3') {
+                    prev_h3.style.display = ''
+                  }
+                }
+              })
+            })
+
+            $(()=>build_export_preview());
 
           } )(jQuery)
         </script>
@@ -849,7 +1024,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 
 		foreach ( $files as $file_name ) {
 			$filepath = files()->get_csv_exports_dir( sanitize_file_name( $file_name ) );
-			if ( ! file_exists( $filepath ) || ! unlink( $filepath ) ) {
+			if ( ! file_exists( $filepath ) || ! wp_delete_file( $filepath ) ) {
 				return new WP_Error( 'failed', 'Unable to delete file.' );
 			}
 		}
@@ -930,7 +1105,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 	/**
 	 * Install the gh-cron.php file
 	 *
-	 * @return bool|\WP_Error
+	 * @return bool|WP_Error
 	 */
 	public function process_cron_install_gh_cron() {
 
@@ -939,7 +1114,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 		}
 
 		if ( ! install_gh_cron_file() ) {
-			return new \WP_Error( 'error', __( 'Unable to install gh-cron.php file. Please install is manually.', 'groundhogg' ) );
+			return new WP_Error( 'error', __( 'Unable to install gh-cron.php file. Please install is manually.', 'groundhogg' ) );
 		} else {
 			$this->add_notice( 'success', __( 'Installed gh-cron.php successfully!', 'groundhogg' ) );
 		}
@@ -950,7 +1125,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 	/**
 	 * Uninstall the gh-cron.php file
 	 *
-	 * @return bool|\WP_Error
+	 * @return bool|WP_Error
 	 */
 	public function process_cron_uninstall_gh_cron() {
 
@@ -959,7 +1134,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 		}
 
 		if ( ! uninstall_gh_cron_file() ) {
-			return new \WP_Error( 'error', __( 'Unable to uninstall gh-cron.php file. Please delete it manually via FTP.', 'groundhogg' ) );
+			return new WP_Error( 'error', __( 'Unable to uninstall gh-cron.php file. Please delete it manually via FTP.', 'groundhogg' ) );
 		} else {
 			$this->add_notice( 'success', __( 'Uninstalled gh-cron.php successfully!', 'groundhogg' ) );
 		}
@@ -974,13 +1149,14 @@ class Tools_Page extends Tabbed_Admin_Page {
 	 */
 	public function process_cron_install_gh_cron_manually() {
 
-		$gh_cron_php = file_get_contents( GROUNDHOGG_PATH . 'gh-cron.txt' );
+		$gh_cron_php = files()->filesystem()->get_contents( GROUNDHOGG_PATH . 'gh-cron.txt' );
 
 		nocache_headers();
 
 		header( 'Content-Type: text/plain' );
 		header( 'Content-Disposition: attachment; filename="gh-cron.txt"' );
 
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- file download
 		echo $gh_cron_php;
 		die();
 	}
@@ -992,65 +1168,12 @@ class Tools_Page extends Tabbed_Admin_Page {
 	 */
 	public function process_cron_unschedule_gh_cron() {
 		if ( wp_unschedule_hook( Event_Queue::WP_CRON_HOOK ) === false ) {
-			return new \WP_Error( 'error', __( 'Something went wrong.', 'groundhogg' ) );
+			return new WP_Error( 'error', __( 'Something went wrong.', 'groundhogg' ) );
 		} else {
 			$this->add_notice( 'success', __( 'Unhooked Groundhogg from WP Cron.', 'groundhogg' ) );
 		}
 
 		return false;
-	}
-
-	########### OTHER ###########
-
-	public function cron_setup_view() {
-
-		?>
-        <h2><?php _e( 'WP Cron Setup', 'groundhogg' ); ?></h2>
-        <p><?php _e( 'Follow this guide to properly configure WP Cron.', 'groundhogg' ); ?></p>
-        <h3><?php _e( '1. Disable built-in WP Cron', 'groundhogg' ); ?></h3>
-        <p><?php _e( 'For the best performance you need to disable the built-in WP Cron. This will improve your overall WP performance while ensuring Groundhogg works properly.', 'groundhogg' ); ?></p>
-        <form method="post">
-			<?php
-			action_input( 'disable_wp_cron' );
-			wp_nonce_field( 'disable_wp_cron' );
-
-			if ( ! defined( 'DISABLE_WP_CRON' ) ) {
-				submit_button( __( 'Disable WP Cron', 'groundhogg' ) );
-			} else {
-				?>
-                <p><b><?php _e( 'Built-in WP Cron is already disabled.', 'groundhogg' ); ?></b></p>
-				<?php
-			}
-
-			?>
-        </form>
-        <h3><?php _e( '2. Create an external Cron Job.', 'groundhogg' ); ?></h3>
-        <p><?php _e( 'You need to replace the built-in WP Cron with an external cron-job. Choose one of the following methods.', 'groundhogg' ); ?></p>
-        <h4><?php _e( 'a) Use Cron-Job.org', 'groundhogg' ); ?></h4>
-        <p><?php _e( 'Cron-Job.org is a free site you can use to quickly setup an external cron-job.', 'groundhogg' ); ?></p>
-        <p><?php _e( 'Use the below URL as the request URL.', 'groundhogg' ); ?></p>
-        <p><?php _e( '<b>Cron URL: </b>' );
-			echo html()->input( [
-				'readonly' => true,
-				'onfocus'  => "this.select()",
-				'value'    => site_url( 'wp-cron.php' )
-			] ); ?></p>
-        <a class="button button-secondary" target="_blank"
-           href="https://help.groundhogg.io/article/49-add-an-external-cron-job-cron-job-org"><?php _e( 'Use Cron-Job.org' ); ?></a>
-        <h4><?php _e( 'a) Use CPanel', 'groundhogg' ); ?></h4>
-        <p><?php _e( 'If you have access to CPanel you may be able to use CPanels cron system to setup the cron-job.', 'groundhogg' ); ?></p>
-        <p><?php _e( 'Use the below command.', 'groundhogg' ); ?></p>
-        <p><?php _e( '<b>Command: </b>' );
-			echo html()->input( [
-				'readonly' => true,
-				'onfocus'  => "this.select()",
-				'value'    => sprintf( "/usr/bin/wget -q -O - %s >/dev/null 2>&1", site_url( 'wp-cron.php?doing_wp_cron=1' ) )
-			] ); ?></p>
-        <a class="button button-secondary" target="_blank"
-           href="https://help.groundhogg.io/article/51-add-an-external-cron-job-cpanel"><?php _e( 'Use CPanel' ); ?></a>
-
-		<?php
-
 	}
 
 	public function process_disable_wp_cron() {
@@ -1061,88 +1184,6 @@ class Tools_Page extends Tabbed_Admin_Page {
 		update_option( 'gh_disable_wp_cron', true );
 
 		$this->add_notice( 'success', __( 'WP Cron has been disabled!', 'groundhogg' ) );
-
-		return false;
-	}
-
-	public function remote_install_view() {
-
-		?>
-        <form method="post">
-        <h3><?php _e( 'Re-install features.' ); ?></h3>
-        <p><?php _e( 'The following features have been removed from the Groundhogg core plugin in version 2.1 and have instead been added to separate premium extensions.' ); ?></p>
-        <ol>
-            <li><?php _e( 'Elementor integration' ); ?></li>
-            <li><?php _e( 'SMS functionality' ); ?></li>
-            <li><?php _e( 'Advanced email editor' ); ?></li>
-            <li><?php _e( 'Advanced funnel steps' ); ?></li>
-            <li><?php _e( 'Superlinks' ); ?></li>
-        </ol>
-        <p><?php _e( 'You can learn more about this change <i>(officially announced Oct 17th)</i> <a href="https://www.groundhogg.io/press/new-pricing-and-updates-planned-for-november-1st/" target="_blank">on our blog.</a>' ); ?></p>
-        <p><?php _e( 'If you have an All Access Pass, <a href="https://www.groundhogg.io/pricing/" target="_blank">Premium Plan</a> or a <a href="https://www.groundhogg.io/grandfather-program/" target="_blank">Grandfather license</a> get you can enter it below to automatically install and activate the removed features.' ); ?></p>
-		<?php
-
-		action_input( 'remote_install_plugins' );
-		wp_nonce_field( 'remote_install_plugins' );
-
-		html()->start_form_table();
-
-		html()->start_row();
-
-		html()->th( __( 'License Key:' ) );
-
-		html()->td( [
-			html()->input( [ 'name' => 'license_key', 'value' => License_Manager::get_license() ] ),
-			html()->description( implode( '', [
-					html()->e( 'a', [
-						'href'   => 'https://www.groundhogg.io/account/',
-						'target' => '_blank'
-					], __( 'Find my license key', 'groundhogg' ) ),
-					' | ',
-					html()->e( 'a', [
-						'href'   => 'https://www.groundhogg.io/pricing/',
-						'target' => '_blank'
-					], __( 'Get a license key', 'groundhogg' ) ),
-				] )
-			)
-		] );
-
-		html()->end_row();
-
-		html()->end_form_table();
-
-		submit_button( __( 'Install extensions!' ) );
-
-	}
-
-	public function process_remote_install_plugins() {
-		if ( ! current_user_can( 'install_plugins' ) ) {
-			$this->wp_die_no_access();
-		}
-
-		$downloads = [
-			23538, // SMS
-			22198, // Elementor
-			22397  // Pro features
-		];
-
-		foreach ( $downloads as $download ) {
-			$installed = Extension_Upgrader::remote_install( $download, sanitize_text_field( get_request_var( 'license_key' ) ) );
-
-			if ( is_wp_error( $installed ) ) {
-				return $installed;
-			}
-
-			if ( ! $installed ) {
-				return new WP_Error( 'error', 'Could not remotely install plugin...' );
-			}
-		}
-
-		$this->add_notice( 'installed', 'Installed extension successfully!' );
-
-		notices()->dismiss_notice( 'features-removed-notice' );
-
-		delete_option( 'gh_updating_to_2_1' );
 
 		return false;
 	}
@@ -1193,9 +1234,9 @@ class Tools_Page extends Tabbed_Admin_Page {
 		status_header( 200 );
 		nocache_headers();
 
-		readfile( $file_path );
-		exit();
-
+        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- file contents
+        echo files()->filesystem()->get_contents( $file_path );
+		exit;
 	}
 
 	/**
@@ -1208,7 +1249,7 @@ class Tools_Page extends Tabbed_Admin_Page {
 	/**
 	 * Re-sync user IDs
 	 *
-	 * @throws \Exception
+	 * @throws Exception
 	 * @return bool
 	 */
 	public function process_re_sync_user_ids() {

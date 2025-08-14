@@ -7,6 +7,7 @@ use Groundhogg\Contact_Query;
 use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\Preferences;
 use WP_List_Table;
+use wpdb;
 use function Groundhogg\_nf;
 use function Groundhogg\action_url;
 use function Groundhogg\admin_page_url;
@@ -78,7 +79,7 @@ class Contacts_Table extends WP_List_Table {
 	/**
 	 * Prepares the list of items for displaying.
 	 *
-	 * @global $wpdb \wpdb
+	 * @global $wpdb wpdb
 	 * @uses $this->_column_headers
 	 * @uses $this->items
 	 * @uses $this->get_columns()
@@ -233,7 +234,7 @@ class Contacts_Table extends WP_List_Table {
 		}
 
 		?>
-        <tr id="contact-<?php echo $contact->get_id(); ?>">
+        <tr id="contact-<?php echo esc_attr( $contact->get_id() ); ?>">
 			<?php $this->single_row_columns( $contact ); ?>
         </tr>
 		<?php
@@ -320,6 +321,7 @@ class Contacts_Table extends WP_List_Table {
 	}
 
 	protected function get_view() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		return ( isset( $_GET['optin_status'] ) ) ? absint( $_GET['optin_status'] ) : 0;
 	}
 
@@ -333,7 +335,7 @@ class Contacts_Table extends WP_List_Table {
 		$views = [
 			[
 				'id'    => 'all',
-				'name'  => __( 'All', 'groundhogg' ),
+				'name'  => esc_html__( 'All', 'groundhogg' ),
 				'query' => [],
 				'count' => array_sum( wp_list_pluck( $statusCounts, 'contacts' ) )
 			]
@@ -408,10 +410,10 @@ class Contacts_Table extends WP_List_Table {
 
 			$actions['inline hide-if-no-js'] = sprintf(
 				'<a href="#" class="editinline" data-id="%d" aria-label="%s">%s</a>',
-				/* translators: %s: title */
 				esc_attr( $contact->get_id() ),
-				esc_attr( sprintf( __( 'Quick edit &#8220;%s&#8221; inline' ), $title ) ),
-				__( 'Quick&nbsp;Edit' )
+				/* translators: %s: title */
+				esc_attr( sprintf( __( 'Quick edit "%s" inline' , 'groundhogg' ), $title ) ),
+				esc_html__( 'Quick Edit' , 'groundhogg' )
 			);
 		}
 
@@ -422,8 +424,8 @@ class Contacts_Table extends WP_List_Table {
 				'<a href="%s" class="edit" aria-label="%s">%s</a>',
 				/* translators: %s: title */
 				$editUrl,
-				esc_attr( __( 'Edit' ) ),
-				__( 'Edit' )
+				esc_attr( __( 'Edit' , 'groundhogg' ) ),
+				esc_html__( 'Edit' , 'groundhogg' )
 			);
 		}
 
@@ -433,16 +435,16 @@ class Contacts_Table extends WP_List_Table {
 			default:
 			case Preferences::CONFIRMED:
 			case Preferences::UNCONFIRMED:
-				$status_actions[ Preferences::SPAM ] = __( 'Spam', 'groundhogg' );
+				$status_actions[ Preferences::SPAM ] = esc_html__( 'Spam', 'groundhogg' );
 				break;
 			case Preferences::UNSUBSCRIBED:
 			case Preferences::COMPLAINED:
 			case Preferences::SPAM:
 			case Preferences::HARD_BOUNCE:
-                $status_actions[ Preferences::UNCONFIRMED ] = __( 'Re-subscribe', 'groundhogg' );
-                break;
+				$status_actions[ Preferences::UNCONFIRMED ] = esc_html__( 'Re-subscribe', 'groundhogg' );
+				break;
 			case Preferences::BLOCKED:
-			    $status_actions[ Preferences::UNCONFIRMED ] = __( 'Unblock', 'groundhogg' );
+				$status_actions[ Preferences::UNCONFIRMED ] = esc_html__( 'Unblock', 'groundhogg' );
 				break;
 		}
 
@@ -463,7 +465,7 @@ class Contacts_Table extends WP_List_Table {
 				'data-id' => $contact->get_id(),
 				'class'   => 'delete-contact',
 				'href'    => action_url( 'delete', [ 'contact' => $contact->get_id() ] )
-			], __( 'Delete' ) );
+			], esc_html__( 'Delete' , 'groundhogg' ) );
 		}
 
 		return $this->row_actions( apply_filters( 'groundhogg_contact_row_actions', $actions, $contact, $column_name ) );
@@ -494,20 +496,14 @@ class Contacts_Table extends WP_List_Table {
 		?>
         <div class="table-wrap">
             <div class="table-scroll">
-                <table class="wp-list-table <?php echo implode( ' ', $this->get_table_classes() ); ?>">
+                <table class="wp-list-table <?php echo esc_attr( implode( ' ', $this->get_table_classes() ) ); ?>">
                     <thead>
                     <tr>
 						<?php $this->print_column_headers(); ?>
                     </tr>
                     </thead>
 
-                    <tbody id="the-list"
-						<?php
-						if ( $singular ) {
-							echo " data-wp-lists='list:$singular'";
-						}
-						?>
-                    >
+                    <tbody id="the-list" <?php if ( $singular ) printf( " data-wp-lists='list:%s'", esc_attr( $singular ) ); ?>>
 					<?php $this->display_rows_or_placeholder(); ?>
                     </tbody>
 

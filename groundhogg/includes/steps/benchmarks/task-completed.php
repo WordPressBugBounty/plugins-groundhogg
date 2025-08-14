@@ -89,7 +89,7 @@ class Task_Completed extends Benchmark {
 	}
 
 	public function get_name() {
-		return __( 'Task Completed' );
+		return __( 'Task Completed', 'groundhogg' );
 	}
 
 	public function get_type() {
@@ -101,7 +101,7 @@ class Task_Completed extends Benchmark {
 	}
 
 	public function get_description() {
-		return __( 'Runs when a task is completed.' );
+		return __( 'Runs when a task is completed.', 'groundhogg' );
 	}
 
 	public function get_icon() {
@@ -136,9 +136,9 @@ class Task_Completed extends Benchmark {
 			$options[ $available_step->get_id() ] = sprintf( "%d. %s", $available_step->get_order(), $available_step->get_meta( 'summary' ) );
 		}
 
-		echo html()->e( 'p', [], __( 'Run when these preceding tasks are completed...', 'groundhogg' ) );
+		html( 'p', [], esc_html__( 'Run when these preceding tasks are completed...', 'groundhogg' ) );
 
-		echo html()->e( 'div', [
+		html( 'div', [
 			'class' => 'display-flex gap-5'
 		], [
 			html()->dropdown( [
@@ -148,8 +148,8 @@ class Task_Completed extends Benchmark {
 				'style'       => [ 'vertical-align' => 'middle' ],
 				'options'     =>
 					[
-						'any' => __( 'Any' ),
-						'all' => __( 'All' ),
+						'any' => __( 'Any', 'groundhogg' ),
+						'all' => __( 'All', 'groundhogg' ),
 					]
 			] ),
 			html()->select2( [
@@ -161,8 +161,7 @@ class Task_Completed extends Benchmark {
 			] )
 		] );
 
-		?><p></p><?php
-
+		html( 'p' );
 	}
 
 	/**

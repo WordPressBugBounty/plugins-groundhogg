@@ -5,6 +5,8 @@ use Groundhogg\Mailer\Log_Only;
 use function Groundhogg\disable_emojis;
 use function Groundhogg\get_array_var;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
 class Groundhogg_Email_Services {
 
 	const TRANSACTIONAL = 'transactional';
@@ -40,11 +42,11 @@ class Groundhogg_Email_Services {
 	}
 
 	public static function register_core_services() {
-		self::register( 'wp_mail', __( 'WordPress Default', 'groundhogg' ), 'wp_mail' );
-		self::register( 'log_only', __( 'Log Only', 'groundhogg' ), __NAMESPACE__ . '\log_only' );
+		self::register( 'wp_mail', esc_html__( 'WordPress Default', 'groundhogg' ), 'wp_mail' );
+		self::register( 'log_only', esc_html__( 'Log Only', 'groundhogg' ), __NAMESPACE__ . '\log_only' );
 
 		if ( function_exists( 'mailhawk_mail' ) ) {
-			self::register( 'mailhawk', __( 'MailHawk', 'groundhogg' ), 'mailhawk_mail' );
+			self::register( 'mailhawk', esc_html__( 'MailHawk', 'groundhogg' ), 'mailhawk_mail' );
 		}
 
 		do_action( 'Groundhogg/email_services/init' );
@@ -507,7 +509,14 @@ if ( ! function_exists( 'log_only_logs_not_enabled_notice' ) ) {
 		?>
         <div class="notice notice-warning is-dismissible">
             <p>
-				<?php printf( __( '<b>Attention:</b> The <code>Log Only</code> email service is in use, but email logs are not enabled. <a href="%s">Enable logging!</a>' ), \Groundhogg\admin_page_url( 'gh_settings', [ 'tab' => 'email' ] ) ); ?>
+				<?php printf(
+                        /* translators: 1: the name of the log only email service, 2: open <a> to settings, 3: closing </a> tag */
+                        esc_html__( '⚠️ The %1$s email service is in use, but email logs are not enabled. %2$sEnable logging!%3$s', 'groundhogg' ),
+                        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                        \Groundhogg\code_it( esc_html( Groundhogg_Email_Services::get_name( 'log_only' ) ) ),
+					    '<a href="' . esc_url( \Groundhogg\admin_page_url( 'gh_settings', [ 'tab' => 'email' ] ) ) . '">',
+					    '</a>',
+                ); ?>
             </p>
         </div>
 		<?php

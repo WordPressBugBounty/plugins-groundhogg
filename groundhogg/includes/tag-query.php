@@ -2,6 +2,8 @@
 
 namespace Groundhogg;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
 class Tag_Query {
 
     /**
@@ -599,7 +601,7 @@ class Tag_Query {
         }
 
         if ( 'AND' == $query['operator'] && count( $term_list ) < count( $query['tags'] ) ) {
-            $query = new WP_Error( 'inexistent_tags', __( 'Inexistent tags.' ) );
+	        $query = new WP_Error( 'inexistent_tags', esc_html__( 'Inexistent tags.', 'groundhogg' ) );
             return;
         }
 

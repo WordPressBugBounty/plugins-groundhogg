@@ -105,7 +105,7 @@ class Admin_Notification extends Action {
         <div class="gh-rows-and-columns">
             <div class="gh-row">
                 <div class="gh-col ignore-morph">
-                    <label><?php _e( 'Send to...' ); ?></label>
+                    <label><?php echo esc_html( __( 'Send to...', 'groundhogg' ) ); ?></label>
                     <div class="">
 						<?php
 
@@ -116,8 +116,8 @@ class Admin_Notification extends Action {
 						}
 
 						$options = [
-							'{owner_email}' => __( 'Contact Owner' ),
-							'{email}'       => __( 'The Contact' ),
+							'{owner_email}' => esc_html__( 'Contact Owner', 'groundhogg' ),
+							'{email}'       => esc_html__( 'The Contact', 'groundhogg' ),
 						];
 
 						foreach ( get_owners() as $owner ) {
@@ -130,66 +130,63 @@ class Admin_Notification extends Action {
 							$options[ $email ] = $email;
 						}
 
-						echo html()->select2( [
-							'id'       => $this->setting_id_prefix( 'send_to' ),
-							'name'     => $this->setting_name_prefix( 'send_to' ) . '[]',
-							'options'  => $options,
-							'selected' => $selected,
-							'multiple' => true,
-							'tags'     => true,
-						] );
+                        html()->frag(  html()->select2( [
+	                        'id'       => $this->setting_id_prefix( 'send_to' ),
+	                        'name'     => $this->setting_name_prefix( 'send_to' ) . '[]',
+	                        'options'  => $options,
+	                        'selected' => $selected,
+	                        'multiple' => true,
+	                        'tags'     => true,
+                        ] ),true );
 
 						?>
                     </div>
                 </div>
                 <div class="gh-col">
-                    <label><?php _e( 'Reply to...' ) ?></label>
-                    <div class="gh-input-group">
-						<?php
+                    <label><?php echo esc_html( __( 'Reply to...', 'groundhogg' ) ) ?></label>
+                    <?php
 
-						$reply_to_type = $this->get_setting( 'reply_to_type', $this->get_setting( 'reply_to' ) ? 'custom' : 'owner' );
+                    $reply_to_type = $this->get_setting( 'reply_to_type', $this->get_setting( 'reply_to' ) ? 'custom' : 'owner' );
 
-						echo html()->dropdown( [
-							'name'        => $this->setting_name_prefix( 'reply_to_type' ),
-							'options'     => [
-								'contact' => __( 'Contact\'s email' ),
-								'owner'   => __( 'Contact owner\'s email' ),
-								'custom'  => __( 'Custom email' ),
-							],
-							'selected'    => $reply_to_type,
-							'option_none' => false,
-							'class'       => 'reply-to-type full-width',
-						] );
+                    $classes = [
+	                    'custom-email',
+	                    'full-width'
+                    ];
 
-						$classes = [
-							'custom-email',
-							'full-width'
-						];
+                    if ( $reply_to_type !== 'custom' ) {
+	                    $classes[] = 'hidden';
+                    }
 
-						if ( $reply_to_type !== 'custom' ) {
-							$classes[] = 'hidden';
-						}
-
-						echo html()->input( [
-							'name'  => $this->setting_name_prefix( 'reply_to' ),
-							'value' => $this->get_setting( 'reply_to' ),
-							'class' => implode( ' ', $classes )
-						] )
-
-						?>
-                    </div>
+                    html( 'div', [ 'class' => 'gh-input-group' ], [
+	                    html()->dropdown( [
+		                    'name'        => $this->setting_name_prefix( 'reply_to_type' ),
+		                    'options'     => [
+			                    'contact' => esc_html__( 'Contact\'s email', 'groundhogg' ),
+			                    'owner'   => esc_html__( 'Contact owner\'s email', 'groundhogg' ),
+			                    'custom'  => esc_html__( 'Custom email', 'groundhogg' ),
+		                    ],
+		                    'selected'    => $reply_to_type,
+		                    'option_none' => false,
+		                    'class'       => 'reply-to-type full-width',
+	                    ] ),
+	                    html()->input( [
+		                    'name'  => $this->setting_name_prefix( 'reply_to' ),
+		                    'value' => $this->get_setting( 'reply_to' ),
+		                    'class' => implode( ' ', $classes )
+	                    ] )
+                    ] ); ?>
                 </div>
             </div>
             <div class="gh-row">
                 <div class="gh-col">
-                    <label><?php _e( 'Subject line' ) ?></label>
+                    <label><?php esc_html_e( 'Subject line', 'groundhogg' ) ?></label>
 					<?php
 
-					echo html()->input( [
+					html( html()->input( [
 						'name'  => $this->setting_name_prefix( 'subject' ),
 						'value' => $this->get_setting( 'subject' ),
 						'class' => 'full-width'
-					] );
+					] ) );
 
 					?>
                 </div>
@@ -198,11 +195,11 @@ class Admin_Notification extends Action {
                 <div class="gh-col">
 					<?php
 
-					echo html()->textarea( [
+					html( html()->textarea( [
 						'id'    => $this->setting_id_prefix( 'note_text' ),
 						'name'  => 'note_text',
 						'value' => wpautop( $this->get_setting( 'note_text' ) )
-					] );
+					] ) );
 
 					?>
                 </div>
@@ -211,11 +208,11 @@ class Admin_Notification extends Action {
                 <div class="gh-col">
 					<?php
 
-					echo html()->checkbox( [
-						'label'   => __( 'Don\'t show admin links to the contact record in the notification.' ),
+					html( html()->checkbox( [
+						'label' => esc_html__( 'Don\'t show admin links to the contact record in the notification.', 'groundhogg' ),
 						'name'    => $this->setting_name_prefix( 'hide_admin_links' ),
 						'checked' => $this->get_setting( 'hide_admin_links' )
-					] );
+					] ) );
 
 					?>
                 </div>
@@ -330,7 +327,7 @@ class Admin_Notification extends Action {
 		if ( ! $hide_admin_links ) {
 			$body .= sprintf( "<p><a href='%s'>%s</a></p>",
 				$contact->admin_link(),
-				__( 'Manage Contact', 'groundhogg' )
+				esc_html__( 'Manage Contact', 'groundhogg' )
 			);
 		}
 

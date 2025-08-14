@@ -25,6 +25,8 @@ use function Groundhogg\html;
 use function Groundhogg\nonce_url_no_amp;
 use function Groundhogg\white_labeled_name;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
 define( 'GROUNDHOGG_SAFE_MODE_INSTALLED', true );
 define( 'GROUNDHOGG_SAFE_MODE_COOKIE', 'gh-safe-mode' );
 
@@ -114,7 +116,7 @@ function groundhogg_disable_safe_mode() {
  */
 function groundhogg_validate_safe_mode_cookie() {
 
-	$cookie_value = $_COOKIE[ GROUNDHOGG_SAFE_MODE_COOKIE ] ?? '';
+	$cookie_value = sanitize_text_field( wp_unslash( $_COOKIE[ GROUNDHOGG_SAFE_MODE_COOKIE ] ?? '' ) );
 
 	if ( empty( $cookie_value ) ) {
 		return false;
@@ -233,7 +235,10 @@ function groundhogg_safe_mode_enabled_notice() {
 	?>
     <div class="notice notice-warning">
         <p>
-	        <?php printf( __( '%s safe mode is <b>ON</b>. %s', 'groundhogg' ), white_labeled_name(), html()->e( 'a', [ 'href' => $disable_safe_mode_url ], __( 'Disable Safe Mode', 'groundhogg' ) ) ) ?>
+   	   		<?php
+            /* translators: 1: plugin/brand name, 2: disable safe mode link */
+            \Groundhogg\kses_e( sprintf( __( '%1$s safe mode is <b>ON</b>. %2$s', 'groundhogg' ), white_labeled_name(), html()->e( 'a', [ 'href' => $disable_safe_mode_url ], __( 'Disable Safe Mode', 'groundhogg' ) ) ) )
+            ?>
         </p>
     </div>
 	<?php

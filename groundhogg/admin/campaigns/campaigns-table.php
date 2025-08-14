@@ -9,7 +9,6 @@ use WP_List_Table;
 use function Groundhogg\action_url;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\base64_json_encode;
-use function Groundhogg\base64url_encode;
 use function Groundhogg\get_db;
 use function Groundhogg\get_request_var;
 use function Groundhogg\html;
@@ -109,7 +108,7 @@ class Campaigns_Table extends Table {
 	 * @return string
 	 */
 	protected function column_visibility( $campaign ) {
-		return $campaign->is_public() ? __( 'Public' ) : __( 'Hidden' );
+		return $campaign->is_public() ? esc_html__( 'Public' , 'groundhogg' ) : esc_html__( 'Hidden' , 'groundhogg' );
 	}
 
 	/**
@@ -123,7 +122,7 @@ class Campaigns_Table extends Table {
 		$broadcasts = $campaign->count_parents( 'broadcast' );
 		$emails     = $campaign->count_parents( 'email' );
 
-		return html()->e( 'div', [
+		return html()->div( [
 			'class' => 'display-flex column'
 		], [
 			html()->e( 'a', [
@@ -192,17 +191,17 @@ class Campaigns_Table extends Table {
 			],
 			[
 				'class'   => 'edit',
-				'display' => __( 'Edit' ),
+				'display' => esc_html__( 'Edit' , 'groundhogg' ),
 				'url'     => $item->admin_link()
 			],
 			[
 				'class'   => 'view',
-				'display' => __( 'View Archive' ),
+				'display' => esc_html__( 'View Archive' , 'groundhogg' ),
 				'url'     => managed_page_url( sprintf( '/campaigns/%s', $item->get_slug() ) )
 			],
 			[
 				'class'   => 'trash',
-				'display' => __( 'Delete' ),
+				'display' => esc_html__( 'Delete' , 'groundhogg' ),
 				'url'     => action_url( 'delete', [ 'campaign' => $item->get_id() ] )
 			]
 		];

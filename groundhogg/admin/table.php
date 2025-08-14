@@ -2,9 +2,11 @@
 
 namespace Groundhogg\Admin;
 
+use Exception;
 use Groundhogg\Base_Object;
 use Groundhogg\Base_Object_With_Meta;
 use Groundhogg\DB\DB;
+use WP_List_Table;
 use function Groundhogg\_nf;
 use function Groundhogg\array_find;
 use function Groundhogg\check_lock;
@@ -23,7 +25,7 @@ if ( ! class_exists( '\WP_List_Table' ) ) {
 	require_once( ABSPATH . 'wp-admin/includes/class-wp-list-table.php' );
 }
 
-abstract class Table extends \WP_List_Table {
+abstract class Table extends WP_List_Table {
 
 	/**
 	 * @return string
@@ -66,9 +68,9 @@ abstract class Table extends \WP_List_Table {
 
 		$count = $this->get_db()->count( $query );
 
-        if ( $count === 0 ) {
-            return '';
-        }
+		if ( $count === 0 ) {
+			return '';
+		}
 
 		$params = array_merge( $query, [
 			$this->view_param() => $view
@@ -90,21 +92,21 @@ abstract class Table extends \WP_List_Table {
 	 *
 	 * @return void
 	 */
-	protected function column_cb( $identity ) {
+	protected function column_cb( $item ) {
 
 		printf(
 			'<input type="checkbox" name="%1$s[]" value="%2$s" />',
-			$this->_args['singular'],
-			$identity->get_id()
+			esc_attr( $this->_args['singular'] ),
+			esc_attr( $item->get_id() )
 		);
 
-		if ( method_exists( $identity, 'get_title' ) ):
+		if ( method_exists( $item, 'get_title' ) ):
 			?>
-            <label for="cb-select-<?php echo $identity->ID; ?>">
+            <label for="cb-select-<?php echo esc_attr( $item->ID ); ?>">
 				<span class="screen-reader-text">
 				<?php
 				/* translators: %s: Post title. */
-				printf( __( 'Select %s' ), $identity->get_title() );
+				printf( esc_html__( 'Select %s', 'groundhogg' ), esc_html( $item->get_title() ) );
 				?>
 				</span>
             </label>
@@ -114,8 +116,8 @@ abstract class Table extends \WP_List_Table {
 				<?php
 				printf(
 				/* translators: Hidden accessibility text. %s: Post title. */
-					__( '&#8220;%s&#8221; is locked' ),
-					$identity->get_title()
+					esc_html__( '"%s" is locked', 'groundhogg' ),
+					esc_html( $item->get_title() )
 				);
 				?>
 				</span>
@@ -238,7 +240,7 @@ abstract class Table extends \WP_List_Table {
 			$views[] = $this->create_view( $view['view'], $view['query'], $view['display'] );
 		}
 
-        $views = array_filter( $views );
+		$views = array_filter( $views );
 
 		return apply_filters( "groundhogg/admin/table/{$this->get_table_id()}/get_views", $views );
 	}
@@ -279,7 +281,7 @@ abstract class Table extends \WP_List_Table {
 		try {
 			$items = $this->get_db()->query( $query );
 			$total = $this->get_db()->found_rows();
-		} catch ( \Exception $e ) {
+		} catch ( Exception $e ) {
 			$items = [];
 			$total = 0;
 		}
@@ -300,19 +302,19 @@ abstract class Table extends \WP_List_Table {
 			'total_pages' => $total_pages,
 		) );
 
-		$json = wp_json_encode( [
+		$json = [
 			'total_items'           => $total,
 			'total_items_formatted' => _nf( $total ),
 			'items'                 => $this->items,
 			'per_page'              => $per_page,
 			'total_pages'           => $total_pages,
 			'query'                 => $query
-		] );
+		];
 
 		add_action( 'admin_footer', function () use ( $json ) {
 			?>
             <script>
-              const CurrentTable = <?php echo $json ?>
+              const CurrentTable = <?php echo wp_json_encode( $json ) ?>
             </script>
 			<?php
 		} );
@@ -391,9 +393,10 @@ abstract class Table extends \WP_List_Table {
 
 		$classes = implode( ' ', $classes );
 
-		echo "<tr id=\"$item->ID\" class=\"$classes\">";
+		?>
+        <tr id="<?php echo esc_attr( $item->ID ); ?>" class="<?php esc_attr( $classes ); ?>"><?php
 		$this->single_row_columns( $item );
-		echo '</tr>';
+		?></tr><?php
 	}
 
 }

@@ -3,6 +3,7 @@
 namespace Groundhogg\Admin\Events;
 
 // Exit if accessed directly
+use Exception;
 use Groundhogg\Admin\Table;
 use Groundhogg\Classes\Background_Task;
 use Groundhogg\Utils\DateTimeHelper;
@@ -11,6 +12,7 @@ use function Groundhogg\action_url;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\get_db;
 use function Groundhogg\html;
+use function Groundhogg\kses_e;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -62,22 +64,22 @@ class Background_Tasks_Table extends Table {
 		return [
 			[
 				'view'    => 'pending',
-				'display' => __( 'Pending', 'groundhogg' ),
+				'display' => esc_html__( 'Pending', 'groundhogg' ),
 				'query'   => [ 'status' => 'pending' ],
 			],
 			[
 				'view'    => 'in_progress',
-				'display' => __( 'In Progress', 'groundhogg' ),
+				'display' => esc_html__( 'In Progress', 'groundhogg' ),
 				'query'   => [ 'status' => 'in_progress' ],
 			],
 			[
 				'view'    => 'done',
-				'display' => __( 'Done', 'groundhogg' ),
+				'display' => esc_html__( 'Done', 'groundhogg' ),
 				'query'   => [ 'status' => 'done' ],
 			],
 			[
 				'view'    => 'cancelled',
-				'display' => __( 'Cancelled', 'groundhogg' ),
+				'display' => esc_html__( 'Cancelled', 'groundhogg' ),
 				'query'   => [ 'status' => 'cancelled' ],
 			],
 		];
@@ -163,12 +165,12 @@ class Background_Tasks_Table extends Table {
 
 		return html()->e( 'a', [
 			'href' => $url,
-		], $user ? $user->display_name : __( 'System', 'groundhogg' ) );
+		], $user ? $user->display_name : esc_html__( 'System', 'groundhogg' ) );
 	}
 
 
 	/**
-	 * @throws \Exception
+	 * @throws Exception
 	 *
 	 * @param $task Background_Task
 	 *
@@ -181,7 +183,7 @@ class Background_Tasks_Table extends Table {
 	}
 
 	/**
-	 * @throws \Exception
+	 * @throws Exception
 	 *
 	 * @param $task Background_Task
 	 *
@@ -191,7 +193,7 @@ class Background_Tasks_Table extends Table {
 		$date = new DateTimeHelper( $task->time );
 
 		if ( $date->isPast() ) {
-			$diff = __( 'Now!', 'groundhogg' );
+			$diff = esc_html__( 'Now!', 'groundhogg' );
 		} else {
 			$diff = human_time_diff( time(), $task->time );
 		}
@@ -201,7 +203,7 @@ class Background_Tasks_Table extends Table {
 			'data-progress' => $task->get_progress(),
 			'data-id'       => $task->ID
 		], "<abbr title='{$date->ymdhis()}'>{$diff}</abbr>" );
-    }
+	}
 
 	/**
 	 * @param $task Background_Task
@@ -211,7 +213,7 @@ class Background_Tasks_Table extends Table {
 	protected function column_task( $task ) {
 
 		if ( method_exists( $task->theTask, 'get_title' ) ) {
-			echo $task->theTask->get_title();
+			kses_e( $task->theTask->get_title() );
 
 			return;
 		}
@@ -279,13 +281,13 @@ class Background_Tasks_Table extends Table {
 			case 'done':
 				break;
 			case 'cancelled':
-				$actions[] = [ 'class' => 'edit', 'display' => __( 'Resume' ), 'url' => action_url( 'resume_task', [ 'task' => $item->ID ] ) ];
+				$actions[] = [ 'class' => 'edit', 'display' => esc_html_x( 'Resume', 'as in resume a task', 'groundhogg' ), 'url' => action_url( 'resume_task', [ 'task' => $item->ID ] ) ];
 				break;
 			default:
-				$actions[] = [ 'class' => 'trash', 'display' => __( 'Cancel' ), 'url' => action_url( 'cancel_task', [ 'task' => $item->ID ] ) ];
+				$actions[] = [ 'class' => 'trash', 'display' => esc_html_x( 'Cancel', 'as in cancel a task', 'groundhogg' ), 'url' => action_url( 'cancel_task', [ 'task' => $item->ID ] ) ];
 				$actions[] = [
 					'class'     => 'edit',
-					'display'   => __( 'Run now' ),
+					'display'   => esc_html_x( 'Run now', 'as in immediately execute a task', 'groundhogg' ),
 					'linkProps' => [
 						'class' => 'do-task',
 					],
@@ -309,10 +311,10 @@ class Background_Tasks_Table extends Table {
 
 		switch ( $this->get_view() ) {
 			default:
-				$actions['cancel_task'] = __( 'Cancel', 'groundhogg' );
+				$actions['cancel_task'] = esc_html__( 'Cancel', 'groundhogg' );
 				break;
 			case 'cancelled':
-				$actions['resume_task'] = __( 'Resume', 'groundhogg' );
+				$actions['resume_task'] = esc_html__( 'Resume', 'groundhogg' );
 				break;
 			case 'done':
 				break;
@@ -321,12 +323,12 @@ class Background_Tasks_Table extends Table {
 		return apply_filters( 'groundhogg/log/bulk_actions', $actions );
 	}
 
-    public function prepare_items() {
-	    parent::prepare_items();
+	public function prepare_items() {
+		parent::prepare_items();
 
-        // todo there is probably a better way to handle this
-        $this->items = array_filter( $this->items, function ( Background_Task $item ) {
-            return ! $item->is_incomplete_class();
-        } );
-    }
+		// todo there is probably a better way to handle this
+		$this->items = array_filter( $this->items, function ( Background_Task $item ) {
+			return ! $item->is_incomplete_class();
+		} );
+	}
 }

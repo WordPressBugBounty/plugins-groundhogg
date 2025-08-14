@@ -227,7 +227,7 @@ class GH_EDD_SL_Plugin_Updater {
 			// build a plugin list row, with update notification
 			$wp_list_table = _get_list_table( 'WP_Plugins_List_Table' );
 			# <tr class="plugin-update-tr"><td colspan="' . $wp_list_table->get_column_count() . '" class="plugin-update colspanchange">
-			echo '<tr class="plugin-update-tr" id="' . $this->slug . '-update" data-slug="' . $this->slug . '" data-plugin="' . $this->slug . '/' . $file . '">';
+			echo '<tr class="plugin-update-tr" id="' . esc_attr(  $this->slug ) . '-update" data-slug="' . esc_attr( $this->slug ) . '" data-plugin="' . esc_attr( $this->slug  . '/' . $file ) . '">';
 			echo '<td colspan="3" class="plugin-update colspanchange">';
 			echo '<div class="update-message notice inline notice-warning notice-alt">';
 
@@ -235,7 +235,8 @@ class GH_EDD_SL_Plugin_Updater {
 
 			if ( empty( $version_info->download_link ) ) {
 				printf(
-					__( 'There is a new version of %1$s available. %2$sView version %3$s details%4$s.', 'easy-digital-downloads' ),
+					/* translators: 1: plugin name, 2: open <a>, 3: new version, 4: close </a> */
+					esc_html__( 'There is a new version of %1$s available. %2$sView version %3$s details%4$s.', 'groundhogg' ),
 					esc_html( $version_info->name ),
 					'<a target="_blank" class="thickbox" href="' . esc_url( $changelog_link ) . '">',
 					esc_html( $version_info->new_version ),
@@ -243,7 +244,8 @@ class GH_EDD_SL_Plugin_Updater {
 				);
 			} else {
 				printf(
-					__( 'There is a new version of %1$s available. %2$sView version %3$s details%4$s or %5$supdate now%6$s.', 'easy-digital-downloads' ),
+					/* translators: 1: plugin name, 2: open <a>, 3: new version, 4: close </a>, 5: open <a> for update, 6: close </a> */
+					esc_html__( 'There is a new version of %1$s available. %2$sView version %3$s details%4$s or %5$supdate now%6$s.', 'groundhogg' ),
 					esc_html( $version_info->name ),
 					'<a target="_blank" class="thickbox" href="' . esc_url( $changelog_link ) . '">',
 					esc_html( $version_info->new_version ),
@@ -394,7 +396,7 @@ class GH_EDD_SL_Plugin_Updater {
 		// Do a quick status check on this domain if we haven't already checked it.
 		$store_hash = md5( $this->api_url );
 		if ( ! is_array( $edd_plugin_url_available ) || ! isset( $edd_plugin_url_available[ $store_hash ] ) ) {
-			$test_url_parts = parse_url( $this->api_url );
+			$test_url_parts = wp_parse_url( $this->api_url );
 
 			$scheme = ! empty( $test_url_parts['scheme'] ) ? $test_url_parts['scheme'] : 'http';
 			$host   = ! empty( $test_url_parts['host'] ) ? $test_url_parts['host'] : '';
@@ -474,6 +476,8 @@ class GH_EDD_SL_Plugin_Updater {
 
 	public function show_changelog() {
 
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- handled upstream.
+
 		global $edd_plugin_data;
 
 		if ( empty( $_REQUEST['edd_sl_action'] ) || 'view_plugin_changelog' != $_REQUEST['edd_sl_action'] ) {
@@ -489,10 +493,12 @@ class GH_EDD_SL_Plugin_Updater {
 		}
 
 		if ( ! current_user_can( 'update_plugins' ) ) {
-			wp_die( __( 'You do not have permission to install plugin updates', 'easy-digital-downloads' ), __( 'Error', 'easy-digital-downloads' ), array( 'response' => 403 ) );
+			wp_die( esc_html__( 'You do not have permission to install plugin updates', 'groundhogg' ), esc_html__( 'Error', 'groundhogg' ), array( 'response' => 403 ) );
 		}
 
-		$data         = $edd_plugin_data[ $_REQUEST['slug'] ];
+		$slug = sanitize_key( wp_unslash( $_REQUEST['slug'] ) );
+
+		$data         = $edd_plugin_data[ $slug ];
 		$beta         = ! empty( $data['beta'] ) ? true : false;
 		$cache_key    = md5( 'edd_plugin_' . sanitize_key( $_REQUEST['plugin'] ) . '_' . $beta . '_version_info' );
 		$version_info = $this->get_cached_version_info( $cache_key );
@@ -501,9 +507,9 @@ class GH_EDD_SL_Plugin_Updater {
 
 			$api_params = array(
 				'edd_action' => 'get_version',
-				'item_name'  => isset( $data['item_name'] ) ? $data['item_name'] : false,
-				'item_id'    => isset( $data['item_id'] ) ? $data['item_id'] : false,
-				'slug'       => $_REQUEST['slug'],
+				'item_name'  => $data['item_name'] ?? false,
+				'item_id'    => $data['item_id'] ?? false,
+				'slug'       => $slug,
 				'author'     => $data['author'],
 				'url'        => home_url(),
 				'beta'       => ! empty( $data['beta'] )
@@ -538,8 +544,10 @@ class GH_EDD_SL_Plugin_Updater {
 		}
 
 		if ( ! empty( $version_info ) && isset( $version_info->sections['changelog'] ) ) {
-			echo '<div style="background:#fff;padding:10px;">' . $version_info->sections['changelog'] . '</div>';
+			echo '<div style="background:#fff;padding:10px;">' . wp_kses_post( $version_info->sections['changelog'] ) . '</div>';
 		}
+
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
 		exit;
 	}
@@ -574,7 +582,7 @@ class GH_EDD_SL_Plugin_Updater {
 
 		$data = array(
 			'timeout' => strtotime( '+3 hours', time() ),
-			'value'   => json_encode( $value )
+			'value'   => wp_json_encode( $value )
 		);
 
 		update_option( $cache_key, $data, 'no' );

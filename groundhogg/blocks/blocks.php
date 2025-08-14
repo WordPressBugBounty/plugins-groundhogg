@@ -6,6 +6,8 @@ use Groundhogg\Blocks\Elementor\Form_Widget;
 use function Groundhogg\get_form_list;
 use function Groundhogg\white_labeled_name;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly\
+
 class Blocks {
 
 	public function __construct() {
@@ -39,11 +41,12 @@ class Blocks {
 					'title'    => __( 'Select a form', 'groundhogg' ),
 					'sections' => [
 						'groundhogg-forms' => [
+							/* translators: the plugin/brand name */
 							'title'  => sprintf( __( '%s Forms', 'groundhogg' ), white_labeled_name() ),
 							'fields' => [
 								'groundhogg_form_id' => [
 									'type'    => 'select',
-									'label'   => __( 'Select a form', 'groundhogg' ),
+									'label'   => esc_html__( 'Select a form', 'groundhogg' ),
 									'options' => get_form_list()
 								],
 							]

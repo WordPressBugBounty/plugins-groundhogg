@@ -2,12 +2,15 @@
 
 namespace Groundhogg\Reporting\New_Reports;
 
-
-use Groundhogg\Plugin;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\get_db;
 use function Groundhogg\html;
 use function Groundhogg\percentage;
+
+// Exit if accessed directly
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 
 class Table_Contacts_By_Social_Media extends Base_Table_Report {
 
@@ -32,7 +35,7 @@ class Table_Contacts_By_Social_Media extends Base_Table_Report {
 
 		foreach ( $counts as $datum => $num_contacts ) {
 			if ( filter_var( $datum, FILTER_VALIDATE_URL ) ) {
-				$test_lead_source = parse_url( $datum, PHP_URL_HOST );
+				$test_lead_source = wp_parse_url( $datum, PHP_URL_HOST );
 				$test_lead_source = str_replace( 'www.', '', $test_lead_source );
 				foreach ( $networks as $network => $urls ) {
 					if ( in_array( $test_lead_source, $urls ) ) {
@@ -100,7 +103,7 @@ class Table_Contacts_By_Social_Media extends Base_Table_Report {
 	 * Special search function for comparing lead sources to potential search engine matches.
 	 *
 	 * @param $search string the URL in question
-	 * @param $urls array list of string potential matches...
+	 * @param $urls   array list of string potential matches...
 	 *
 	 * @return bool
 	 */

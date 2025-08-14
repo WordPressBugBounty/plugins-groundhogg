@@ -1109,9 +1109,10 @@ class Email extends Base_Object_With_Meta {
 			$event_id = dechex( $this->event->get_id() );
 
 			$one_click = rest_url( sprintf( '%s/unsubscribe/%s/%s', Unsubscribe_Api::NAME_SPACE, $event_id, $unsub_pk ) );
-			$mail_to   = sprintf( '%s?subject=%s',
+			$mail_to   = esc_url( sprintf( 'mailto:%s?subject=%s',
 				get_option( 'gh_unsubscribe_email' ) ?: get_bloginfo( 'admin_email' ),
-				sprintf( __( 'Unsubscribe %s from %s', 'groundhogg' ), $this->contact->get_email(), get_bloginfo() ) );
+				/* translators: 1: contact's email address, 2: the site name */
+				sprintf( __( 'Unsubscribe %1$s from %2$s', 'groundhogg' ), $this->contact->get_email(), get_bloginfo() ) ) );
 
 			/**
 			 * Filter the email address the unsubscribe notification is sent to
@@ -1124,7 +1125,7 @@ class Email extends Base_Object_With_Meta {
 			$mail_to = apply_filters( 'groundhogg/list_unsubscribe_header/mailto', $mail_to, $this, $unsub_pk, $event_id );
 
 			$list_unsub_header = sprintf(
-				'<%s>, <mailto:%s>',
+				'<%s>, <%s>',
 				$one_click,
 				$mail_to
 			);
@@ -1218,7 +1219,7 @@ class Email extends Base_Object_With_Meta {
 		$contact = get_contactdata( $contact_id_or_email );
 
 		if ( ! is_a_contact( $contact ) ) {
-			return new WP_Error( 'no_recipient', __( 'No valid recipient was provided.' ) );
+			return new WP_Error( 'no_recipient', esc_html__( 'No valid recipient was provided.', 'groundhogg' ) );
 		}
 
 		$this->set_contact( $contact );
@@ -1233,17 +1234,18 @@ class Email extends Base_Object_With_Meta {
 
 			// If email isn't set to ready
 			if ( ! $this->is_ready() ) {
-				return new WP_Error( 'email_not_ready', sprintf( __( 'Emails cannot be sent in %s mode.', 'groundhogg' ), $this->get_status() ) );
+				/* translators: %s: the email's status */
+				return new WP_Error( 'email_not_ready', sprintf( esc_html__( 'Emails cannot be sent in %s mode.', 'groundhogg' ), $this->get_status() ) );
 			}
 
 			// Contact is undeliverable
 			if ( ! $contact->is_deliverable() ) {
-				return new WP_Error( 'undeliverable', __( 'The email address is marked as undeliverable.', 'groundhogg' ) );
+				return new WP_Error( 'undeliverable', esc_html__( 'The email address is marked as undeliverable.', 'groundhogg' ) );
 			}
 
 			// Ignore if testing or the message is transactional
 			if ( ! $this->is_transactional() && ! $contact->is_marketable() ) {
-				return new WP_Error( 'non_marketable', __( 'Contact is not marketable.', 'groundhogg' ) );
+				return new WP_Error( 'non_marketable', esc_html__( 'Contact is not marketable.', 'groundhogg' ) );
 			}
 		}
 
@@ -1534,6 +1536,7 @@ class Email extends Base_Object_With_Meta {
 	public function duplicate( $overrides = [], $meta_overrides = [] ) {
 
 		$overrides = array_merge( [
+			/* translators: %s: the name of the email being duplicated */
 			'title'  => sprintf( __( 'Copy of %s', 'groundhogg' ), $this->get_title() ),
 			'status' => 'draft'
 		], $overrides );

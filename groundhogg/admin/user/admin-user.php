@@ -2,10 +2,16 @@
 
 namespace Groundhogg\Admin\User;
 
+use WP_User;
 use function Groundhogg\get_post_var;
 use function Groundhogg\get_valid_contact_tabs;
 use function Groundhogg\html;
+use function Groundhogg\kses_e;
 use function Groundhogg\white_labeled_name;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+} // Exit if accessed directly
 
 class Admin_User {
 
@@ -20,7 +26,7 @@ class Admin_User {
 	/**
 	 * Show signature area
 	 *
-	 * @param $profile_user \WP_User
+	 * @param $profile_user WP_User
 	 */
 	public function show_fields( $profile_user ) {
 
@@ -34,15 +40,15 @@ class Admin_User {
 //		} );
 
 		?>
-        <h2 id="groundhogg-options"><?php _e( white_labeled_name() ); ?></h2>
+        <h2 id="groundhogg-options"><?php echo esc_html( white_labeled_name() ); ?></h2>
         <table class="form-table">
 			<?php if ( user_can( $profile_user, 'view_reports' ) ): ?>
                 <tr>
-                    <th><?php _e( 'Email performance reports', 'groundhogg' ); ?></th>
+                    <th><?php esc_html_e( 'Email performance reports', 'groundhogg' ); ?></th>
                     <td>
 						<?php
 
-						echo html()->e( 'div', [
+						html( 'div', [
 							'class' => 'display-flex column gap-10'
 						], [
 							html()->checkbox( [
@@ -58,24 +64,28 @@ class Admin_User {
 						] );
 
 						?>
-                        <p class="description"><?php _e( 'Get performance reports sent directly to your inbox.', 'groundhogg' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'Get performance reports sent directly to your inbox.', 'groundhogg' ); ?></p>
                     </td>
                 </tr>
 			<?php endif; ?>
             <tr>
-                <th><?php _e( 'Default Contact Tab', 'groundhogg' ); ?></th>
+                <th><?php esc_html_e( 'Default Contact Tab', 'groundhogg' ); ?></th>
                 <td>
-					<?php echo html()->dropdown( [
+					<?php
+                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                    echo html()->dropdown( [
 						'name'        => 'gh_default_contact_tab',
+	                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped downstream
 						'options'     => get_valid_contact_tabs(),
 						'option_none' => false,
+	                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped downstream
 						'selected'    => $profile_user->gh_default_contact_tab
 					] ); ?>
-                    <p class="description"><?php _ex( 'Which tab should be selected by default when opening a contact record.', 'settings', 'groundhogg' ); ?></p>
+                    <p class="description"><?php echo esc_html_x( 'Which tab should be selected by default when opening a contact record.', 'settings', 'groundhogg' ); ?></p>
                 </td>
             </tr>
             <tr>
-                <th><?php _e( 'Email Signature', 'groundhogg' ); ?></th>
+                <th><?php esc_html_e( 'Email Signature', 'groundhogg' ); ?></th>
                 <td>
                     <div style="max-width: 800px">
 
@@ -87,7 +97,7 @@ class Admin_User {
 							'textarea_rows' => 10
 						] ); ?>
                     </div>
-                    <p class="description"><?php _e( 'Accepts HTML. The signature can be merged using the <code>{owner_signature}</code> in any email.', 'groundhogg' ); ?></p>
+                    <p class="description"><?php kses_e( __( 'Accepts HTML. The signature can be merged using the <code>{owner_signature}</code> in any email.', 'groundhogg' ) ); ?></p>
                 </td>
             </tr>
         </table>
@@ -97,8 +107,8 @@ class Admin_User {
 	}
 
 	/**
-     * Save the Groundhogg user fields...
-     *
+	 * Save the Groundhogg user fields...
+	 *
 	 * @param $user_id
 	 */
 	public function save_fields( $user_id ) {

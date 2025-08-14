@@ -2,6 +2,7 @@
 
 namespace Groundhogg\Admin\Events;
 
+use Exception;
 use Groundhogg\Admin\Tabbed_Admin_Page;
 use Groundhogg\Classes\Activity;
 use Groundhogg\Classes\Background_Task;
@@ -11,6 +12,9 @@ use Groundhogg\Email_Logger;
 use Groundhogg\Event;
 use Groundhogg\Plugin;
 use Groundhogg\Utils\Micro_Time_Tracker;
+use Groundhogg_Email_Services;
+use WP_Error;
+use WP_User;
 use function Groundhogg\_nf;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\db;
@@ -65,8 +69,8 @@ class Events_Page extends Tabbed_Admin_Page {
 
 		try {
 			$task->process();
-		} catch ( \Exception $e ) {
-			wp_send_json_error( new \WP_Error( 'error', $e->getMessage() ) );
+		} catch ( Exception $e ) {
+			wp_send_json_error( new WP_Error( 'error', $e->getMessage() ) );
 		}
 
 		wp_send_json_success( [
@@ -95,13 +99,13 @@ class Events_Page extends Tabbed_Admin_Page {
 
 				$this->enqueue_table_filters( [
 					'selectColumns' => [
-						'email_service' => [ 'Email service', \Groundhogg_Email_Services::dropdown() ],
+						'email_service' => [ 'Email service', Groundhogg_Email_Services::dropdown() ],
 						'message_type'  => [
 							'Message Type',
 							[
-								\Groundhogg_Email_Services::MARKETING     => 'Marketing',
-								\Groundhogg_Email_Services::TRANSACTIONAL => 'Transactional',
-								\Groundhogg_Email_Services::WORDPRESS     => 'WordPress'
+								Groundhogg_Email_Services::MARKETING     => 'Marketing',
+								Groundhogg_Email_Services::TRANSACTIONAL => 'Transactional',
+								Groundhogg_Email_Services::WORDPRESS     => 'WordPress'
 							],
 						],
 						'status'        => [
@@ -189,7 +193,7 @@ class Events_Page extends Tabbed_Admin_Page {
 
 				$user_ids = array_filter( get_db( 'background_tasks' )->get_unique_column_values( 'user_id' ) );
 				$users    = array_combine( $user_ids, array_map( function ( $user_id ) {
-					return ( new \WP_User( $user_id ) )->display_name;
+					return ( new WP_User( $user_id ) )->display_name;
 				}, $user_ids ) );
 
 				$this->enqueue_table_filters( [
@@ -200,13 +204,13 @@ class Events_Page extends Tabbed_Admin_Page {
 						'task_type' => [
 							'Task Type',
 							[
-								'Import_Contacts'        => __( 'Import contacts', 'groundhogg' ),
-								'Export_Contacts'        => __( 'Export contacts', 'groundhogg' ),
-								'Schedule_Broadcast'     => __( 'Schedule broadcast', 'groundhogg' ),
-								'Update_Contacts'        => __( 'Update contacts', 'groundhogg' ),
-								'Delete_Contacts'        => __( 'Delete contacts', 'groundhogg' ),
-								'Add_Contacts_To_Funnel' => __( 'Add contacts to flow', 'groundhogg' ),
-								'Complete_Benchmark'     => __( 'Trigger Flow', 'groundhogg' ),
+								'Import_Contacts'        => esc_html__( 'Import contacts', 'groundhogg' ),
+								'Export_Contacts'        => esc_html__( 'Export contacts', 'groundhogg' ),
+								'Schedule_Broadcast'     => esc_html__( 'Schedule broadcast', 'groundhogg' ),
+								'Update_Contacts'        => esc_html__( 'Update contacts', 'groundhogg' ),
+								'Delete_Contacts'        => esc_html__( 'Delete contacts', 'groundhogg' ),
+								'Add_Contacts_To_Funnel' => esc_html__( 'Add contacts to flow', 'groundhogg' ),
+								'Complete_Benchmark'     => esc_html__( 'Trigger Flow', 'groundhogg' ),
 							]
 						],
 						'user_id'   => [ 'User', $users ]
@@ -255,7 +259,7 @@ class Events_Page extends Tabbed_Admin_Page {
 		return [
 			[
 				'link'   => admin_page_url( 'gh_settings', [ 'tab' => 'email' ], 'email-logging' ),
-				'action' => __( 'Settings', 'groundhogg' ),
+				'action' => esc_html__( 'Settings', 'groundhogg' ),
 				'target' => '_self',
 			]
 		];
@@ -273,7 +277,7 @@ class Events_Page extends Tabbed_Admin_Page {
 	/**
 	 * Pause some events
 	 *
-	 * @return bool|\WP_Error
+	 * @return bool|WP_Error
 	 */
 	public function process_pause() {
 
@@ -298,10 +302,11 @@ class Events_Page extends Tabbed_Admin_Page {
 		] );
 
 		if ( ! $result ) {
-			return new \WP_Error( 'error', 'Something went wrong' );
+			return new WP_Error( 'error', 'Something went wrong' );
 		}
 
-		$this->add_notice( 'paused', sprintf( _nx( '%d event paused', '%d events paused', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
+        /* translators: %s: the number of events paused */
+		$this->add_notice( 'paused', sprintf( _nx( '%s event paused', '%s events paused', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
 
 		return false;
 	}
@@ -309,7 +314,7 @@ class Events_Page extends Tabbed_Admin_Page {
 	/**
 	 * Unpause some events
 	 *
-	 * @return bool|\WP_Error
+	 * @return bool|WP_Error
 	 */
 	public function process_unpause() {
 
@@ -334,10 +339,11 @@ class Events_Page extends Tabbed_Admin_Page {
 		] );
 
 		if ( ! $result ) {
-			return new \WP_Error( 'error', 'Something went wrong' );
+			return new WP_Error( 'error', 'Something went wrong' );
 		}
 
-		$this->add_notice( 'paused', sprintf( _nx( '%d event unpaused', '%d events unpaused', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
+        /* translators: %s: the number of events unpaused */
+		$this->add_notice( 'paused', sprintf( _nx( '%s event unpaused', '%s events unpaused', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
 
 		return false;
 	}
@@ -345,7 +351,7 @@ class Events_Page extends Tabbed_Admin_Page {
 	/**
 	 * Cancel some events
 	 *
-	 * @return bool|\WP_Error
+	 * @return bool|WP_Error
 	 */
 	public function process_cancel() {
 
@@ -369,13 +375,14 @@ class Events_Page extends Tabbed_Admin_Page {
 		] );
 
 		if ( ! $result ) {
-			return new \WP_Error( 'error', 'Something went wrong' );
+			return new WP_Error( 'error', 'Something went wrong' );
 		}
 
 		// Move the items over...
 		db()->event_queue->move_events_to_history( [ 'status' => Event::CANCELLED ] );
 
-		$this->add_notice( 'cancelled', sprintf( _nx( '%s event cancelled', '%d events cancelled', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
+        /* translators: %s: the number of events cancelled */
+		$this->add_notice( 'cancelled', sprintf( _nx( '%s event cancelled', '%s events cancelled', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
 
 		//false return users to the main page
 		return false;
@@ -384,7 +391,7 @@ class Events_Page extends Tabbed_Admin_Page {
 	/**
 	 * Uncancels any cancelled events...
 	 *
-	 * @return bool|\WP_Error
+	 * @return bool|WP_Error
 	 */
 	public function process_uncancel() {
 		if ( ! current_user_can( 'execute_events' ) ) {
@@ -407,13 +414,22 @@ class Events_Page extends Tabbed_Admin_Page {
 		] );
 
 		if ( ! $result ) {
-			return new \WP_Error( 'db_error', __( 'There was an error updating the database.', 'groundhogg' ) );
+			return new WP_Error( 'db_error', esc_html__( 'There was an error updating the database.', 'groundhogg' ) );
 		}
 
 		// Move the events over...
 		get_db( 'events' )->move_events_to_queue( [ 'status' => Event::WAITING ], true );
 
-		$this->add_notice( 'scheduled', sprintf( _nx( '%s event uncancelled', '%s events uncancelled', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
+        switch ( $query_params['status'] ) {
+            case Event::FAILED:
+	            /* translators: %s: the number of events to retry */
+	            $this->add_notice( 'scheduled', sprintf( _nx( 'Retrying %s event', 'Retrying %s events', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
+	            break;
+            case Event::CANCELLED:
+	            /* translators: %s: the number of events uncancelled */
+	            $this->add_notice( 'scheduled', sprintf( _nx( '%s event uncancelled', '%s events uncancelled', $result, 'notice', 'groundhogg' ), _nf( $result ) ) );
+	            break;
+        }
 
 		return false;
 	}
@@ -430,7 +446,7 @@ class Events_Page extends Tabbed_Admin_Page {
 		$purgeable_events = [ Event::FAILED, Event::CANCELLED, Event::SKIPPED ];
 
 		if ( empty( $status ) || ! in_array( $status, $purgeable_events ) ) {
-			return new \WP_Error( 'invalid_status', __( 'Invalid status.', 'groundhogg' ) );
+			return new WP_Error( 'invalid_status', esc_html__( 'Invalid status.', 'groundhogg' ) );
 		}
 
 		$query_params = get_request_query();
@@ -445,7 +461,8 @@ class Events_Page extends Tabbed_Admin_Page {
 		$result = $query->delete();
 
 		if ( $result !== false ) {
-			$this->add_notice( 'events_purged', sprintf( __( 'Purged %s events!' ), _nf( $result ) ) );
+			/* translators: %s: the number of events purged */
+			$this->add_notice( 'events_purged', sprintf( esc_html__( 'Purged %s events!' , 'groundhogg' ), _nf( $result ) ) );
 		}
 
 		return false;
@@ -502,6 +519,7 @@ class Events_Page extends Tabbed_Admin_Page {
 			'ID'        => wp_parse_id_list( $this->get_items() ),
 		] );
 
+		/* translators: %s: the number of events rescheduled */
 		$this->add_notice( 'scheduled', sprintf( _nx( '%s event rescheduled', '%s events rescheduled', $updated, 'notice', 'groundhogg' ), number_format_i18n( $updated ) ) );
 
 		return false;
@@ -523,6 +541,7 @@ class Events_Page extends Tabbed_Admin_Page {
 			'status' => Event::WAITING
 		] );
 
+		/* translators: %d: the number of events rescheduled */
 		$this->add_notice( 'scheduled', sprintf( _nx( '%d event rescheduled', '%d events rescheduled', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ) );
 
 		return false;
@@ -679,23 +698,23 @@ class Events_Page extends Tabbed_Admin_Page {
 	protected function get_tabs() {
 		return [
 			[
-				'name' => __( 'Events', 'groundhogg' ),
+				'name' => esc_html__( 'Events', 'groundhogg' ),
 				'slug' => 'events',
 				'cap'  => 'view_events'
 			],
 			[
-				'name' => __( 'Emails', 'groundhogg' ),
+				'name' => esc_html__( 'Emails', 'groundhogg' ),
 				'slug' => 'emails',
 				'cap'  => 'view_logs'
 
 			],
 			[
-				'name' => __( 'Background Tasks', 'groundhogg' ),
+				'name' => esc_html__( 'Background Tasks', 'groundhogg' ),
 				'slug' => 'tasks',
 				'cap'  => 'manage_options'
 			],
 			[
-				'name' => __( 'Manage', 'groundhogg' ),
+				'name' => esc_html__( 'Manage', 'groundhogg' ),
 				'slug' => 'manage',
 				'cap'  => 'view_events'
 			],
@@ -717,10 +736,12 @@ class Events_Page extends Tabbed_Admin_Page {
 		?>
         <form method="get" class="search-form">
 			<?php html()->hidden_GET_inputs( true ); ?>
-            <input type="hidden" name="page" value="<?php esc_attr_e( get_request_var( 'page' ) ); ?>">
-            <label class="screen-reader-text" for="gh-post-search-input"><?php esc_attr_e( 'Search' ); ?>:</label>
+            <input type="hidden" name="page" value="<?php echo esc_attr( get_request_var( 'page' ) ); ?>">
+            <label class="screen-reader-text" for="gh-post-search-input"><?php esc_html_e( 'Search', 'groundhogg' ); ?>:</label>
 
 			<?php if ( ! get_url_var( 'include_filters' ) ):
+
+				// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 				echo html()->input( [
 					'type' => 'hidden',
 					'name' => 'include_filters'
@@ -729,25 +750,26 @@ class Events_Page extends Tabbed_Admin_Page {
 
             <div style="float: right" class="gh-input-group">
                 <input type="search" id="gh-post-search-input" name="s"
-                       value="<?php esc_attr_e( get_request_var( 's' ) ); ?>">
+                       value="<?php echo esc_attr( get_request_var( 's' ) ); ?>">
 				<?php
 
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 				echo html()->dropdown( [
 					'options'           => [
-						'subject'    => __( 'Subject', 'groundhogg' ),
-						'content'    => __( 'Body', 'groundhogg' ),
-						'recipients' => __( 'Recipients', 'groundhogg' ),
-						'headers'    => __( 'Headers', 'groundhogg' )
+						'subject'    => esc_html__( 'Subject', 'groundhogg' ),
+						'content'    => esc_html__( 'Body', 'groundhogg' ),
+						'recipients' => esc_html__( 'Recipients', 'groundhogg' ),
+						'headers'    => esc_html__( 'Headers', 'groundhogg' )
 					],
-					'option_none'       => __( 'Everywhere', 'groundhogg' ),
+					'option_none'       => esc_html__( 'Everywhere', 'groundhogg' ),
 					'option_none_value' => '',
 					'name'              => 'search_columns',
+					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- compared against real values
 					'selected'          => get_request_var( 'search_columns' )
 				] );
 
 				?>
-                <button type="submit" id="search-submit"
-                        class="gh-button primary small"><?php esc_attr_e( 'Search' ); ?></button>
+                <button type="submit" id="search-submit" class="gh-button primary small"><?php esc_html_e( 'Search', 'groundhogg' ); ?></button>
             </div>
         </form>
         <form method="post" class="search-form wp-clearfix">
@@ -787,13 +809,13 @@ class Events_Page extends Tabbed_Admin_Page {
 		$events         = get_db( 'events' );
 
 		if ( $confirm !== 'confirm' ) {
-			return new \WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
+			return new WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
 		}
 
 		$time = strtotime( "$time_range $time_unit ago" );
 
 		if ( ! $time ) {
-			return new \WP_Error( 'invalid', 'Invalid time range supplied, no action was taken.' );
+			return new WP_Error( 'invalid', 'Invalid time range supplied, no action was taken.' );
 		}
 
 		switch ( $what_to_delete ) {
@@ -844,13 +866,13 @@ ORDER BY ID" );
 		$activity       = get_db( 'activity' );
 
 		if ( $confirm !== 'confirm' ) {
-			return new \WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
+			return new WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
 		}
 
 		$time = strtotime( "$time_range $time_unit ago" );
 
 		if ( ! $time ) {
-			return new \WP_Error( 'invalid', 'Invalid time range supplied, no action was taken.' );
+			return new WP_Error( 'invalid', 'Invalid time range supplied, no action was taken.' );
 		}
 
 		switch ( $what_to_delete ) {
@@ -885,7 +907,7 @@ ORDER BY ID" );
 	/**
 	 * Admin tool to cancel waiting events
 	 *
-	 * @return false|\WP_Error
+	 * @return false|WP_Error
 	 */
 	public function process_cancel_events_tool() {
 
@@ -900,7 +922,7 @@ ORDER BY ID" );
 		$confirm        = get_post_var( 'confirm' );
 
 		if ( $confirm !== 'confirm' ) {
-			return new \WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
+			return new WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
 		}
 
 		switch ( $what_to_cancel ) {
@@ -965,7 +987,7 @@ ORDER BY ID" );
 	/**
 	 * Tool to fix unprocessed events by rescheduling them or cancelling them
 	 *
-	 * @return false|\WP_Error
+	 * @return false|WP_Error
 	 */
 	public function process_fix_unprocessed() {
 
@@ -984,13 +1006,13 @@ ORDER BY ID" );
 		$confirm          = get_post_var( 'confirm' );
 
 		if ( $confirm !== 'confirm' ) {
-			return new \WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
+			return new WP_Error( 'confirmation', 'Please type "confirm" in all lowercase to confirm the action.' );
 		}
 
 		$time = strtotime( "$time_range $time_unit ago" );
 
 		if ( ! $time ) {
-			return new \WP_Error( 'invalid', 'Invalid time range supplied, no action was taken.' );
+			return new WP_Error( 'invalid', 'Invalid time range supplied, no action was taken.' );
 		}
 
 		$compare = $older_or_younger == 'older' ? '<' : '>';
@@ -1066,6 +1088,7 @@ ORDER BY ID" );
 
 		$this->add_notice(
 			esc_attr( 'deleted' ),
+            /* translators: %d: the number of email logs deleted */
 			sprintf( _nx( 'Deleted %d email log', 'Deleted %d email logs', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 			'success'
 		);
@@ -1090,6 +1113,7 @@ ORDER BY ID" );
 
 		$this->add_notice(
 			esc_attr( 'resent' ),
+			/* translators: %d: the number of email logs resent */
 			sprintf( _nx( 'Resent %d email', 'Resent %d emails', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 			'success'
 		);
@@ -1108,6 +1132,7 @@ ORDER BY ID" );
 
 		$this->add_notice(
 			esc_attr( 'cancelled' ),
+			/* translators: %d: the number of tasks cancelled */
 			sprintf( _nx( 'Cancelled %d task', 'Cancelled %d task', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 		);
 	}
@@ -1128,8 +1153,8 @@ ORDER BY ID" );
 
 			try {
 				$task->process();
-			} catch ( \Exception $exception ) {
-				return new \WP_Error( 'error', $exception->getMessage() );
+			} catch ( Exception $exception ) {
+				return new WP_Error( 'error', $exception->getMessage() );
 			}
 		}
 
@@ -1159,6 +1184,7 @@ ORDER BY ID" );
 
 		$this->add_notice(
 			esc_attr( 'resume' ),
+			/* translators: %d: the number of tasks resumed */
 			sprintf( _nx( 'Resumed %d task', 'Resumed %d task', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 		);
 	}
@@ -1166,7 +1192,8 @@ ORDER BY ID" );
 	public function page() {
 
 		if ( $this->get_current_tab() === 'emails' && ! Email_Logger::is_enabled() ) {
-			$this->add_notice( 'inactive', sprintf( __( "Email logging is currently disabled. You can enable email logging in the <a href='%s'>email settings</a>.", 'groundhogg' ), admin_page_url( 'gh_settings', [ 'tab' => 'email' ], 'email-logging' ) ), 'warning' );
+			/* translators: 1: the open <a> tag, 2: the closing </a> tag */
+			$this->add_notice( 'inactive', sprintf( esc_html__( 'Email logging is currently disabled. You can enable email logging in the %1$semail settings%2$s.', 'groundhogg' ), "<a href=\"" . esc_url( admin_page_url( 'gh_settings', [ 'tab' => 'email' ], 'email-logging' ) ) . "\">", "</a>" ), 'warning' );
 		}
 
 		parent::page();

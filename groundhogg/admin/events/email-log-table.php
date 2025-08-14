@@ -3,8 +3,10 @@
 namespace Groundhogg\Admin\Events;
 
 // Exit if accessed directly
+use DateTime;
 use Groundhogg\Admin\Table;
 use Groundhogg\Email_Log_Item;
+use Groundhogg_Email_Services;
 use WP_List_Table;
 use function Groundhogg\action_url;
 use function Groundhogg\admin_page_url;
@@ -63,33 +65,33 @@ class Email_Log_Table extends Table {
 		return [
 			[
 				'view'    => '',
-				'display' => __( 'All' ),
+				'display' => esc_html__( 'All', 'groundhogg' ),
 				'query'   => [],
 			],
 			[
 				'view'    => 'sent',
-				'display' => __( 'Sent', 'groundhogg' ),
+				'display' => esc_html__( 'Sent', 'groundhogg' ),
 				'query'   => [ 'status' => 'sent' ],
 			],
 			[
 				'view'    => 'failed',
-				'display' => __( 'Failed', 'groundhogg' ),
+				'display' => esc_html__( 'Failed', 'groundhogg' ),
 				'query'   => [ 'status' => 'failed' ],
 			],
 			[
 				'view'    => 'wordpress',
-				'display' => __( 'WordPress', 'groundhogg' ),
-				'query'   => [ 'message_type' => \Groundhogg_Email_Services::WORDPRESS ],
+				'display' => esc_html__( 'WordPress', 'groundhogg' ),
+				'query'   => [ 'message_type' => Groundhogg_Email_Services::WORDPRESS ],
 			],
 			[
 				'view'    => 'transactional',
-				'display' => __( 'Transactional', 'groundhogg' ),
-				'query'   => [ 'message_type' => \Groundhogg_Email_Services::TRANSACTIONAL ],
+				'display' => esc_html__( 'Transactional', 'groundhogg' ),
+				'query'   => [ 'message_type' => Groundhogg_Email_Services::TRANSACTIONAL ],
 			],
 			[
 				'view'    => 'marketing',
-				'display' => __( 'Marketing', 'groundhogg' ),
-				'query'   => [ 'message_type' => \Groundhogg_Email_Services::MARKETING ],
+				'display' => esc_html__( 'Marketing', 'groundhogg' ),
+				'query'   => [ 'message_type' => Groundhogg_Email_Services::MARKETING ],
 			]
 		];
 	}
@@ -143,42 +145,41 @@ class Email_Log_Table extends Table {
         <div class="alignleft gh-actions" style="display: flex;gap: 3px;align-items: center">
 			<?php
 
-			echo html()->dropdown( [
-				'id'          => 'date-filter',
-				'name'        => 'date_filter',
-				'option_none' => __( 'Filter by date' ),
-				'options'     => [
-					'before'  => __( 'Before', 'groundhogg' ),
-					'after'   => __( 'After', 'groundhogg' ),
-					'between' => __( 'Between', 'groundhogg' ),
-				],
-				'selected'    => get_url_var( 'date_filter' )
-			] );
-
-			echo html()->input( [
-				'type'  => 'date',
-				'id'    => 'after',
-				'name'  => 'after',
-				'value' => get_url_var( 'after' ),
-				'class' => 'input' . ( get_url_var( 'after' ) ? '' : ' hidden' )
-			] );
-
-			echo html()->input( [
-				'type'  => 'date',
-				'id'    => 'before',
-				'name'  => 'before',
-				'value' => get_url_var( 'before' ),
-				'class' => 'input' . ( get_url_var( 'before' ) ? '' : ' hidden' )
-			] );
-
-			echo html()->button( [
-				'text'  => __( 'Search' ),
-				'id'    => 'search-by-date',
-				'type'  => 'submit',
-				'value' => 'filter_logs',
-				'name'  => 'action',
-				'class' => 'button button-secondary' . ( get_url_var( 'before' ) || get_url_var( 'after' ) ? '' : ' hidden' )
-			] )
+			html()->frag( [
+				html()->dropdown( [
+					'id'          => 'date-filter',
+					'name'        => 'date_filter',
+					'option_none' => esc_html__( 'Filter by date', 'groundhogg' ),
+					'options'     => [
+						'before'  => esc_html__( 'Before', 'groundhogg' ),
+						'after'   => esc_html__( 'After', 'groundhogg' ),
+						'between' => esc_html__( 'Between', 'groundhogg' ),
+					],
+					'selected'    => get_url_var( 'date_filter' )
+				] ),
+				html()->input( [
+					'type'  => 'date',
+					'id'    => 'after',
+					'name'  => 'after',
+					'value' => get_url_var( 'after' ),
+					'class' => 'input' . ( get_url_var( 'after' ) ? '' : ' hidden' )
+				] ),
+				html()->input( [
+					'type'  => 'date',
+					'id'    => 'before',
+					'name'  => 'before',
+					'value' => get_url_var( 'before' ),
+					'class' => 'input' . ( get_url_var( 'before' ) ? '' : ' hidden' )
+				] ),
+				html()->button( [
+					'text'  => esc_html__( 'Search', 'groundhogg' ),
+					'id'    => 'search-by-date',
+					'type'  => 'submit',
+					'value' => 'filter_logs',
+					'name'  => 'action',
+					'class' => 'button button-secondary' . ( get_url_var( 'before' ) || get_url_var( 'after' ) ? '' : ' hidden' )
+				] )
+			], true );
 
 			?></div><?php
 	}
@@ -265,13 +266,13 @@ class Email_Log_Table extends Table {
 //
 		$actions['resend'] = "<a href='" . action_url( 'resend', [
 				'email' => $email->get_id()
-			] ) . "'>" . __( 'Resend', 'groundhogg' ) . "</a>";
+			] ) . "'>" . esc_html__( 'Resend', 'groundhogg' ) . "</a>";
 
 		$actions['view-details'] = html()->e( 'a', [
 			'href'        => '#',
 			'class'       => 'view-email-log',
 			'data-log-id' => $email->get_id()
-		], __( 'View Details' ) );
+		], esc_html__( 'View Details', 'groundhogg' ) );
 
 		return $this->row_actions( apply_filters( 'groundhogg/log/row_actions', $actions, $email, $column_name ) );
 	}
@@ -312,7 +313,7 @@ class Email_Log_Table extends Table {
 	 * @return string|void
 	 */
 	protected function column_subject( $email ) {
-		esc_html_e( $email->subject );
+		echo esc_html( $email->subject );
 	}
 
 	/**
@@ -321,7 +322,7 @@ class Email_Log_Table extends Table {
 	 * @return string|void
 	 */
 	protected function column_from( $email ) {
-		esc_html_e( $email->from_address );
+		echo esc_html( $email->from_address );
 	}
 
 	/**
@@ -337,7 +338,7 @@ class Email_Log_Table extends Table {
 			case 'delivered':
 
 				?>
-                <span class="pill success"><?php _e( 'Sent', 'groundhogg' ) ?></span>
+                <span class="pill success"><?php esc_html_e( 'Sent', 'groundhogg' ) ?></span>
 				<?php
 
 				break;
@@ -347,8 +348,8 @@ class Email_Log_Table extends Table {
 
 				?>
                 <span class="pill danger gh-has-tooltip">
-                    <?php _e( 'Failed', 'groundhogg' ) ?>
-                    <span class="gh-tooltip bottom"><?php esc_html_e( $email->error_message ); ?></span>
+                    <?php esc_html_e( 'Failed', 'groundhogg' ) ?>
+                    <span class="gh-tooltip bottom"><?php echo esc_html( $email->error_message ); ?></span>
                 </span>
 				<?php
 
@@ -369,7 +370,7 @@ class Email_Log_Table extends Table {
 		$cur_time  = time();
 		$time_diff = $lu_time - $cur_time;
 
-		$date = new \DateTime();
+		$date = new DateTime();
 		$date->setTimestamp( $lu_time );
 		$date->setTimezone( wp_timezone() );
 
@@ -404,8 +405,8 @@ class Email_Log_Table extends Table {
 	protected function get_bulk_actions() {
 
 		$actions = [
-			'resend' => __( 'Resend', 'groundhogg' ),
-			'delete' => __( 'Delete', 'groundhogg' ),
+			'resend' => esc_html__( 'Resend', 'groundhogg' ),
+			'delete' => esc_html__( 'Delete', 'groundhogg' ),
 		];
 
 		return apply_filters( 'groundhogg/log/bulk_actions', $actions );

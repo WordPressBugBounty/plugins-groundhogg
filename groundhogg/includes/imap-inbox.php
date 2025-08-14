@@ -37,8 +37,8 @@ class Imap_Inbox {
 
 		if ( $this->inbox && $this->password ) {
 			?>
-			<a href="<?php echo wp_nonce_url( add_query_arg( 'test_imap_connection', '1', $_SERVER['REQUEST_URI'] ) ); ?>"
-			   class="button-secondary"><?php _ex( 'Test IMAP Connection', 'action', 'groundhogg' ) ?></a>
+			<a href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'test_imap_connection', '1', get_request_uri() ) ) ); ?>"
+			   class="button-secondary"><?php echo esc_html_x( 'Test IMAP Connection', 'action', 'groundhogg' ) ?></a>
 			<?php
 		}
 
@@ -96,7 +96,7 @@ class Imap_Inbox {
 			return;
 		}
 
-		Plugin::$instance->notices->add( 'imap_success', _x( 'Successful IMAP connection established.', 'notice', 'groundhogg' ) );
+		Plugin::$instance->notices->add( 'imap_success', esc_html_x( 'Successful IMAP connection established.', 'notice', 'groundhogg' ) );
 
 	}
 

@@ -2,7 +2,6 @@
 
 namespace Groundhogg\Admin\Contacts;
 
-
 use Groundhogg\Contact;
 use function Groundhogg\dashicon_e;
 use function Groundhogg\get_post_var;
@@ -10,6 +9,10 @@ use function Groundhogg\html;
 use function Groundhogg\is_a_contact;
 use function Groundhogg\isset_not_empty;
 use function Groundhogg\verify_admin_ajax_nonce;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+} // Exit if accessed directly
 
 class Info_Cards {
 
@@ -54,7 +57,7 @@ class Info_Cards {
 
 		update_user_meta( get_current_user_id(), 'groundhogg_info_card_order', $card_order );
 
-        wp_send_json_success();
+		wp_send_json_success();
 	}
 
 	/**
@@ -62,17 +65,18 @@ class Info_Cards {
 	 */
 	public function register_core_cards() {
 
-		self::register( 'user', __( 'WordPress User', 'groundhogg' ), function ( $contact ) {
+		self::register( 'user', esc_html__( 'WordPress User', 'groundhogg' ), function ( $contact ) {
 			include __DIR__ . '/cards/user.php';
 		}, 100, 'edit_users' );
 
-		self::register( 'page_visits', __( 'Page Visits', 'groundhogg' ), function ( $contact ) {
+		self::register( 'page_visits', esc_html__( 'Page Visits', 'groundhogg' ), function ( $contact ) {
 			include __DIR__ . '/cards/page-visits.php';
 		}, 100, 'view_contacts' );
 
-        self::register( 'relationships', __( 'Relationships', 'groundhogg' ), function ( $contact ) {
-            ?><div id="contact-relationships"></div><?php
-        } );
+		self::register( 'relationships', esc_html__( 'Relationships', 'groundhogg' ), function ( $contact ) {
+			?>
+            <div id="contact-relationships"></div><?php
+		} );
 
 		do_action( 'groundhogg/admin/contacts/register_info_cards', $this );
 
@@ -208,22 +212,22 @@ class Info_Cards {
 			}
 
 			?>
-            <div id="<?php esc_attr_e( $id ); ?>"
-                 class="gh-panel info-card <?php esc_attr_e( $id ); ?> <?php esc_attr_e( ! $open ? 'closed' : '' ); ?> <?php esc_attr_e( $hidden ? 'hidden' : '' ); ?>">
+            <div id="<?php echo esc_attr( $id ); ?>"
+                 class="gh-panel info-card <?php echo esc_attr( $id ); ?> <?php echo  ! $open ? 'closed' : ''; ?> <?php echo $hidden ? 'hidden' : ''; ?>">
                 <div class="gh-panel-header">
-                    <h2><?php echo $title; ?></h2>
+                    <h2><?php echo esc_html( $title ); ?></h2>
                     <div class="actions hide-if-no-js">
                         <button type="button" class="panel-handle-order-higher" aria-disabled="false"
-                                aria-describedby="<?php esc_attr_e( $id ); ?>-handle-order-higher-description">
-                            <span class="screen-reader-text"><?php _e( 'Move up' ); ?></span>
+                                aria-describedby="<?php echo esc_attr( $id ); ?>-handle-order-higher-description">
+                            <span class="screen-reader-text"><?php esc_html_e( 'Move up', 'groundhogg' ); ?></span>
                         </button>
                         <button type="button" class="panel-handle-order-lower" aria-disabled="false"
-                                aria-describedby="<?php esc_attr_e( $id ); ?>-handle-order-lower-description">
-                            <span class="screen-reader-text"><?php _e( 'Move down' ); ?></span>
+                                aria-describedby="<?php echo esc_attr( $id ); ?>-handle-order-lower-description">
+                            <span class="screen-reader-text"><?php esc_html_e( 'Move down', 'groundhogg' ); ?></span>
                         </button>
                         <button type="button" class="toggle-indicator" aria-expanded="true">
                                 <span class="screen-reader-text">
-                                    <?php _e( 'Toggle info box panel', 'groundhogg' ); ?>
+                                    <?php esc_html_e( 'Toggle info box panel', 'groundhogg' ); ?>
                                 </span>
                         </button>
                     </div>
@@ -249,38 +253,31 @@ class Info_Cards {
             <div class="info-card-actions postbox gh-panel">
                 <div class="inside">
                     <a class="expand-all"
-                       href="javascript:void(0)"><?php _e( 'Expand All', 'groundhogg' ); ?><?php dashicon_e( 'arrow-up' ); ?></a>
+                       href="javascript:void(0)"><?php esc_html_e( 'Expand All', 'groundhogg' ); ?><?php dashicon_e( 'arrow-up' ); ?></a>
                     <a class="collapse-all"
-                       href="javascript:void(0)"><?php _e( 'Collapse All', 'groundhogg' ); ?><?php dashicon_e( 'arrow-down' ); ?></a>
+                       href="javascript:void(0)"><?php esc_html_e( 'Collapse All', 'groundhogg' ); ?><?php dashicon_e( 'arrow-down' ); ?></a>
                     <a class="view-cards"
-                       href="javascript:void(0)"><?php _e( 'Cards', 'groundhogg' ); ?><?php dashicon_e( 'visibility' ); ?></a>
+                       href="javascript:void(0)"><?php esc_html_e( 'Cards', 'groundhogg' ); ?><?php dashicon_e( 'visibility' ); ?></a>
                 </div>
             </div>
             <div class="info-card-views gh-panel hidden">
                 <div class="inside">
-                    <p><?php _e( 'Select which cards you want visible.', 'groundhogg' ); ?></p>
+                    <p><?php esc_html_e( 'Select which cards you want visible.', 'groundhogg' ); ?></p>
                     <ul>
-						<?php
+						<?php foreach ( Info_Cards::get_user_info_cards() as $id => $card ):
 
-						foreach ( Info_Cards::get_user_info_cards() as $id => $card ):
+                            html( 'li', [], html()->checkbox( [
+	                            'label'   => $card['title'],
+	                            'name'    => sprintf( 'cards_display[%s]', $id ),
+	                            'class'   => 'hide-card',
+	                            'value'   => $id,
+	                            'checked' => ! isset_not_empty( $card, 'hidden' )
+                            ] ) );
 
-							?>
-                            <li><?php
-							echo html()->checkbox( [
-								'label'   => $card['title'],
-								'name'    => sprintf( 'cards_display[%s]', $id ),
-								'class'   => 'hide-card',
-								'value'   => $id,
-								'checked' => ! isset_not_empty( $card, 'hidden' )
-							] );
-							?></li><?php
-
-						endforeach;
-
-						?>
+						endforeach; ?>
                     </ul>
                     <p>
-                        <a class="view-cards" href="javascript:void(0)"><?php _e( 'Close', 'groundhogg' ); ?></a>
+                        <a class="view-cards" href="javascript:void(0)"><?php esc_html_e( 'Close', 'groundhogg' ); ?></a>
                     </p>
                 </div>
             </div>

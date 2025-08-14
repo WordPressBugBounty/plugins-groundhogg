@@ -1,5 +1,10 @@
 <?php
 
+use function Groundhogg\bold_it;
+use function Groundhogg\white_labeled_name;
+
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
 /**
  * If the transactional email system in Groundhogg is set to something other than the WordPress default, load the email service.
  *
@@ -54,7 +59,7 @@ function gh_wp_mail_already_defined_notice() {
 			wp_nonce_url( 'plugins.php?action=deactivate&amp;plugin=' . urlencode( $plugin_file ), 'deactivate-plugin_' . $plugin_file ),
 			/* translators: %s: Plugin name. */
 			esc_attr( __( 'Deactivate the conflicting plugin', 'groundhogg' ) ),
-			__( 'Deactivate the conflicting plugin', 'groundhogg' )
+			esc_html__( 'Deactivate the conflicting plugin', 'groundhogg' )
 		);
 
 	}
@@ -64,7 +69,7 @@ function gh_wp_mail_already_defined_notice() {
 		\Groundhogg\admin_page_url( 'gh_settings', [ 'tab' => 'email' ] ),
 		/* translators: %s: Plugin name. */
 		esc_attr( __( "Set WordPress email service to WordPress Default", 'groundhogg' ) ),
-		__( "Change your <b>WordPress Default</b> email service", 'groundhogg' )
+		esc_html__( "Change your WordPress Default email service", 'groundhogg' )
 	);
 
 	$current_service_name = Groundhogg_Email_Services::get_name( Groundhogg_Email_Services::get_wordpress_service() );
@@ -76,16 +81,39 @@ function gh_wp_mail_already_defined_notice() {
              src="<?php echo esc_url( GROUNDHOGG_ASSETS_URL . 'images/phil-oops.png' ); ?>" alt="Phil">
         <?php endif; ?>
         <p>
-			<?php printf( __( '<b>Attention:</b> It looks like another plugin is overwriting the <code>wp_mail</code> function. This means <b>%s</b> will not be able to send your WordPress emails.', 'groundhogg' ), $current_service_name ); ?>
+			<?php printf(
+                    /* translators: 1: <code>wp_mail</code>, 2: the email service name */
+                    esc_html__( '⚠️ It looks like another plugin is overwriting the %1$s function. This means %2$s will not be able to send your WordPress emails.', 'groundhogg' ),
+				    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                    \Groundhogg\code_it( 'wp_mail' ),
+                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                    bold_it( esc_html( $current_service_name ) )
+            ); ?>
         </p>
         <p>
-			<?php _e( '<code>wp_mail</code> is defined in:', 'groundhogg' ); ?>
+			<?php printf(
+			        /* translators: %s: <code>wp_mail</code> */
+                    esc_html__( '%s is defined in:', 'groundhogg' ),
+				    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                    \Groundhogg\code_it(  'wp_mail' )
+            ); ?>
             <code><?php echo esc_html( $plugin_file ); ?></code>
         </p>
-        <p><?php echo $deactivate_link; ?>&nbsp;<?php echo $disable_in_settings_link ?></p>
+        <p><?php
+	        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+            echo $deactivate_link;
+            ?>&nbsp;<?php
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+            echo $disable_in_settings_link
+            ?></p>
 		<?php if ( $is_pluggable_file ) : ?>
             <p>
-				<?php _e( 'One of your plugins is including pluggable functions from WordPress before it should. This is causing a conflict with <b>Groundhogg/b> and potentially other plugins you are using. You will have to deactivate your plugins one-by-one until this notice goes away to discover which plugin is causing the issue.', 'groundhogg' ); ?>
+				<?php printf(
+                        /* translators: %s: plugin/brand name */
+                        esc_html__( 'One of your plugins is including pluggable functions from WordPress before it should. This is causing a conflict with %s and potentially other plugins you are using. You will have to deactivate your plugins one-by-one until this notice goes away to discover which plugin is causing the issue.', 'groundhogg' ),
+                        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                        bold_it( esc_html( white_labeled_name() ) )
+                ); ?>
             </p>
 		<?php endif; ?>
         <div class="wp-clearfix"></div>

@@ -6,7 +6,6 @@ use Groundhogg\Base_Object_With_Meta;
 use Groundhogg\Contact;
 use Groundhogg\DB\DB;
 use Groundhogg\DB\Meta_DB;
-use Groundhogg\Email;
 use Groundhogg\Utils\DateTimeHelper;
 use function Groundhogg\get_db;
 use function Groundhogg\html;
@@ -88,7 +87,7 @@ class Activity extends Base_Object_With_Meta {
 		$date = new DateTimeHelper( $this->get_timestamp() );
 
 		$i18n = [
-			'diff_time' => $date->i18n()
+			'diff_time' => $date->wi18n()
 		];
 
 		switch ( $this->activity_type ) {

@@ -5,7 +5,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use Groundhogg\Email;
-use function Groundhogg\get_default_email_width;
 use function Groundhogg\the_email;
 
 include_once __DIR__ . '/template-functions.php';
@@ -19,7 +18,7 @@ $email = the_email();
 $email_title = get_bloginfo( 'name', 'display' );
 
 /* translators: Login screen title. 1: Login screen name, 2: Network or site name */
-$email_title = sprintf( __( '%1$s &lsaquo; %2$s' ), $email->get_merged_subject_line(), $email_title );
+$email_title = sprintf( '%1$s &lsaquo; %2$s', esc_html( $email->get_merged_subject_line() ), esc_html( $email_title ) );
 
 $bgColor    = $email->get_meta( 'backgroundColor' ) ?: '';
 $bgImage    = $email->get_meta( 'backgroundImage' ) ?: '';
@@ -50,7 +49,7 @@ if ( $bgImage ) {
 	<meta name="x-apple-disable-message-reformatting"/>
 	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
-	<title><?php echo $email_title; ?></title>
+	<title><?php echo esc_html( $email_title ); ?></title>
 	<base target="_blank">
 	<style id="global-style">
 		<?php load_css( 'email' ); ?>
@@ -60,24 +59,26 @@ if ( $bgImage ) {
 		<?php load_css( 'responsive' ); ?>
 	</style>
 	<style id="block-styles">
-		<?php echo $email->get_css() ?>
+		<?php echo esc_html( $email->get_css() ) ?>
 	</style>
 	<?php do_action( 'groundhogg/templates/email/full-width/head' ); ?>
 </head>
-<body class="email template-full-width-contained" dir="<?php esc_attr_e( $direction ); ?>">
+<body class="email template-full-width-contained" dir="<?php echo esc_attr( $direction ); ?>">
 <table class="body-content" cellspacing="0" cellpadding="0" role="presentation" width="100%">
 	<tr>
-		<td bgcolor="<?php esc_attr_e( $bgColor ); ?>" background="<?php echo esc_url( $bgImage ); ?>"
-		    style="<?php echo \Groundhogg\array_to_css( $bodyStyle ) ?>">
+		<td bgcolor="<?php echo esc_attr( $bgColor ); ?>" background="<?php echo esc_url( $bgImage ); ?>"
+		    style="<?php echo esc_attr( \Groundhogg\array_to_css( $bodyStyle ) ); ?>">
 			<?php load_part( 'preview-text' ); ?>
 			<?php load_part( 'browser-view' ); ?>
 			<?php do_action( 'groundhogg/templates/email/full-width/content/before' ); ?>
-			<?php echo $email->get_merged_content(); ?>
+			<?php
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- handled upstream
+            echo $email->get_merged_content(); ?>
 			<?php do_action( 'groundhogg/templates/email/full-width/content/after' ); ?>
 			<?php if ( ! $email->has_footer_block() ): ?>
 			<table cellspacing="0" cellpadding="0" role="presentation" align="center">
 				<tr>
-					<td width="<?php esc_attr_e( $email->get_width() ) ?>" style="width: <?php esc_attr_e( $email->get_width() ) ?>px">
+					<td width="<?php echo esc_attr( $email->get_width() ) ?>" style="width: <?php echo esc_attr( $email->get_width() ) ?>px">
 						<?php load_part( 'footer' ); ?>
 					</td>
 				</tr>

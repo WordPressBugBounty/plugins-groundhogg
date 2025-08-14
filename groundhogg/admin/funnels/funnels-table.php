@@ -15,6 +15,7 @@ use function Groundhogg\admin_page_url;
 use function Groundhogg\check_lock;
 use function Groundhogg\contact_filters_link;
 use function Groundhogg\get_db;
+use function Groundhogg\get_request_uri;
 use function Groundhogg\html;
 use function Groundhogg\row_item_locked_text;
 use function Groundhogg\scheduled_time_column;
@@ -112,8 +113,8 @@ class Funnels_Table extends Table {
 
 	protected function column_title( $funnel ) {
 
-		$subject = $funnel->get_title();
-		$editUrl = $funnel->admin_link();
+		$subject = esc_html( $funnel->get_title() );
+		$editUrl = esc_url( $funnel->admin_link() );
 
 		if ( $this->get_view() === 'trash' ) {
 			return "<strong class='row-title'>{$subject}</strong>";
@@ -193,8 +194,8 @@ class Funnels_Table extends Table {
 			return html()->e( 'a', [
 				'href' => add_query_arg( [
 					'related' => [ 'ID' => $campaign->ID, 'type' => 'campaign' ]
-				], $_SERVER['REQUEST_URI'] ),
-			], $campaign->get_name() );
+				], get_request_uri() ),
+			], esc_html( $campaign->get_name() ) );
 		}, $campaigns ) );
 	}
 
@@ -206,18 +207,18 @@ class Funnels_Table extends Table {
 	protected function column_author( Funnel $funnel ) {
 		$user = get_userdata( intval( ( $funnel->author ) ) );
 		if ( ! $user ) {
-			return __( 'Unknown', 'groundhogg' );
+			return esc_html__( 'Unknown', 'groundhogg' );
 		}
 		$from_user = esc_html( $user->display_name );
-		$queryUrl  = admin_page_url( 'gh_funnels', [
+		$queryUrl  = esc_url( admin_page_url( 'gh_funnels', [
 			'author' => $funnel->author
-		] );
+		] ) );
 
 		return "<a href='$queryUrl'>$from_user</a>";
 	}
 
 	protected function column_steps( Funnel $funnel ) {
-        $funnel->flow_preview( 10 );
+		$funnel->flow_preview( 10 );
 	}
 
 	/**
@@ -297,10 +298,10 @@ class Funnels_Table extends Table {
 
 		switch ( $this->get_view() ) {
 			default:
-				$actions[] = [ 'class' => 'edit', 'display' => __( 'Edit' ), 'url' => $item->admin_link() ];
+				$actions[] = [ 'class' => 'edit', 'display' => esc_html__( 'Edit' , 'groundhogg' ), 'url' => $item->admin_link() ];
 				$actions[] = [
 					'class'   => 'report',
-					'display' => __( 'Report' ),
+					'display' => esc_html__( 'Report' , 'groundhogg' ),
 					'url'     => admin_page_url( 'gh_reporting', [
 						'tab'    => 'funnels',
 						'funnel' => $item->get_id(),
@@ -308,41 +309,41 @@ class Funnels_Table extends Table {
 				];
 				$actions[] = [
 					'class'   => 'duplicate',
-					'display' => __( 'Duplicate' ),
+					'display' => esc_html__( 'Duplicate' , 'groundhogg' ),
 					'url'     => action_url( 'duplicate', [ 'funnel' => $item->get_id() ] )
 				];
 				$actions[] = [
 					'class'   => 'export',
-					'display' => __( 'Export' ),
+					'display' => esc_html__( 'Export' , 'groundhogg' ),
 					'url'     => $item->export_url()
 				];
 
 				if ( ! check_lock( $item ) ) {
 					$actions[] = [
 						'class'   => 'trash',
-						'display' => __( 'Deactivate' ),
+						'display' => esc_html__( 'Deactivate', 'groundhogg' ),
 						'url'     => action_url( 'deactivate', [ 'funnel' => $item->get_id() ] )
 					];
 				}
 
 				break;
 			case 'inactive':
-				$actions[] = [ 'class' => 'edit', 'display' => __( 'Edit' ), 'url' => $item->admin_link() ];
+				$actions[] = [ 'class' => 'edit', 'display' => esc_html__( 'Edit' , 'groundhogg' ), 'url' => $item->admin_link() ];
 				$actions[] = [
 					'class'   => 'duplicate',
-					'display' => __( 'Duplicate' ),
+					'display' => esc_html__( 'Duplicate' , 'groundhogg' ),
 					'url'     => action_url( 'duplicate', [ 'funnel' => $item->get_id() ] )
 				];
 				$actions[] = [
 					'class'   => 'export',
-					'display' => __( 'Export' ),
+					'display' => esc_html__( 'Export' , 'groundhogg' ),
 					'url'     => $item->export_url()
 				];
 
 				if ( ! check_lock( $item ) ) {
 					$actions[] = [
 						'class'   => 'trash',
-						'display' => __( 'Archive' ),
+						'display' => esc_html__( 'Archive' , 'groundhogg' ),
 						'url'     => action_url( 'archive', [ 'funnel' => $item->get_id() ] )
 					];
 				}
@@ -351,12 +352,12 @@ class Funnels_Table extends Table {
 			case 'archived':
 				$actions[] = [
 					'class'   => 'restore',
-					'display' => __( 'Restore' ),
+					'display' => esc_html__( 'Restore' , 'groundhogg' ),
 					'url'     => action_url( 'restore', [ 'funnel' => $item->get_id() ] )
 				];
 				$actions[] = [
 					'class'   => 'trash',
-					'display' => __( 'Delete' ),
+					'display' => esc_html__( 'Delete' , 'groundhogg' ),
 					'url'     => action_url( 'delete', [ 'funnel' => $item->get_id() ] )
 				];
 				break;
@@ -369,17 +370,17 @@ class Funnels_Table extends Table {
 		return [
 			[
 				'view'    => 'active',
-				'display' => __( 'Active', 'groundhogg' ),
+				'display' => esc_html__( 'Active', 'groundhogg' ),
 				'query'   => [ 'status' => 'active' ],
 			],
 			[
 				'view'    => 'inactive',
-				'display' => __( 'Inactive', 'groundhogg' ),
+				'display' => esc_html__( 'Inactive', 'groundhogg' ),
 				'query'   => [ 'status' => 'inactive' ]
 			],
 			[
 				'view'    => 'archived',
-				'display' => __( 'Archived', 'groundhogg' ),
+				'display' => esc_html__( 'Archived', 'groundhogg' ),
 				'query'   => [ 'status' => 'archived' ],
 			],
 		];

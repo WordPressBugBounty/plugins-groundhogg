@@ -2,10 +2,15 @@
 
 namespace Groundhogg\Admin\Help;
 
+use DateTime;
+use DateTimeZone;
 use Groundhogg\Admin\Tabbed_Admin_Page;
 use Groundhogg\Contact;
 use Groundhogg\License_Manager;
 use Groundhogg\Plugin;
+use Groundhogg_Email_Services;
+use WP_Error;
+use WP_User;
 use function Groundhogg\action_url;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\create_contact_from_user;
@@ -23,6 +28,10 @@ use function Groundhogg\permissions_key_url;
 use function Groundhogg\remote_post_json;
 use function Groundhogg\utils;
 use function Groundhogg\verify_admin_ajax_nonce;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+} // Exit if accessed directly
 
 class Help_Page extends Tabbed_Admin_Page {
 
@@ -200,13 +209,13 @@ class Help_Page extends Tabbed_Admin_Page {
 	/**
 	 * Create a support user
 	 *
-	 * @return false|\WP_User
+	 * @return false|WP_User
 	 */
 	public function create_support_user() {
 
 		$user_login = get_option( 'gh_support_user_login', self::SUPPORT_LOGIN );
 
-		$user = get_userdatabylogin( $user_login );
+		$user = get_user_by( 'login', $user_login );
 
 		// No user exists, create one
 		if ( ! $user ) {
@@ -344,7 +353,7 @@ class Help_Page extends Tabbed_Admin_Page {
 	 * @return string
 	 */
 	public function get_name() {
-		return __( 'Help' );
+		return esc_html__( 'Help', 'groundhogg' );
 	}
 
 	/**
@@ -392,10 +401,10 @@ class Help_Page extends Tabbed_Admin_Page {
 				$user_tz = 'UTC';
 			}
 
-			$user_tz   = new \DateTimeZone( $user_tz );
+			$user_tz   = new DateTimeZone( $user_tz );
 			$wp_tz     = wp_timezone();
-			$user_date = new \DateTime( 'now', $user_tz );
-			$wp_date   = new \DateTime( 'now', $wp_tz );
+			$user_date = new DateTime( 'now', $user_tz );
+			$wp_date   = new DateTime( 'now', $wp_tz );
 
 			$dbs            = Plugin::instance()->dbs->get_dbs();
 			$missing_tables = [];
@@ -426,9 +435,9 @@ class Help_Page extends Tabbed_Admin_Page {
 				'missing_db_tables'    => $missing_tables,
 				'helper_installed'     => defined( 'GROUNDHOGG_HELPER_VERSION' ),
 				'smtp'                 => [
-					'wordpress'             => \Groundhogg_Email_Services::get_wordpress_service(),
-					'transactional'         => \Groundhogg_Email_Services::get_transactional_service(),
-					'marketing'             => \Groundhogg_Email_Services::get_marketing_service(),
+					'wordpress'             => Groundhogg_Email_Services::get_wordpress_service(),
+					'transactional'         => Groundhogg_Email_Services::get_transactional_service(),
+					'marketing'             => Groundhogg_Email_Services::get_marketing_service(),
 					'any_service_installed' => defined( 'MAILHAWK_VERSION' ) ||
 					                           defined( 'GROUNDHOGG_SMTP_VERSION' ) ||
 					                           defined( 'GROUNDHOGG_SENDGRID_VERSION' ) ||
@@ -471,11 +480,11 @@ class Help_Page extends Tabbed_Admin_Page {
 	protected function get_tabs() {
 		$tabs = [
 			[
-				'name' => __( 'Troubleshooting', 'groundhogg' ),
+				'name' => esc_html__( 'Troubleshooting', 'groundhogg' ),
 				'slug' => 'troubleshooting'
 			],
 			[
-				'name' => __( 'Basic Help', 'groundhogg' ),
+				'name' => esc_html__( 'Basic Help', 'groundhogg' ),
 				'slug' => 'docs'
 			],
 		];
@@ -499,9 +508,9 @@ class Help_Page extends Tabbed_Admin_Page {
 				'button_link' => 'https://help.groundhogg.io/collection/141-developers'
 			],
 			[
-				'title'       => __( '🙋‍♂️ Have a question?', 'groundhogg' ),
-				'description' => __( 'Someone else may have already asked your question. Check out our FAQs to see if there is an answer for you.', 'groundhogg' ),
-				'button_text' => __( 'I have a question!', 'groundhogg' ),
+				'title'       =>__( '🙋‍♂️ Have a question?', 'groundhogg' ),
+				'description' =>__( 'Someone else may have already asked your question. Check out our FAQs to see if there is an answer for you.', 'groundhogg' ),
+				'button_text' =>__( 'I have a question!', 'groundhogg' ),
 				'button_link' => 'https://help.groundhogg.io/collection/6-faqs'
 			],
 			[
@@ -542,14 +551,14 @@ class Help_Page extends Tabbed_Admin_Page {
 			<?php foreach ( $topics as $topic ): ?>
                 <div class="gh-panel">
                     <div class="gh-panel-header">
-                        <h2><?php echo $topic['title'] ?></h2>
+                        <h2><?php echo esc_html( $topic['title'] ) ?></h2>
                     </div>
                     <div class="inside">
-                        <p><?php echo $topic['description'] ?></p>
-						<?php echo html()->e( 'a', [
+                        <p><?php echo esc_html( $topic['description'] ); ?></p>
+	                    <?php html( 'a', [
 							'class' => 'gh-button secondary',
 							'href'  => $topic['button_link']
-						], $topic['button_text'] ) ?>
+	                    ], esc_html( $topic['button_text'] ) ) ?>
                     </div>
                 </div>
 			<?php endforeach; ?>
@@ -573,7 +582,7 @@ class Help_Page extends Tabbed_Admin_Page {
 	/**
 	 * Send access to our support team
 	 *
-	 * @return array|bool|object|\WP_Error
+	 * @return array|bool|object|WP_Error
 	 */
 	public function process_send_support_access() {
 
@@ -601,7 +610,7 @@ class Help_Page extends Tabbed_Admin_Page {
 			return $response;
 		}
 
-		$this->add_notice( 'sent', 'Login access has be securely delivered to Groundhogg support.' );
+		$this->add_notice( 'sent', esc_html__( 'Login access has be securely delivered to Groundhogg support.', 'groundhogg' ) );
 
 		return true;
 	}

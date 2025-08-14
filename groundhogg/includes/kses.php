@@ -2,6 +2,23 @@
 
 namespace Groundhogg;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+} // Exit if accessed directly
+
+/**
+ * Shorthand for echo wp_kses
+ *
+ * @param $text
+ * @param $allowed_html
+ *
+ * @return void
+ */
+function kses_e( $text, $allowed_html = 'simple' ) {
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- this is our own wrapper for wp_kses_post
+	echo kses( $text, $allowed_html );
+}
+
 /**
  * Convert lone less than signs.
  *
@@ -10,6 +27,7 @@ namespace Groundhogg;
  * @since 2.3.0
  *
  * @param string $text Text to be converted.
+ *
  * @return string Converted text.
  */
 function pre_kses_less_than( $text ) {
@@ -22,12 +40,14 @@ function pre_kses_less_than( $text ) {
  * @since 2.3.0
  *
  * @param array $matches Populated by matches to preg_replace.
+ *
  * @return string The text returned after esc_html if needed.
  */
 function pre_kses_less_than_callback( $matches ) {
 	if ( false === strpos( $matches[0], '>' ) && strpos( $matches[0], '<!' ) !== 0 ) {
 		return esc_html( $matches[0] );
 	}
+
 	return $matches[0];
 }
 
@@ -39,6 +59,12 @@ function pre_kses_less_than_callback( $matches ) {
  *
  * This function expects unslashed data.
  *
+ * @since 1.0.0
+ *
+ * @see   wp_allowed_protocols() for the default allowed protocols in link URLs.
+ *
+ * @see   wp_kses_post() for specifically filtering post content and fields.
+ *
  * @param string         $string            Text content to filter.
  * @param array[]|string $allowed_html      An array of allowed HTML elements and attributes,
  *                                          or a context name such as 'post'. See wp_kses_allowed_html()
@@ -46,15 +72,35 @@ function pre_kses_less_than_callback( $matches ) {
  * @param string[]       $allowed_protocols Array of allowed URL protocols.
  *
  * @return string Filtered content containing only the allowed HTML.
- * @see   wp_allowed_protocols() for the default allowed protocols in link URLs.
- *
- * @since 1.0.0
- *
- * @see   wp_kses_post() for specifically filtering post content and fields.
  */
 function kses( $string, $allowed_html, $allowed_protocols = array() ) {
+
 	if ( empty( $allowed_protocols ) ) {
 		$allowed_protocols = wp_allowed_protocols();
+	}
+
+	// filter the allowed HTML with our own lists
+	if ( $allowed_html === 'a' ) {
+		$allowed_html = [
+			'a' => [
+				'href'   => true,
+				'target' => true
+			]
+		];
+	} else if ( $allowed_html === 'simple' ){
+		$allowed_html = [
+			'a' => [
+				'href'   => true,
+				'target' => true
+			],
+			'b' => [],
+			'strong' => [],
+			'u' => [],
+			'i' => [],
+			'em'   => [],
+			'code' => [],
+			'pre' => []
+		];
 	}
 
 	$string = wp_kses_no_null( $string, array( 'slash_zero' => 'keep' ) );
@@ -77,19 +123,20 @@ function kses( $string, $allowed_html, $allowed_protocols = array() ) {
  *
  * It also matches stray `>` characters.
  *
- * @param string          $string                 Content to filter.
+ * @since 1.0.0
+ *
  * @param array[]|string  $allowed_html           An array of allowed HTML elements and attributes,
  *                                                or a context name such as 'post'. See wp_kses_allowed_html()
  *                                                for the list of accepted context names.
  * @param string[]        $allowed_protocols      Array of allowed URL protocols.
  *
+ * @param string          $string                 Content to filter.
+ *
  * @return string Content with fixed HTML tags
- * @global array[]|string $pass_allowed_html      An array of allowed HTML elements and attributes,
- *                                                or a context name such as 'post'.
  * @global string[]       $pass_allowed_protocols Array of allowed URL protocols.
  *
- * @since 1.0.0
- *
+ * @global array[]|string $pass_allowed_html      An array of allowed HTML elements and attributes,
+ *                                                or a context name such as 'post'.
  */
 function kses_split( $string, $allowed_html, $allowed_protocols ) {
 	global $pass_allowed_html, $pass_allowed_protocols;
@@ -103,15 +150,16 @@ function kses_split( $string, $allowed_html, $allowed_protocols ) {
 /**
  * Callback for `wp_kses_split()`.
  *
+ * @since  3.1.0
+ * @access private
+ *
  * @param array           $matches                preg_replace regexp matches
  *
  * @return string
- * @global array[]|string $pass_allowed_html      An array of allowed HTML elements and attributes,
- *                                                or a context name such as 'post'.
  * @global string[]       $pass_allowed_protocols Array of allowed URL protocols.
  *
- * @since  3.1.0
- * @access private
+ * @global array[]|string $pass_allowed_html      An array of allowed HTML elements and attributes,
+ *                                                or a context name such as 'post'.
  * @ignore
  *
  */
@@ -135,16 +183,17 @@ function _kses_split_callback( $match ) {
  *
  * @access private
  *
- * @param string         $string            Content to filter.
+ * @since  1.0.0
+ *
  * @param array[]|string $allowed_html      An array of allowed HTML elements and attributes,
  *                                          or a context name such as 'post'. See wp_kses_allowed_html()
  *                                          for the list of accepted context names.
  * @param string[]       $allowed_protocols Array of allowed URL protocols.
  *
+ * @param string         $string            Content to filter.
+ *
  * @return string Fixed HTML element
  * @ignore
- * @since  1.0.0
- *
  */
 function kses_split2( $string, $allowed_html, $allowed_protocols ) {
 	$string = wp_kses_stripslashes( $string );
@@ -154,7 +203,7 @@ function kses_split2( $string, $allowed_html, $allowed_protocols ) {
 		return '&gt;';
 	}
 
-	if ( str_starts_with( $string, '<![endif' ) || str_starts_with( $string, '<!DOCTYPE' ) ){
+	if ( str_starts_with( $string, '<![endif' ) || str_starts_with( $string, '<!DOCTYPE' ) ) {
 		return $string;
 	}
 
@@ -175,7 +224,7 @@ function kses_split2( $string, $allowed_html, $allowed_protocols ) {
 
 		// Compat for MSO comments
 		if ( str_starts_with( $string, '[if' ) ) {
-			$string = str_replace( ['&gt;', '&lt;'], ['>', '<'], $string );
+			$string = str_replace( [ '&gt;', '&lt;' ], [ '>', '<' ], $string );
 		}
 
 		// Prevent multiple dashes in comments.
@@ -212,7 +261,7 @@ function kses_split2( $string, $allowed_html, $allowed_protocols ) {
 	}
 
 	// MSO
-	if ( str_starts_with( $attrlist, ':' ) ){
+	if ( str_starts_with( $attrlist, ':' ) ) {
 
 		$suffix = explode( ' ', $attrlist, 2 )[0];
 

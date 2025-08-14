@@ -5,6 +5,7 @@ namespace Groundhogg\Admin\Broadcasts;
 use Groundhogg\Admin\Admin_Page;
 use Groundhogg\Broadcast;
 use Groundhogg\Utils\DateTimeHelper;
+use WP_Error;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\enqueue_broadcast_assets;
 use function Groundhogg\get_db;
@@ -51,16 +52,16 @@ class Broadcasts_Page extends Admin_Page {
 		$interval        = get_post_var( 'batch_interval' );
 		$interval_length = get_post_var( 'batch_interval_length' );
 
-        $batches = floor( $total_contacts / $amount );
+		$batches = floor( $total_contacts / $amount );
 
-        $dateTime = new DateTimeHelper();
-        $total_interval_length = $batches * $interval_length;
+		$dateTime              = new DateTimeHelper();
+		$total_interval_length = $batches * $interval_length;
 
-        $dateTime->modify( "+$total_interval_length $interval" );
+		$dateTime->modify( "+$total_interval_length $interval" );
 
-        wp_send_json_success([
-            'time' => $dateTime->human_time_diff(),
-        ]);
+		wp_send_json_success( [
+			'time' => $dateTime->human_time_diff(),
+		] );
 	}
 
 	public function help() {
@@ -69,10 +70,10 @@ class Broadcasts_Page extends Admin_Page {
 	protected function add_additional_actions() {
 		if ( get_db( 'broadcasts' )->is_empty() && ! get_db( 'emails' )->exists( [ 'status' => 'ready' ] ) ) {
 
-			notices()->add( 'dne', __( 'You must create an email before you can schedule a broadcast.', 'groundhogg' ), 'notice' );
+			notices()->add( 'dne', esc_html__( 'You must create an email before you can schedule a broadcast.', 'groundhogg' ), 'notice' );
 
-			wp_redirect( admin_page_url( 'gh_emails', [ 'action' => 'add' ] ) );
-			die();
+			wp_safe_redirect( admin_page_url( 'gh_emails', [ 'action' => 'add' ] ) );
+			exit();
 		}
 	}
 
@@ -145,6 +146,7 @@ class Broadcasts_Page extends Admin_Page {
 			$broadcast->cancel();
 		}
 
+        /* translators: %d: the number of broadcasts getting cancelled */
 		$this->add_notice( 'cancelled', sprintf( _nx( '%d broadcasts cancelled', '%d broadcast cancelled', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ) );
 
 		return false;
@@ -153,7 +155,7 @@ class Broadcasts_Page extends Admin_Page {
 	/**
 	 * Delete
 	 *
-	 * @return bool|\WP_Error
+	 * @return bool|WP_Error
 	 */
 	public function process_delete() {
 		if ( ! current_user_can( 'schedule_broadcasts' ) ) {
@@ -162,12 +164,13 @@ class Broadcasts_Page extends Admin_Page {
 
 		foreach ( $this->get_items() as $id ) {
 			if ( ! get_db( 'broadcasts' )->delete( $id ) ) {
-				return new \WP_Error( 'unable_to_delete_broadcast', "Something went wrong while deleting the broadcast.", 'groundhogg' );
+				return new WP_Error( 'unable_to_delete_broadcast', "Something went wrong while deleting the broadcast.", 'groundhogg' );
 			}
 		}
 
 		$this->add_notice(
 			esc_attr( 'deleted' ),
+			/* translators: %d: the number of broadcasts getting deleted */
 			sprintf( _nx( 'Deleted %d broadcast', 'Deleted %d broadcasts', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 			'success'
 		);
@@ -187,7 +190,7 @@ class Broadcasts_Page extends Admin_Page {
 		$actions   = [];
 		$actions[] = [
 			'link'   => $this->admin_url( [ 'action' => 'add', 'type' => 'email' ] ),
-			'action' => __( 'Schedule Email Broadcast', 'groundhogg' ),
+			'action' => esc_html__( 'Schedule Email Broadcast', 'groundhogg' ),
 			'target' => '_self',
 			'id'     => 'gh-schedule-broadcast'
 		];
@@ -195,7 +198,7 @@ class Broadcasts_Page extends Admin_Page {
 		if ( is_sms_plugin_active() ) {
 			$actions[] = [
 				'link'   => $this->admin_url( [ 'action' => 'add', 'type' => 'sms' ] ),
-				'action' => __( 'Schedule SMS Broadcast', 'groundhogg' ),
+				'action' => esc_html__( 'Schedule SMS Broadcast', 'groundhogg' ),
 				'target' => '_self',
 				'id'     => 'gh-schedule-sms-broadcast'
 			];
@@ -209,12 +212,12 @@ class Broadcasts_Page extends Admin_Page {
 	 */
 	public function view() {
 
-        // fix sending broadcasts
-        Broadcast::transition_from_sending_to_sent();
+		// fix sending broadcasts
+		Broadcast::transition_from_sending_to_sent();
 
 		$broadcasts_table = new Broadcasts_Table();
 
-		$this->search_form( __( 'Search Broadcasts', 'groundhogg' ) );
+		$this->search_form( esc_html__( 'Search Broadcasts', 'groundhogg' ) );
 		$broadcasts_table->views(); ?>
         <form method="post" class="wp-clearfix">
             <!-- search form -->

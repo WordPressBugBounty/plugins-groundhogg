@@ -134,7 +134,7 @@ class Delay_Timer extends Action {
 	 * @param $step Step
 	 */
 	public function settings( $step ) {
-		echo html()->e( 'div', [
+		html( 'div', [
 			'id'    => "step_{$step->ID}_delay_timer_settings",
 			'class' => 'ignore-morph'
 		], 'Delay Timer' );
@@ -153,7 +153,7 @@ class Delay_Timer extends Action {
 		?>
         <div class="gh-panel">
             <div class="gh-panel-header">
-                <h2><?php _e( 'Delay Preview' ) ?></h2>
+                <h2><?php esc_html_e( 'Delay Preview', 'groundhogg' ) ?></h2>
             </div>
             <div class="inside">
 				<?php
@@ -162,11 +162,11 @@ class Delay_Timer extends Action {
 
 				$date->setTimestamp( self::calc_run_time( time(), $step ) );
 
-				echo html()->e( 'div', [
+				html( 'div', [
 					'class' => "display-flex gap-10 column"
 				], [
-					'<b>' . __( 'Runs on...' ) . '</b>',
-					'<span>' . $date->wpDateTimeFormat() . '</span>'
+					'<b>' . esc_html__( 'Runs on...', 'groundhogg' ) . '</b>',
+					'<span>' . esc_html( $date->wpDateTimeFormat() ) . '</span>'
 				] );
 
 				?>

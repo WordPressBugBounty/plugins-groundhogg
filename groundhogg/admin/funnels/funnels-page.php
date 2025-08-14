@@ -8,6 +8,7 @@ use Groundhogg\Funnel;
 use Groundhogg\Library;
 use Groundhogg\Plugin;
 use Groundhogg\Step;
+use WP_Error;
 use function Groundhogg\action_url;
 use function Groundhogg\add_disable_emojis_action;
 use function Groundhogg\admin_page_url;
@@ -23,6 +24,7 @@ use function Groundhogg\get_contactdata;
 use function Groundhogg\get_db;
 use function Groundhogg\get_post_var;
 use function Groundhogg\get_request_var;
+use function Groundhogg\get_sanitized_FILE;
 use function Groundhogg\get_upload_wp_error;
 use function Groundhogg\get_url_var;
 use function Groundhogg\html;
@@ -105,14 +107,14 @@ class Funnels_Page extends Admin_Page {
 	public function admin_title( $admin_title, $title ) {
 		switch ( $this->get_current_action() ) {
 			case 'add':
-				$admin_title = sprintf( "%s &lsaquo; %s", __( 'Add' ), $admin_title );
+				$admin_title = sprintf( "%s &lsaquo; %s", esc_html__( 'Add', 'groundhogg' ), $admin_title );
 				break;
 			case 'edit':
 				$funnel_id = get_request_var( 'funnel' );
 				$funnel    = new Funnel( absint( $funnel_id ) );
 
 				if ( $funnel->exists() ) {
-					$admin_title = sprintf( "%s &lsaquo; %s &lsaquo; %s", $funnel->get_title(), __( 'Edit' ), $admin_title );
+					$admin_title = sprintf( "%s &lsaquo; %s &lsaquo; %s", esc_html( $funnel->get_title() ), esc_html__( 'Edit', 'groundhogg' ), $admin_title );
 				}
 
 				break;
@@ -128,10 +130,8 @@ class Funnels_Page extends Admin_Page {
 		switch ( $this->get_current_action() ) {
 			case 'add':
 				return _x( 'Add Flow', 'page_title', 'groundhogg' );
-				break;
 			case 'edit':
 				return _x( 'Edit Flow', 'page_title', 'groundhogg' );
-				break;
 			case 'view':
 			default:
 				return _x( 'Flows', 'page_title', 'groundhogg' );
@@ -144,7 +144,7 @@ class Funnels_Page extends Admin_Page {
 			return [
 				[
 					'link'   => action_url( 'start_from_scratch' ),
-					'action' => __( 'Start from scratch', 'groundhogg' ),
+					'action' => esc_html__( 'Start from scratch', 'groundhogg' ),
 					'target' => '_self',
 				]
 			];
@@ -153,7 +153,7 @@ class Funnels_Page extends Admin_Page {
 		return [
 			[
 				'link'   => $this->admin_url( [ 'action' => 'add' ] ),
-				'action' => __( 'Add New', 'groundhogg' ),
+				'action' => esc_html__( 'Add New', 'groundhogg' ),
 				'target' => '_self',
 			]
 		];
@@ -164,7 +164,8 @@ class Funnels_Page extends Admin_Page {
 	 */
 	public function redirect_to_add() {
 		if ( get_db( 'funnels' )->count() == 0 ) {
-			die( wp_redirect( $this->admin_url( [ 'action' => 'add' ] ) ) );
+			wp_safe_redirect( $this->admin_url( [ 'action' => 'add' ] ) );
+			exit;
 		}
 	}
 
@@ -180,9 +181,9 @@ class Funnels_Page extends Admin_Page {
 
 		add_action( "groundhogg/admin/gh_funnels/before", function () {
 			if ( get_db( 'funnels' )->exists( [ 'status' => 'inactive' ] ) && ! get_db( 'funnels' )->exists( [ 'status' => 'active' ] ) ) {
-				notices()->add( 'no_active_funnels', sprintf( '%s %s', __( 'You have no active flows.' ), html()->e( 'a', [
+				notices()->add( 'no_active_funnels', sprintf( '%s %s', esc_html__( 'You have no active flows.', 'groundhogg' ), html()->e( 'a', [
 					'href' => admin_url( 'admin.php?page=gh_funnels&status=inactive' ),
-				], __( 'Activate a flow!' ) ) ), 'warning' );
+				], esc_html__( 'Activate a flow!', 'groundhogg' ) ) ), 'warning' );
 			}
 		} );
 	}
@@ -236,7 +237,7 @@ class Funnels_Page extends Admin_Page {
 
 				$data = array_merge( $funnel->get_as_array(), [
 					'id'                  => absint( get_request_var( 'funnel' ) ),
-					'save_text'           => __( 'Update', 'groundhogg' ),
+					'save_text'           => esc_html__( 'Update', 'groundhogg' ),
 					'export_url'          => $funnel->export_url(),
 					'is_active'           => $funnel->is_active(),
 					'funnelTourDismissed' => notices()->is_dismissed( 'funnel-tour' ),
@@ -318,6 +319,7 @@ class Funnels_Page extends Admin_Page {
 
 		$this->add_notice(
 			esc_attr( 'deleted' ),
+			/* translators: %d: the number of flows deleted */
 			sprintf( _nx( 'Deleted %d flow', 'Deleted %d flows', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 			'success'
 		);
@@ -367,7 +369,8 @@ class Funnels_Page extends Admin_Page {
 
 		$this->add_notice(
 			esc_attr( 'restored' ),
-			sprintf( _nx( 'Restored %d flow', 'Restored %d flow', $updated, 'notice', 'groundhogg' ), $updated ),
+			/* translators: %d: the number of flows restored */
+			sprintf( _nx( 'Restored %d flow', 'Restored %d flows', $updated, 'notice', 'groundhogg' ), $updated ),
 			'success'
 		);
 	}
@@ -382,6 +385,7 @@ class Funnels_Page extends Admin_Page {
 
 		$this->add_notice(
 			esc_attr( 'archived' ),
+			/* translators: %d: the number of flows archived */
 			sprintf( _nx( 'Archived %d flow', 'Archived %d flows', $updated, 'notice', 'groundhogg' ), $updated ),
 			'success'
 		);
@@ -397,6 +401,7 @@ class Funnels_Page extends Admin_Page {
 
 		$this->add_notice(
 			esc_attr( 'deactivated' ),
+			/* translators: %d: the number of flows deactivated */
 			sprintf( _nx( 'Deactivated %d flow', 'Deactivated %d flows', $updated, 'notice', 'groundhogg' ), $updated ),
 			'success'
 		);
@@ -412,6 +417,7 @@ class Funnels_Page extends Admin_Page {
 
 		$this->add_notice(
 			esc_attr( 'activated' ),
+			/* translators: %d: the number of flows activated */
 			sprintf( _nx( 'Activated %d flow', 'Activated %d flows', $updated, 'notice', 'groundhogg' ), $updated ),
 			'success'
 		);
@@ -442,6 +448,7 @@ class Funnels_Page extends Admin_Page {
 			$id         = $new_funnel->import( $json );
 
 			$new_funnel->update( [
+				/* translators: %s: the previous flow title */
 				'title' => sprintf( __( 'Copy of %s', 'groundhogg' ), $funnel->get_title() ),
 			] );
 
@@ -495,7 +502,7 @@ class Funnels_Page extends Admin_Page {
 	/**
 	 * Process add action for the funnel.
 	 *
-	 * @return string|\WP_Error
+	 * @return string|WP_Error
 	 */
 	public function process_add() {
 
@@ -505,26 +512,27 @@ class Funnels_Page extends Admin_Page {
 
 		$funnel_id = false;
 
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce checked upstream
 		if ( isset( $_POST['funnel_template'] ) ) {
 
-			$template_id = get_request_var( 'funnel_template' );
+			$template_id = get_post_var( 'funnel_template' );
 			$library     = new Library();
 			$template    = $library->get_funnel_template( $template_id );
 			$funnel_id   = $this->import_funnel( $template );
 
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce checked upstream
 		} else if ( isset( $_POST['funnel_id'] ) ) {
 
-			$from_funnel = absint( get_request_var( 'funnel_id' ) );
+			$from_funnel = absint( get_post_var( 'funnel_id' ) );
 			$from_funnel = new Funnel( $from_funnel );
 
 			$json      = $from_funnel->export();
 			$funnel_id = $this->import_funnel( $json );
 
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce checked upstream
 		} else if ( isset( $_FILES['funnel_template'] ) ) {
-			$file = get_array_var( $_FILES, 'funnel_template' );
 
-			$file = map_deep( $file, 'sanitize_text_field' );
-
+			$file  = get_sanitized_FILE( 'funnel_template' );
 			$error = get_upload_wp_error( $file );
 
 			if ( is_wp_error( $error ) ) {
@@ -537,14 +545,14 @@ class Funnels_Page extends Admin_Page {
 			] );
 
 			if ( ! in_array( $validate['ext'], [ 'json', 'funnel' ] ) ) {
-				return new \WP_Error( 'invalid_template', __( 'Please upload a valid flow template.', 'groundhogg' ) );
+				return new WP_Error( 'invalid_template', esc_html__( 'Please upload a valid flow template.', 'groundhogg' ) );
 			}
 
 			$json = file_get_contents( $file['tmp_name'] );
 			$json = json_decode( $json );
 
 			if ( ! $json ) {
-				return new \WP_Error( 'invalid_json', 'Funnel template has invalid JSON.' );
+				return new WP_Error( 'invalid_json', 'Funnel template has invalid JSON.' );
 			}
 
 			// Importing multiple funnels
@@ -554,19 +562,20 @@ class Funnels_Page extends Admin_Page {
 					$this->import_funnel( $funnel );
 				}
 
-				$this->add_notice( 'imported', sprintf( __( 'Imported %d flows', 'groundhogg' ), count( $json ) ) );
+				/* translators: %d: the number of flows imported */
+				$this->add_notice( 'imported', sprintf( esc_html__( 'Imported %d flows', 'groundhogg' ), count( $json ) ) );
 
 				return admin_page_url( 'gh_funnels', [ 'view' => 'inactive' ] );
 			}
 
 			$funnel_id = $this->import_funnel( $json );
 
-		} else if ( $json = get_request_var( 'funnel_json' ) ) {
+		} elseif ( $json = get_post_var( 'funnel_json' ) ) {
 
 			$json = json_decode( $json );
 
 			if ( ! $json ) {
-				return new \WP_Error( 'invalid_json', 'Invalid JSON provided.' );
+				return new WP_Error( 'invalid_json', 'Invalid JSON provided.' );
 			}
 
 			// Importing multiple funnels
@@ -576,7 +585,8 @@ class Funnels_Page extends Admin_Page {
 					$this->import_funnel( $funnel );
 				}
 
-				$this->add_notice( 'imported', sprintf( __( 'Imported %d flows', 'groundhogg' ), count( $json ) ) );
+				/* translators: %d: the number of flows imported */
+				$this->add_notice( 'imported', sprintf( esc_html__( 'Imported %d flows', 'groundhogg' ), count( $json ) ) );
 
 				return admin_page_url( 'gh_funnels', [ 'view' => 'inactive' ] );
 			}
@@ -589,7 +599,7 @@ class Funnels_Page extends Admin_Page {
 		}
 
 		if ( empty( $funnel_id ) ) {
-			return new \WP_Error( 'error', __( 'Could not create flow.', 'groundhogg' ) );
+			return new WP_Error( 'error', esc_html__( 'Could not create flow.', 'groundhogg' ) );
 		}
 
 		return admin_page_url( 'gh_funnels', [
@@ -734,9 +744,9 @@ class Funnels_Page extends Admin_Page {
 			db()->steps->update( $step_id, [ 'is_locked' => 0 ] );
 		}
 
-		/* check if funnel is too big... */
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce checked upstream
 		if ( count( $_POST, COUNT_RECURSIVE ) >= intval( ini_get( 'max_input_vars' ) ) ) {
-			return new \WP_Error( 'post_too_big', _x( 'Your [max_input_vars] is too small for your funnel! You may experience odd behaviour and your funnel may not save correctly. Please <a target="_blank" href="http://www.google.com/search?q=increase+max_input_vars+php">increase your [max_input_vars] to at least double the current size.</a>.', 'notice', 'groundhogg' ) );
+			return new WP_Error( 'post_too_big', _x( 'Your [max_input_vars] is too small for your funnel! You may experience odd behaviour and your funnel may not save correctly. Please <a target="_blank" href="http://www.google.com/search?q=increase+max_input_vars+php">increase your [max_input_vars] to at least double the current size.</a>.', 'notice', 'groundhogg' ) );
 		}
 
 		//get all the steps in the funnel.
@@ -744,7 +754,7 @@ class Funnels_Page extends Admin_Page {
 		Step::increment_step_order( 0 );
 
 		if ( empty( $step_ids ) ) {
-			return new \WP_Error( 'no_steps', 'Please add automation first.' );
+			return new WP_Error( 'no_steps', 'Please add automation first.' );
 		}
 
 		$metaUpdates = get_post_var( 'metaUpdates' );

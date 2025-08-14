@@ -2,22 +2,18 @@
 
 namespace Groundhogg\Admin\Settings;
 
-use function Groundhogg\action_input;
+use Groundhogg\DB\Query\Query;
+use WP_List_Table;
 use function Groundhogg\action_url;
-use function Groundhogg\get_post_var;
-use function Groundhogg\get_request_var;
-use Groundhogg\Plugin;
-use function Groundhogg\html;
-use function Groundhogg\verify_admin_ajax_nonce;
 
 /**
  * API Key Table Class
  *
- * @package     WPGH
+ * @since       2.0
  * @subpackage  Admin/Tools/APIKeys
  * @copyright   Copyright (c) 2015, Pippin Williamson
  * @license     http://opensource.org/licenses/gpl-2.0.php GNU Public License
- * @since       2.0
+ * @package     WPGH
  */
 
 // Exit if accessed directly
@@ -37,17 +33,17 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
  *
  * @since 2.0
  */
-class API_Keys_Table extends \WP_List_Table {
+class API_Keys_Table extends WP_List_Table {
 
 	/**
-	 * @var int Number of items per page
 	 * @since 2.0
+	 * @var int Number of items per page
 	 */
 	public $per_page = 30;
 
 	/**
-	 * @var object Query results
 	 * @since 2.0
+	 * @var object Query results
 	 */
 	private $keys;
 
@@ -62,8 +58,8 @@ class API_Keys_Table extends \WP_List_Table {
 
 		// Set parent defaults
 		parent::__construct( array(
-			'singular' => __( 'API Key', 'groundhogg' ),
-			'plural'   => __( 'API Keys', 'groundhogg' ),
+			'singular' => esc_html__( 'API Key', 'groundhogg' ),
+			'plural'   => esc_html__( 'API Keys', 'groundhogg' ),
 			'ajax'     => false,
 		) );
 
@@ -73,10 +69,10 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Gets the name of the primary column.
 	 *
-	 * @return string Name of the primary column.
 	 * @since  2.5
 	 * @access protected
 	 *
+	 * @return string Name of the primary column.
 	 */
 	protected function get_primary_column_name() {
 		return 'user';
@@ -85,12 +81,13 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * This function renders most of the columns in the list table.
 	 *
-	 * @param array  $item        Contains all the data of the keys
-	 * @param string $column_name The name of the column
-	 *
-	 * @return string Column Name
 	 * @since 2.0
 	 *
+	 * @param string $column_name The name of the column
+	 *
+	 * @param array  $item        Contains all the data of the keys
+	 *
+	 * @return string Column Name
 	 */
 	public function column_default( $item, $column_name ) {
 		return $item[ $column_name ];
@@ -99,12 +96,13 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Displays the public key rows
 	 *
-	 * @param array  $item        Contains all the data of the keys
-	 * @param string $column_name The name of the column
-	 *
-	 * @return string Column Name
 	 * @since 2.4
 	 *
+	 * @param string $column_name The name of the column
+	 *
+	 * @param array  $item        Contains all the data of the keys
+	 *
+	 * @return string Column Name
 	 */
 	public function column_key( $item ) {
 		return '<input onfocus="this.select()" readonly="readonly" type="text" class="large-text" value="' . esc_attr( $item['key'] ) . '"/>';
@@ -113,12 +111,13 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Displays the token rows
 	 *
-	 * @param array  $item        Contains all the data of the keys
-	 * @param string $column_name The name of the column
-	 *
-	 * @return string Column Name
 	 * @since 2.4
 	 *
+	 * @param string $column_name The name of the column
+	 *
+	 * @param array  $item        Contains all the data of the keys
+	 *
+	 * @return string Column Name
 	 */
 	public function column_token( $item ) {
 		return '<input onfocus="this.select()" readonly="readonly" type="text" class="large-text" value="' . esc_attr( $item['token'] ) . '"/>';
@@ -127,12 +126,13 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Displays the secret key rows
 	 *
-	 * @param array  $item        Contains all the data of the keys
-	 * @param string $column_name The name of the column
-	 *
-	 * @return string Column Name
 	 * @since 2.4
 	 *
+	 * @param string $column_name The name of the column
+	 *
+	 * @param array  $item        Contains all the data of the keys
+	 *
+	 * @return string Column Name
 	 */
 	public function column_secret( $item ) {
 		return '<input onfocus="this.select()" readonly="readonly" type="text" class="large-text" value="' . esc_attr( $item['secret'] ) . '"/>';
@@ -141,8 +141,8 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Renders the column for the user field
 	 *
-	 * @return void
 	 * @since 2.0
+	 * @return string
 	 */
 	public function column_user( $item ) {
 
@@ -167,8 +167,8 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Retrieve the table columns
 	 *
-	 * @return array $columns Array of all the list table columns
 	 * @since 2.0
+	 * @return array $columns Array of all the list table columns
 	 */
 	public function get_columns() {
 		$columns = array(
@@ -184,18 +184,19 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Retrieve the current page number
 	 *
-	 * @return int Current page number
 	 * @since 2.0
+	 * @return int Current page number
 	 */
 	public function get_paged() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		return isset( $_GET['paged'] ) ? absint( $_GET['paged'] ) : 1;
 	}
 
 	/**
 	 * Performs the key query
 	 *
-	 * @return array
 	 * @since 2.0
+	 * @return array
 	 */
 	public function query() {
 		$users = get_users( array(
@@ -222,26 +223,23 @@ class API_Keys_Table extends \WP_List_Table {
 	/**
 	 * Retrieve count of total users with keys
 	 *
-	 * @return int
 	 * @since 2.0
+	 * @return int
 	 */
 	public function total_items() {
 		global $wpdb;
 
-		if ( ! get_transient( 'wpgh_total_api_keys' ) ) {
-			$total_items = $wpdb->get_var( "SELECT count(user_id) FROM $wpdb->usermeta WHERE meta_value='wpgh_user_secret_key'" );
+		$query = new Query( $wpdb->usermeta );
+		$query->setSelect( 'COUNT(user_id)' )->where( 'meta_key', 'wpgh_user_secret_key' );
 
-			set_transient( 'wpgh_total_api_keys', $total_items, 60 * 60 );
-		}
-
-		return get_transient( 'wpgh_total_api_keys' );
+		return $query->get_var();
 	}
 
 	/**
 	 * Setup the final data for the table
 	 *
-	 * @return void
 	 * @since 2.0
+	 * @return void
 	 */
 	public function prepare_items() {
 
@@ -301,16 +299,17 @@ class API_Keys_Table extends \WP_List_Table {
 	 *
 	 * @access private
 	 *
+	 * @since  1.9.9
+	 *
 	 * @param string $user_email
 	 *
 	 * @return string
-	 * @since  1.9.9
 	 */
 	public static function generate_public_key( $user_email = '' ) {
 
 		$auth_key = defined( 'AUTH_KEY' ) ? AUTH_KEY : '';
 
-		return hash( 'md5', $user_email . $auth_key . date( 'U' ) );
+		return hash( 'md5', $user_email . $auth_key . gmdate( 'U' ) );
 	}
 
 	/**
@@ -318,15 +317,16 @@ class API_Keys_Table extends \WP_List_Table {
 	 *
 	 * @access private
 	 *
+	 * @since  1.9.9
+	 *
 	 * @param int $user_id
 	 *
 	 * @return string
-	 * @since  1.9.9
 	 */
 	public static function generate_private_key( $user_id = 0 ) {
 		$auth_key = defined( 'AUTH_KEY' ) ? AUTH_KEY : '';
 
-		return hash( 'md5', $user_id . $auth_key . date( 'U' ) );
+		return hash( 'md5', $user_id . $auth_key . gmdate( 'U' ) );
 	}
 
 	/**
@@ -334,10 +334,11 @@ class API_Keys_Table extends \WP_List_Table {
 	 *
 	 * @access private
 	 *
+	 * @since  1.9.9
+	 *
 	 * @param int $user_id
 	 *
 	 * @return string
-	 * @since  1.9.9
 	 */
 	public static function get_token( $user_id = 0 ) {
 		return hash( 'md5', get_user_meta( $user_id, 'wpgh_user_secret_key', true ) . get_user_meta( $user_id, 'wpgh_user_public_key', true ) );

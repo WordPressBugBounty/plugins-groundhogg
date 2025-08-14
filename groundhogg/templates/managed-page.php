@@ -94,7 +94,7 @@ function managed_page_head( $title = '', $action = '' ) {
 	$mp_title = get_bloginfo( 'name', 'display' );
 
 	/* translators: Login screen title. 1: Login screen name, 2: Network or site name */
-	$mp_title = sprintf( __( '%1$s &lsaquo; %2$s' ), $title, $mp_title );
+	$mp_title = sprintf( '%1$s &lsaquo; %2$s', esc_html( $title ), esc_html( $mp_title ) );
 	$mp_title = apply_filters( 'managed_page_title', $mp_title, $title );
 
 	$classes = [ $action ];
@@ -106,6 +106,7 @@ function managed_page_head( $title = '', $action = '' ) {
 		$header_title = get_network()->site_name;
 	} else {
 		$header_url   = home_url();
+		/* translators: 1: plugin/brand name */
 		$header_title = sprintf( __( 'Powered by %s', 'groundhogg' ), white_labeled_name() );
 	}
 
@@ -126,7 +127,7 @@ function managed_page_head( $title = '', $action = '' ) {
         <meta name="viewport" content="width=device-width, initial-scale=1">
 		<?php no_index_tag(); ?>
         <link rel="profile" href="http://gmpg.org/xfn/11">
-        <title><?php echo $mp_title; ?></title>
+        <title><?php echo esc_html( $mp_title ); ?></title>
 		<?php wp_head(); ?>
     </head>
     <body class="managed-page <?php echo esc_attr( implode( ' ', $classes ) ); ?>">
@@ -134,7 +135,7 @@ function managed_page_head( $title = '', $action = '' ) {
     <div id="main">
 	<?php if ( has_custom_logo() ): ?>
         <h1><a href="<?php echo esc_url( $header_url ); ?>"
-               title="<?php echo esc_attr( $header_title ); ?>"><?php echo $header_text; ?></a></h1>
+               title="<?php echo esc_attr( $header_title ); ?>"><?php echo esc_html( $header_text ); ?></a></h1>
 	<?php endif;
 
 	if ( $notice = get_url_var( 'notice' ) ) {
@@ -156,13 +157,14 @@ function managed_page_footer() {
 	$privacy_policy_url = function_exists( 'get_privacy_policy_url' ) && get_privacy_policy_url() ? get_privacy_policy_url() : get_option( 'gh_privacy_policy' );
 
 	$footer_links = [
-		html()->e( 'a', [ 'href' => home_url( '/' ) ], sprintf( __( '&larr; Back to %s', 'groundhogg' ), get_bloginfo( 'title', 'display' ) ) ),
-		html()->e( 'a', [ 'href' => $privacy_policy_url ], __( 'Privacy Policy', 'groundhogg' ) ),
+		/* translators: 1: the site title/name */
+		html()->e( 'a', [ 'href' => home_url( '/' ) ], '&larr; ' . sprintf( esc_html__( 'Back to %s', 'groundhogg' ), get_bloginfo( 'title', 'display' ) ) ),
+		html()->e( 'a', [ 'href' => $privacy_policy_url ], esc_html__( 'Privacy Policy', 'groundhogg' ) ),
 	];
 
     // A contact is being tracked...
 	if ( get_contactdata() ) {
-		$footer_links[] = html()->e( 'a', [ 'href' => managed_page_url( 'preferences/profile/' ) ], __( 'My Profile', 'groundhogg' ) );
+		$footer_links[] = html()->e( 'a', [ 'href' => managed_page_url( 'preferences/profile/' ) ], esc_html__( 'My Profile', 'groundhogg' ) );
     }
 
 	/**
@@ -176,21 +178,30 @@ function managed_page_footer() {
 
 	?>
     </div>
-    <p id="extralinks"><?php echo $html; ?></p>
+    <p id="extralinks"><?php
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- handled upstream
+		echo $html;
+		?></p>
 	<?php if ( is_option_enabled( 'gh_affiliate_link_in_email' ) ): ?>
         <p id="credit">
-			<?php printf( __( "Powered by %s", 'groundhogg' ), html()->e( 'a', [
-				'target' => '_blank',
-				'href'   => add_query_arg( [
-					'utm_source'   => 'email',
-					'utm_medium'   => 'footer-link',
-					'utm_campaign' => 'email-affiliate',
-					'aff'          => absint( get_option( 'gh_affiliate_id' ) ),
-				], 'https://www.groundhogg.io/pricing/' )
-			], html()->e( 'img', [
-				'width' => 85,
-				'src'   => GROUNDHOGG_ASSETS_URL . 'images/groundhogg-logo-email-footer.png'
-			], null, true ) ) ); ?>
+	        <?php
+
+            $powered_by_link = html()->e( 'a', [
+	            'target' => '_blank',
+	            'href'   => add_query_arg( [
+		            'utm_source'   => 'email',
+		            'utm_medium'   => 'footer-link',
+		            'utm_campaign' => 'email-affiliate',
+		            'aff'          => absint( get_option( 'gh_affiliate_id' ) ),
+	            ], 'https://www.groundhogg.io/pricing/' )
+            ], html()->e( 'img', [ 'width' => 85, 'src'   => GROUNDHOGG_ASSETS_URL . 'images/groundhogg-logo-email-footer.png' ] ) );
+
+	        printf(
+	            /* translators: %s: plugin/brand name as a link */
+		        esc_html__( "Powered by %s", 'groundhogg' ),
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+		        $powered_by_link
+            ); ?>
         </p>
 	<?php endif; ?>
     </div>

@@ -2,23 +2,24 @@
 
 namespace Groundhogg\Admin\Tools;
 
-use Groundhogg\Plugin;
-use \WP_List_Table;
+use WP_List_Table;
+use wpdb;
 use function Groundhogg\_nf;
 use function Groundhogg\count_csv_rows;
 use function Groundhogg\file_access_url;
 use function Groundhogg\files;
+use function Groundhogg\get_request_var;
 
 /**
  * Contacts Table Class
  *
  * This class shows the data table for accessing information about a customer.
  *
- * @package     groundhogg
+ * @since       0.1
  * @subpackage  Modules/Contacts
  * @copyright   Copyright (c) 2018, Adrian Tobey
  * @license     http://opensource.org/licenses/gpl-2.0.php GNU Public License
- * @since       0.1
+ * @package     groundhogg
  */
 
 // Exit if accessed directly
@@ -49,8 +50,8 @@ class Exports_Table extends WP_List_Table {
 	}
 
 	/**
-	 * @return array An associative array containing column information.
 	 * @see WP_List_Table::::single_row_columns()
+	 * @return array An associative array containing column information.
 	 */
 	public function get_columns() {
 		$columns = array(
@@ -120,7 +121,7 @@ class Exports_Table extends WP_List_Table {
 	/**
 	 * Get default column value.
 	 *
-	 * @param object $export A singular item (one full row's worth of data).
+	 * @param object $export      A singular item (one full row's worth of data).
 	 * @param string $column_name The name/slug of the column to be processed.
 	 *
 	 * @return string Text or HTML to be placed inside the column <td>.
@@ -157,7 +158,7 @@ class Exports_Table extends WP_List_Table {
 
 	/**
 	 * Prepares the list of items for displaying.
-	 * @global $wpdb \wpdb
+	 * @global $wpdb wpdb
 	 * @uses $this->_column_headers
 	 * @uses $this->items
 	 * @uses $this->get_columns()
@@ -235,9 +236,9 @@ class Exports_Table extends WP_List_Table {
 		$a = (array) $a;
 		$b = (array) $b;
 		// If no sort, default to title.
-		$orderby = ! empty( $_REQUEST['orderby'] ) ? wp_unslash( $_REQUEST['orderby'] ) : 'file'; // WPCS: Input var ok.
+		$orderby = get_request_var( 'orderby', 'file' ); // WPCS: Input var ok.
 		// If no order, default to asc.
-		$order = ! empty( $_REQUEST['order'] ) ? wp_unslash( $_REQUEST['order'] ) : 'asc'; // WPCS: Input var ok.
+		$order = get_request_var( 'order', 'asc' ); // WPCS: Input var ok.
 		// Determine sort order.
 		$result = strnatcmp( $a[ $orderby ], $b[ $orderby ] );
 
@@ -247,9 +248,9 @@ class Exports_Table extends WP_List_Table {
 	/**
 	 * Generates and displays row action rule.
 	 *
-	 * @param array $export Contact being acted upon.
+	 * @param array  $export      Contact being acted upon.
 	 * @param string $column_name Current column name.
-	 * @param string $primary Primary column name.
+	 * @param string $primary     Primary column name.
 	 *
 	 * @return string Row steps output for posts.
 	 */
@@ -265,7 +266,7 @@ class Exports_Table extends WP_List_Table {
 			/* translators: %s: title */
 			$export['file_url'],
 			esc_attr( 'Export' ),
-			__( 'Export' )
+			esc_html__( 'Export' , 'groundhogg' )
 		);
 
 		$actions['delete'] = sprintf(
@@ -273,7 +274,7 @@ class Exports_Table extends WP_List_Table {
 			wp_nonce_url( admin_url( 'admin.php?page=gh_tools&tab=export&action=delete&export=' . $export['file'] ) ),
 			/* translators: %s: title */
 			esc_attr( 'Delete Permanently' ),
-			__( 'Delete export' )
+			esc_html__( 'Delete export' , 'groundhogg' )
 		);
 
 		return $this->row_actions( $actions );

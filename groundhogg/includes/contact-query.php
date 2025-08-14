@@ -9,6 +9,8 @@ use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\DB\Query\Where;
 use Groundhogg\Utils\DateTimeHelper;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
+
 class Contact_Query extends Table_Query {
 
 	/**
@@ -1395,7 +1397,7 @@ class Contact_Query extends Table_Query {
 			'count_compare' => 'greater_than_or_equal_to'
 		] );
 
-		$path = parse_url( $filter['link'], PHP_URL_PATH );
+		$path = wp_parse_url( $filter['link'], PHP_URL_PATH );
 
 		if ( $path ) {
 			$alias = $where->query->joinPageVisits( $filter, [ 'path' ] );
@@ -1428,7 +1430,7 @@ class Contact_Query extends Table_Query {
 			'count_compare' => 'greater_than_or_equal_to'
 		] );
 
-		$path = parse_url( $filter['link'], PHP_URL_PATH );
+		$path = wp_parse_url( $filter['link'], PHP_URL_PATH );
 
 		if ( $path ) {
 			$alias = $where->query->joinPageVisits( $filter, [ 'path' ] );

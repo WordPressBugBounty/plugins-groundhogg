@@ -2,13 +2,18 @@
 
 namespace Groundhogg\DB\Query;
 
+use Exception;
 use Groundhogg\Utils\DateTimeHelper;
 use function Groundhogg\base64_json_decode;
 use function Groundhogg\get_array_var;
 use function Groundhogg\isset_not_empty;
 use function Groundhogg\sanitize_payload;
 
-class FilterException extends \Exception {
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+} // Exit if accessed directly
+
+class FilterException extends Exception {
 
 }
 
@@ -79,14 +84,12 @@ class Filters {
 
 		// No filter handler available
 		if ( ! $handler ) {
-			throw new FilterException( sprintf( "%s is not a registered filter", $type ) );
+			throw new FilterException( esc_html( sprintf( "%s is not a registered filter", $type ) ) );
 		}
 
 		if ( ! is_callable( $handler['filter_callback'] ) ) {
-			throw new FilterException( sprintf( "%s does not have a valid callback", $type ) );
+			throw new FilterException( esc_html( sprintf( "%s does not have a valid callback", $type ) ) );
 		}
-
-//		var_dump( $filter );
 
 		return call_user_func( $handler['filter_callback'], $filter, $where, $where->query );
 	}
@@ -355,7 +358,7 @@ class Filters {
 				$before = $before->format( $format );
 				$after  = $after->format( $format );
 			}
-		} catch ( \Exception $exception ) {
+		} catch ( Exception $exception ) {
 			return;
 		}
 

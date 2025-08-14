@@ -2,6 +2,7 @@
 
 namespace Groundhogg;
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 class Main_Installer extends Installer {
 
 	/**
@@ -127,9 +128,11 @@ class Main_Installer extends Installer {
 
 		if ( $plugin == plugin_basename( GROUNDHOGG__FILE__ ) && ! is_white_labeled() ) {
 			if ( is_option_enabled( 'gh_guided_setup_finished' ) ) {
-				exit( wp_redirect( admin_url( 'admin.php?page=groundhogg' ) ) );
+				wp_safe_redirect( admin_url( 'admin.php?page=groundhogg' ) );
+				exit;
 			} else {
-				exit( wp_redirect( admin_url( 'admin.php?page=gh_guided_setup' ) ) );
+				wp_safe_redirect( admin_url( 'admin.php?page=gh_guided_setup' ) );
+				exit;
 			}
 		}
 	}

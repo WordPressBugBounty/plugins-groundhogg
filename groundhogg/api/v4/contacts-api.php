@@ -133,7 +133,7 @@ class Contacts_Api extends Base_Object_Api {
 				try {
 					$contact = generate_contact_with_map( $item, [], [
 						'type' => 'api',
-						'name' => __( 'REST API', 'groundhogg' )
+						'name' => esc_html__( 'REST API', 'groundhogg' )
 					] );
 				} catch ( \Exception $e ) {
 					return self::ERROR_500( 'error', $e->getMessage() );
@@ -453,7 +453,7 @@ class Contacts_Api extends Base_Object_Api {
 			try {
 				$contact = generate_contact_with_map( $fields, [], [
 					'type' => 'api',
-					'name' => __( 'REST API', 'groundhogg' )
+					'name' => esc_html__( 'REST API', 'groundhogg' )
 				] );
 			} catch ( \Exception $e ) {
 				return self::ERROR_500( 'error', $e->getMessage() );
@@ -774,11 +774,14 @@ class Contacts_Api extends Base_Object_Api {
 			return self::ERROR_CONTACT_NOT_FOUND();
 		}
 
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- API KEY previously validated
 		if ( empty( $_FILES ) ) {
 			return self::ERROR_422( 'error', 'No files provided.' );
 		}
 
-		foreach ( $_FILES as $file ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- API KEY previously validated
+		foreach ( $_FILES as $key => $file ) {
+
 			$result = $contact->upload_file( $file );
 
 			if ( is_wp_error( $request ) ) {

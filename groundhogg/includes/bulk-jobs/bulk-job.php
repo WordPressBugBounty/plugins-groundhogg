@@ -80,8 +80,8 @@ abstract class Bulk_Job {
 	 * @param $additional array any additional arguments to add to the link
 	 */
 	public function start( $additional = [] ) {
-		wp_redirect( $this->get_start_url( $additional ) );
-		die();
+		wp_safe_redirect( $this->get_start_url( $additional ) );
+		exit;
 	}
 
 	/**
@@ -97,8 +97,6 @@ abstract class Bulk_Job {
 			'page' => 'gh_bulk_jobs',
 			'tab'  => false
 		], $this->get_start_query_args(), $additional ) );
-
-//		return add_query_arg( array_merge( [ 'action' => $this->get_action() ], $this->get_start_query_args(), $additional ), admin_url( 'admin.php?page=gh_bulk_jobs' ) );
 	}
 
 	/**
@@ -172,6 +170,7 @@ abstract class Bulk_Job {
 
 		$start = new Micro_Time_Tracker();
 
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- handled upstream
 		if ( ! key_exists( 'the_end', $_POST ) ) {
 
 			$error = new \WP_Error(
@@ -238,9 +237,11 @@ abstract class Bulk_Job {
 	 */
 	protected function get_log_message( $completed, $time, $skipped = 0 ) {
 		if ( $skipped > 0 ) {
-			return sprintf( __( 'Processed %s items in %s seconds. Skipped %s items.', 'groundhogg' ), _nf( $completed ), $time, _nf( $skipped ) );
+			/* translators: 1: the number of items processed, 2: the time it took in seconds, 3: the number of items skipped */
+			return sprintf( __( 'Processed %1$s items in %2$s seconds. Skipped %3$s items.', 'groundhogg' ), _nf( $completed ), $time, _nf( $skipped ) );
 		} else {
-			return sprintf( __( 'Processed %s items in %s seconds.', 'groundhogg' ), $completed, $time );
+			/* translators: 1: the number of items processed, 2: the time it took in seconds */
+			return sprintf( __( 'Processed %1$s items in %2$s seconds.', 'groundhogg' ), $completed, $time );
 		}
 	}
 
@@ -250,7 +251,8 @@ abstract class Bulk_Job {
 	 * @return array
 	 */
 	public function get_items() {
-		return isset_not_empty( $_POST, 'items' ) ? $_POST['items'] : [];
+		// phpcs:ignore WordPress.Security  -- not required here
+		return isset_not_empty( $_POST, 'items' ) ? wp_unslash( $_POST['items'] ) : [];
 	}
 
 	/**
@@ -299,7 +301,7 @@ abstract class Bulk_Job {
 	 * @return string
 	 */
 	protected function get_finished_notice() {
-		return _x( 'Job finished!', 'notice', 'groundhogg' );
+		return esc_html_x( 'Job finished!', 'notice', 'groundhogg' );
 	}
 
 	/**

@@ -1045,13 +1045,13 @@ class Replacements implements \JsonSerializable {
 			} );
 
 			?>
-            <h3 class="replacements-group"><?php _e( $name ) ?></h3>
+            <h3 class="replacements-group"><?php echo esc_html( $name ) ?></h3>
             <table class="wp-list-table widefat fixed striped replacements-table">
                 <thead>
                 <tr>
-                    <th><?php _e( 'Name' ); ?></th>
-                    <th><?php _e( 'Code' ); ?></th>
-                    <th><?php _e( 'Description' ); ?></th>
+                    <th><?php esc_html_e( 'Name', 'groundhogg' ); ?></th>
+                    <th><?php esc_html_e( 'Code', 'groundhogg' ); ?></th>
+                    <th><?php esc_html_e( 'Description', 'groundhogg' ); ?></th>
                 </tr>
                 </thead>
                 <tbody>
@@ -1064,17 +1064,17 @@ class Replacements implements \JsonSerializable {
 
 					?>
                     <tr>
-                        <td><?php _e( get_array_var( $replacement, 'name' ) ); ?></td>
+                        <td><?php echo esc_html( get_array_var( $replacement, 'name' ) ); ?></td>
                         <td>
                             <input class="replacement-selector code"
                                    type="text"
                                    style="border: none;outline: none;background: transparent;width: 100%;"
                                    onfocus="this.select();"
-                                   value="<?php echo get_array_var( $replacement, 'insert', '{' . $code . '}' ) ?>"
+                                   value="<?php echo esc_attr( get_array_var( $replacement, 'insert', '{' . $code . '}' ) ) ?>"
                                    readonly>
                         </td>
                         <td>
-                            <span class="description"><?php esc_html_e( $replacement['description'] ); ?></span>
+                            <span class="description"><?php echo esc_html( $replacement['description'] ); ?></span>
                         </td>
                     </tr>
 				<?php endforeach; ?>
@@ -1087,18 +1087,18 @@ class Replacements implements \JsonSerializable {
 	public function show_replacements_button( $short = false ) {
 		wp_enqueue_script( 'groundhogg-admin-replacements' );
 
-		echo Plugin::$instance->utils->html->modal_link( array(
-			'title'              => __( 'Replacements', 'groundhogg' ),
+		html( html()->modal_link( array(
+			'title'              => esc_html__( 'Replacements', 'groundhogg' ),
 			'text'               => $short
 				? '<span style="vertical-align: middle" class="dashicons dashicons-admin-users"></span>'
-				: '<span style="vertical-align: middle" class="dashicons dashicons-admin-users"></span>&nbsp;' . _x( 'Insert Replacement', 'replacement', 'groundhogg' ),
-			'footer_button_text' => __( 'Insert' ),
+				: '<span style="vertical-align: middle" class="dashicons dashicons-admin-users"></span>&nbsp;' . esc_html_x( 'Insert Replacement', 'replacement', 'groundhogg' ),
+			'footer_button_text' => esc_html__( 'Insert', 'groundhogg' ),
 			'id'                 => 'replacements',
 			'class'              => 'button button-secondary no-padding replacements replacements-button',
 			'source'             => 'footer-replacement-codes',
 			'height'             => 900,
 			'width'              => 700,
-		) );
+		) ) );
 
 	}
 
@@ -1134,6 +1134,7 @@ class Replacements implements \JsonSerializable {
 		] );
 
 		if ( $echo ) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
 			echo $return;
 
 			return true;
@@ -1715,7 +1716,7 @@ class Replacements implements \JsonSerializable {
 		$link_text = apply_filters( 'groundhogg/replacements/confirmation_text', Plugin::$instance->settings->get_option( 'confirmation_text', __( 'Confirm your email.', 'groundhogg' ) ) );
 		$link_url  = $this->replacement_confirmation_link_raw( $redirect_to );
 
-		return sprintf( "<a href=\"%s\" target=\"_blank\">%s</a>", $link_url, $link_text );
+		return "<a href=\"" . esc_url( $link_url ) . "\" target=\"_blank\">" . $link_text . "</a>";
 	}
 
 	/**
@@ -1941,7 +1942,7 @@ class Replacements implements \JsonSerializable {
 		$html = '';
 
 		foreach ( $files as $i => $file ) {
-			$html .= sprintf( '<li><a href="%s">%s</a></li>', esc_url( maybe_permissions_key_url( $file['url'], $this->get_current_contact(), 'download_files' ) ), esc_html( $file['name'] ) );
+			$html .= '<li><a href="' . esc_url( maybe_permissions_key_url( $file['url'], $this->get_current_contact(), 'download_files' ) ) . '">' . esc_html( $file['name'] ) . '</a></li>';
 		}
 
 		return sprintf( '<ul>%s</ul>', $html );
@@ -2003,7 +2004,7 @@ class Replacements implements \JsonSerializable {
 
 		$quotes = apply_filters( 'add_movie_quotes', $quotes );
 
-		$quote = rand( 0, count( $quotes ) - 1 );
+		$quote = wp_rand( 0, count( $quotes ) - 1 );
 
 		return $quotes[ $quote ];
 	}
@@ -2171,7 +2172,7 @@ class Replacements implements \JsonSerializable {
 	 * @return string
 	 */
 	function post_featured_image_plain_text( $args, $contact_id = null ) {
-		return sprintf( '[![%1$s](%2$s)](%3$s)', __( 'Post Featured Image' ), $this->single_post( $args, 'featured_image_url' ), $this->single_post( $args, 'url' ) );
+		return sprintf( '[![%1$s](%2$s)](%3$s)', __( 'Post Featured Image', 'groundhogg' ), $this->single_post( $args, 'featured_image_url' ), $this->single_post( $args, 'url' ) );
 	}
 
 	/**
@@ -2329,6 +2330,8 @@ class Replacements implements \JsonSerializable {
 	 */
 	function posts( $args, $contact_id = null ) {
 
+        // phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- ALL GENERATED, GEEZ
+
 		$props = $this->parse_atts( $args );
 
 		$props = wp_parse_args( $props, [
@@ -2395,7 +2398,7 @@ class Replacements implements \JsonSerializable {
 				$thumbnail = function ( $thumbnail_size ) {
 
 					$post_thumbnail_id = get_post_thumbnail_id();
-					$alt               = trim( strip_tags( get_post_meta( $post_thumbnail_id, '_wp_attachment_image_alt', true ) ) );
+					$alt               = trim( wp_strip_all_tags( get_post_meta( $post_thumbnail_id, '_wp_attachment_image_alt', true ) ) );
 
 					return html()->e( 'img', [
 						'src'   => get_the_post_thumbnail_url( null, $thumbnail_size ),
@@ -2572,7 +2575,7 @@ class Replacements implements \JsonSerializable {
 
 						$thumbnail_size    = $props['thumbnail_size'];
 						$post_thumbnail_id = get_post_thumbnail_id();
-						$alt               = trim( strip_tags( get_post_meta( $post_thumbnail_id, '_wp_attachment_image_alt', true ) ) );
+						$alt               = trim( wp_strip_all_tags( get_post_meta( $post_thumbnail_id, '_wp_attachment_image_alt', true ) ) );
 
 						$thumbnail = html()->e( 'a', [
 							'href' => get_the_permalink()
@@ -2593,7 +2596,8 @@ class Replacements implements \JsonSerializable {
 										<?php if ( $props['thumbnail'] && $props['thumbnail_position'] === 'left' ): ?>
                                             <td class="email-columns-cell one-half thumbnail" width="45%"
                                                 style="width: 45%">
-												<?php echo $thumbnail ?>
+												<?php
+                                                echo $thumbnail ?>
                                             </td>
 											<?php echo $columnGap ?>
 										<?php endif; ?>
@@ -2653,6 +2657,8 @@ class Replacements implements \JsonSerializable {
 		remove_filter( 'excerpt_more', [ $this, 'post_excerpt_ellipses' ] );
 
 		return $content;
+
+		// phpcs:enable WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
 
 	/**

@@ -175,17 +175,25 @@ abstract class Extension {
 		<div class="notice notice-warning display-flex gap-20">
 			<?php groundhogg_icon(30 ) ?>
 			<div class="error-description">
-				<p><?php printf( esc_html__( '%s requires the following plugins also be active.', 'groundhogg' ), bold_it( $this->get_display_name() ) ) ?></p>
+				<p><?php printf(
+                        /* translators: %s: plugin extension name */
+                        esc_html__( '%s requires the following plugins also be active.', 'groundhogg' ),
+                        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+                        bold_it( esc_html( $this->get_display_name() ) )
+                    ) ?></p>
 				<ul style="list-style-type: disc; padding-left: 20px;margin: 0">
 					<?php foreach ( $this->get_dependent_plugins() as $plugin ): ?>
-						<li><?php echo $plugin ?></li>
+						<li><?php echo esc_html( $plugin ) ?></li>
 					<?php endforeach; ?>
 				</ul>
-                <p><?php _e( 'Either activate the required plugin dependencies or deactivate this add-on.', 'groundhogg' ); ?></p>
+                <p><?php esc_html_e( 'Either activate the required plugin dependencies or deactivate this add-on.', 'groundhogg' ); ?></p>
                 <p class="display-flex gap-10">
-                    <a class="" href="<?php echo esc_url( admin_url('plugins.php') ); ?>"><?php _e( 'Manage plugins' ); ?></a>
+                    <a class="" href="<?php echo esc_url( admin_url('plugins.php') ); ?>"><?php esc_html_e( 'Manage plugins', 'groundhogg' ); ?></a>
                     |
-                    <a class="gh-text danger" href="<?php echo esc_url( $this->deactivate_url() ) ?>"><?php printf( __( 'Deactivate %s' ), $this->get_display_name() ); ?></a>
+                    <a class="gh-text danger" href="<?php echo esc_url( $this->deactivate_url() ) ?>"><?php
+                        /* translators: %s: plugin extension name */
+                        echo esc_html( sprintf( __( 'Deactivate %s', 'groundhogg' ), $this->get_display_name() )
+                        ); ?></a>
                 </p>
 			</div>
 		</div><?php
@@ -608,22 +616,29 @@ abstract class Extension {
 	 */
 	public function license_status() {
 		$status  = get_array_var( $this->get_extension_details(), 'status' );
-		$status  = html()->e( 'span', [ 'class' => 'status-' . $status ], $status === 'valid' ? __( 'valid', 'groundhogg' ) : __( 'invalid', 'groundhogg' ) );
-		$expires = $this->get_expiry() ? sprintf( __( 'expires on <abbr title="%1$s">%1$s</abbr>', 'groundhogg' ), $this->get_expiry() ) : __( 'never expires', 'groundhogg' );
+		$status  = html()->e( 'span', [ 'class' => 'status-' . $status ], esc_html( $status === 'valid' ? esc_html__( 'valid', 'groundhogg' ) : esc_html__( 'invalid', 'groundhogg' ) ) );
+		/* translators: 1: expiry date */
+		$expires = $this->get_expiry() ? sprintf( esc_html__( 'expires on %1$s', 'groundhogg' ), html()->e('abbr', [ 'title' => $this->get_expiry() ], esc_html( $this->get_expiry() ) ) ) : esc_html__( 'never expires', 'groundhogg' );
 
-		return sprintf( __( "Your license is <b>%s</b> and %s.", 'groundhogg' ), $status, $expires );
+		/* translators: 1: license status (valid/invalid), 2: expiry string */
+		return sprintf( esc_html__( 'Your license is %1$s and %2$s.', 'groundhogg' ), bold_it( $status ), esc_html( $expires ) );
 	}
 
 	/**
 	 * @return string
 	 */
 	public function __toString() {
+
+		$display_name = $this->get_display_name();
+		$description  = $this->get_display_description();
+
 		$content = "<div class='gh-panel'>";
 		$content .= "<div class='gh-panel-header'>";
-		$content .= "<h2 class='hndle'>{$this->get_display_name()}</h2>";
+		$content      .= "<h2 class='hndle'>" . esc_html( $display_name ) . "</h2>";
 		$content .= "</div>";
 		$content .= "<div class=\"inside\">";
-		$content .= "<p>" . $this->get_display_description() . "</p>";
+		$content .= "<p>" . kses( $description, 'simple' ) . "</p>";
+
 
 		$content .= html()->input( [
 			'placeholder' => __( 'License', 'groundhogg' ),
@@ -638,14 +653,14 @@ abstract class Extension {
 			$content .= "</p>";
 
 			$content .= html()->wrap( [
-				html()->wrap( __( 'Check', 'groundhogg' ), 'a', [
+				html()->wrap( esc_html__( 'Check', 'groundhogg' ), 'a', [
 					'class' => 'gh-button secondary',
 					'href'  => admin_url( wp_nonce_url( add_query_arg( [
 						'action'    => 'check_license',
 						'extension' => $this->get_download_id()
 					], 'admin.php?page=gh_settings&tab=extensions' ) ) )
 				] ),
-				html()->wrap( __( 'Deactivate', 'groundhogg' ), 'a', [
+				html()->wrap( esc_html__( 'Deactivate', 'groundhogg' ), 'a', [
 					'class' => 'gh-button danger text',
 					'href'  => admin_url( wp_nonce_url( add_query_arg( [
 						'action'    => 'deactivate_license',
@@ -658,7 +673,7 @@ abstract class Extension {
 				'type'  => 'submit',
 				'name'  => 'activate_license',
 				'class' => 'gh-button primary',
-				'value' => __( 'Activate', 'groundhogg' ),
+				'value' => esc_html__( 'Activate', 'groundhogg' ),
 			] ), 'p' );
 		}
 

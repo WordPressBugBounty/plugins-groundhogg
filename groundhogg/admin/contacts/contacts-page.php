@@ -10,6 +10,7 @@ use Groundhogg\Plugin;
 use Groundhogg\Preferences;
 use Groundhogg\Properties;
 use Groundhogg\Saved_Searches;
+use WP_Error;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\base64_json_decode;
 use function Groundhogg\bulk_jobs;
@@ -24,6 +25,7 @@ use function Groundhogg\get_filters_from_old_query_vars;
 use function Groundhogg\get_post_var;
 use function Groundhogg\get_request_query;
 use function Groundhogg\get_request_var;
+use function Groundhogg\get_sanitized_FILE;
 use function Groundhogg\get_unsub_reasons;
 use function Groundhogg\get_url_var;
 use function Groundhogg\normalize_files;
@@ -95,7 +97,7 @@ class Contacts_Page extends Admin_Page {
 	 * @return string
 	 */
 	public function get_name() {
-		return _x( 'Contacts', 'page_title', 'groundhogg' );
+		return esc_html_x( 'Contacts', 'page_title', 'groundhogg' );
 	}
 
 	/**
@@ -209,9 +211,10 @@ class Contacts_Page extends Admin_Page {
 				$contact = get_contactdata( get_url_var( 'contact' ) );
 
 				if ( ! $contact ) {
-					$this->add_notice( new \WP_Error( 'error', sprintf( __( 'Contact with ID %d does not exist' ), get_url_var( 'contact' ) ) ) );
+                    /* translators: %d: the contact ID */
+					$this->add_notice( new WP_Error( 'error', sprintf( esc_html__( 'Contact with ID %d does not exist' , 'groundhogg' ), get_url_var( 'contact' ) ) ) );
 					?>
-                    <script>window.open('<?php echo admin_page_url( 'gh_contacts' ); ?>', '_self')</script>
+                    <script>window.open(<?php echo wp_json_encode( admin_page_url( 'gh_contacts' ) ); ?>, '_self')</script>
 					<?php
 					die();
 				}
@@ -232,7 +235,7 @@ class Contacts_Page extends Admin_Page {
 					'marketable'                   => $contact->is_marketable(),
 					'unsubReasons'                 => get_unsub_reasons(),
 					'i18n'                         => [
-						'marketable_reason' => Plugin::instance()->preferences->get_optin_status_text( $contact )
+						'marketable_reason' => esc_html( Plugin::instance()->preferences->get_optin_status_text( $contact ) )
 					],
 				] );
 
@@ -262,7 +265,7 @@ class Contacts_Page extends Admin_Page {
 
 		switch ( $this->get_current_action() ) {
 			case 'add':
-				$admin_title = sprintf( "%s &lsaquo; %s", __( 'Add' ), $admin_title );
+				$admin_title = sprintf( "%s &lsaquo; %s", esc_html__( 'Add' , 'groundhogg' ), $admin_title );
 				break;
 			case 'edit':
 				$contact_id = get_request_var( 'contact' );
@@ -270,7 +273,7 @@ class Contacts_Page extends Admin_Page {
 
 				if ( $contact ) {
 					$prefix      = $contact->get_first_name() ? $contact->get_full_name() : $contact->get_email();
-					$admin_title = sprintf( "%s &lsaquo; %s &lsaquo; %s", $prefix, __( 'Edit' ), $admin_title );
+					$admin_title = sprintf( "%s &lsaquo; %s &lsaquo; %s", esc_html( $prefix ), esc_html__( 'Edit' , 'groundhogg' ), $admin_title );
 				}
 
 				break;
@@ -296,22 +299,25 @@ class Contacts_Page extends Admin_Page {
 				$contacts = $this->get_items();
 				$contact  = get_contactdata( array_shift( $contacts ) ); //todo check
 				if ( $contact ) {
+					/* translators: 1: contact's full name */
 					return sprintf( _x( 'Editing %s', 'page_title', 'groundhogg' ), $contact->get_full_name() );
 				} else {
 					return _x( 'Oops!', 'page_title', 'groundhogg' );
 				}
 			case 'form':
 
+                // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 				if ( key_exists( 'contact', $_GET ) ) {
 					$contacts = $this->get_items();
 					$contact  = get_contactdata( array_shift( $contacts ) ); // todo check
 
+                    /* translators: %s: contact's full name */
 					return sprintf( _x( 'Submit Form For %s', 'page_title', 'groundhogg' ), $contact->get_full_name() );
 				} else {
 					return _x( 'Submit Form', 'page_title', 'groundhogg' );
 				}
 			case 'bulk_edit':
-				return __( 'Bulk Edit Contacts', 'groundhogg' );
+				return esc_html__( 'Bulk Edit Contacts', 'groundhogg' );
 			case 'view':
 			default:
 				return _x( 'Contacts', 'page_title', 'groundhogg' );
@@ -329,7 +335,7 @@ class Contacts_Page extends Admin_Page {
 		if ( current_user_can( 'add_contacts' ) ) {
 			$actions[] = [
 				'link'   => $this->admin_url( [ 'action' => 'add' ] ),
-				'action' => dashicon( 'plus-alt2' ) . __( 'Add New', 'groundhogg' ),
+				'action' => dashicon( 'plus-alt2' ) . esc_html__( 'Add New', 'groundhogg' ),
 				'target' => '_self',
 				'id'     => 'quick-add',
 			];
@@ -338,7 +344,7 @@ class Contacts_Page extends Admin_Page {
 		if ( current_user_can( 'import_contacts' ) ) {
 			$actions[] = [
 				'link'   => admin_page_url( 'gh_tools', [ 'tab' => 'import', 'action' => 'add' ] ),
-				'action' => dashicon( 'upload' ) . __( 'Import', 'groundhogg' ),
+				'action' => dashicon( 'upload' ) . esc_html__( 'Import', 'groundhogg' ),
 				'target' => '_self',
 				'id'     => 'import_contacts'
 			];
@@ -357,10 +363,11 @@ class Contacts_Page extends Admin_Page {
 
 		do_action( 'groundhogg/admin/contacts/add/before' );
 
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		$_POST = wp_unslash( $_POST );
 
 		if ( ! get_request_var( 'email' ) ) {
-			return new \WP_Error( 'no_email', __( "Please enter a valid email address.", 'groundhogg' ) );
+			return new WP_Error( 'no_email', esc_html__( "Please enter a valid email address.", 'groundhogg' ) );
 		}
 
 		$args['first_name'] = sanitize_text_field( get_post_var( 'first_name' ) );
@@ -372,17 +379,18 @@ class Contacts_Page extends Admin_Page {
 		if ( ! get_db( 'contacts' )->exists( $email ) ) {
 			$args['email'] = $email;
 		} else {
-			return new \WP_Error( 'email_exists', sprintf( _x( 'Sorry, the email %s already belongs to another contact.', 'page_title', 'groundhogg' ), $email ) );
+            /* translators: %s: a contact's email address */
+			return new WP_Error( 'email_exists', sprintf( _x( 'Sorry, the email %s already belongs to another contact.', 'page_title', 'groundhogg' ), esc_html( $email ) ) );
 		}
 
 		if ( ! is_email( $email ) ) {
-			return new \WP_Error( 'invalid_email', __( "Please enter a valid email address.", 'groundhogg' ) );
+			return new WP_Error( 'invalid_email', esc_html__( "Please enter a valid email address.", 'groundhogg' ) );
 		}
 
 		$contact = new Contact( $args );
 
 		if ( ! $contact->exists() ) {
-			return new \WP_Error( 'db_error', __( 'Could not add contact.', 'groundhogg' ) );
+			return new WP_Error( 'db_error', esc_html__( 'Could not add contact.', 'groundhogg' ) );
 		}
 
 		$contact->update_meta( 'mobile_phone', sanitize_text_field( get_post_var( 'mobile_phone' ) ) );
@@ -476,7 +484,11 @@ class Contacts_Page extends Admin_Page {
 			return;
 		}
 
-		$file = $_FILES['file-upload'];
+		$file = get_sanitized_FILE( 'file-upload' );
+
+        if ( ! $file ) {
+            wp_send_json_error();
+        }
 
 		if ( ! get_array_var( $file, 'error' ) ) {
 			$e = $contact->upload_file( $file );
@@ -489,40 +501,6 @@ class Contacts_Page extends Admin_Page {
 		wp_send_json_success( [
 			'files' => $contact->get_files()
 		] );
-	}
-
-	/**
-	 * Process a file upload
-	 *
-	 * @return array|bool|\WP_Error
-	 */
-	public function process_upload_file() {
-
-		$id = absint( get_request_var( 'contact' ) );
-
-		if ( ! $id ) {
-			return new \WP_Error( 'no_contact_id', __( 'Contact id not found.', 'groundhogg' ) );
-		}
-
-		$contact = get_contactdata( $id );
-		$count   = 0;
-
-		if ( ! empty( $_FILES['files'] ) ) {
-			$files = normalize_files( $_FILES['files'] );
-			foreach ( $files as $file_key => $file ) {
-				if ( ! get_array_var( $file, 'error' ) ) {
-					$e = $contact->upload_file( $file );
-					if ( is_wp_error( $e ) ) {
-						return $e;
-					}
-					$count ++;
-				}
-			}
-		}
-
-		$this->add_notice( 'uploaded', sprintf( _n( "Uploaded file", "Uploaded %s files", $count, 'groundhogg' ), $count ) );
-
-		return admin_page_url( 'gh_contacts', [ 'action' => 'edit', 'contact' => $contact->get_id() ] );
 	}
 
 	/**
@@ -560,7 +538,7 @@ class Contacts_Page extends Admin_Page {
 		$id = absint( get_request_var( 'contact' ) );
 
 		if ( ! $id ) {
-			return new \WP_Error( 'no_contact_id', __( 'Contact id not found.', 'groundhogg' ) );
+			return new WP_Error( 'no_contact_id', esc_html__( 'Contact id not found.', 'groundhogg' ) );
 		}
 
 		$contact = get_contactdata( $id );
@@ -578,7 +556,8 @@ class Contacts_Page extends Admin_Page {
 			if ( ! Plugin::$instance->dbs->get_db( 'contacts' )->exists( $email ) ) {
 				$args['email'] = $email;
 			} else {
-				$this->add_notice( new \WP_Error( 'email_exists', sprintf( _x( 'Sorry, the email %s already belongs to another contact.', 'notice', 'groundhogg' ), $email ) ) );
+                /* translators: %s: a contact's email address */
+				$this->add_notice( new WP_Error( 'email_exists', sprintf( _x( 'Sorry, the email %s already belongs to another contact.', 'notice', 'groundhogg' ), $email ) ) );
 			}
 		}
 
@@ -642,19 +621,7 @@ class Contacts_Page extends Admin_Page {
 
 				$contact->update_meta( 'birthday', $birthday );
 			} else {
-				$this->add_notice( new \WP_Error( 'invalid_date', __( 'The birthday date provided is not a valid date.' ) ) );
-			}
-		}
-
-		if ( ! empty( $_FILES['files'] ) ) {
-			$files = normalize_files( $_FILES['files'] );
-			foreach ( $files as $file_key => $file ) {
-				if ( ! get_array_var( $file, 'error' ) ) {
-					$e = $contact->upload_file( $file );
-					if ( is_wp_error( $e ) ) {
-						return $e;
-					}
-				}
+				$this->add_notice( new WP_Error( 'invalid_date', esc_html__( 'The birthday date provided is not a valid date.' , 'groundhogg' ) ) );
 			}
 		}
 
@@ -670,7 +637,7 @@ class Contacts_Page extends Admin_Page {
 	/**
 	 * Unlink a user from the contact record but only if they don't match
 	 *
-	 * @return true
+	 * @return string
 	 */
 	public function process_unlink_user() {
 
@@ -695,7 +662,7 @@ class Contacts_Page extends Admin_Page {
 	/**
 	 * Delete a bunch of contacts
 	 *
-	 * @return false|\WP_Error
+	 * @return false|WP_Error
 	 */
 	public function process_delete() {
 		if ( ! current_user_can( 'delete_contacts' ) ) {
@@ -709,12 +676,13 @@ class Contacts_Page extends Admin_Page {
 			}
 
 			if ( ! get_db( 'contacts' )->delete( $id ) ) {
-				return new \WP_Error( 'unable_to_delete_contact', "Something went wrong while deleting the contact." );
+				return new WP_Error( 'unable_to_delete_contact', "Something went wrong while deleting the contact." );
 			}
 		}
 
 		$this->add_notice(
 			esc_attr( 'deleted' ),
+            /* translators: %d: the number of deleted contacts */
 			sprintf( _nx( 'Deleted %d contact.', 'Deleted %d contacts.', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ) ),
 			'success'
 		);
@@ -764,7 +732,8 @@ class Contacts_Page extends Admin_Page {
 
 		$this->add_notice(
 			esc_attr( 'status-updated' ),
-			sprintf( _nx( 'Marked contact as %2$s.', 'Marked %1$d contacts as %2$s.', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ), Preferences::get_preference_pretty_name( $status ) ),
+            /* translators: 1: the number of contacts, 2: the opt-in status they were moved to */
+			sprintf( _nx( 'Marked %1$d contact as %2$s.', 'Marked %1$d contacts as %2$s.', count( $this->get_items() ), 'notice', 'groundhogg' ), count( $this->get_items() ), Preferences::get_preference_pretty_name( $status ) ),
 			'success'
 		);
 
@@ -869,7 +838,7 @@ class Contacts_Page extends Admin_Page {
 		$contact = get_contactdata( absint( get_url_var( 'contact' ) ) );
 
 		if ( ! $contact ) {
-			return new \WP_Error( 'error', 'The given contact does not exist.' );
+			return new WP_Error( 'error', 'The given contact does not exist.' );
 		}
 
 		$folders = $contact->get_uploads_folder();
@@ -878,12 +847,12 @@ class Contacts_Page extends Admin_Page {
 		$file_path = wp_normalize_path( $path . DIRECTORY_SEPARATOR . $file_name );
 
 		if ( ! file_exists( $file_path ) ) {
-			return new \WP_Error( 'error', 'The requested file does not exist.' );
+			return new WP_Error( 'error', 'The requested file does not exist.' );
 		}
 
-		unlink( $file_path );
+		wp_delete_file( $file_path );
 
-		$this->add_notice( 'success', __( 'File deleted.', 'groundhogg' ) );
+		$this->add_notice( 'success', esc_html__( 'File deleted.', 'groundhogg' ) );
 
 		// Return to contact edit screen.
 		return admin_page_url( 'gh_contacts', [ 'action' => 'edit', 'contact' => $contact->get_id() ] );
@@ -931,7 +900,7 @@ class Contacts_Page extends Admin_Page {
 		}
 
 		if ( empty( $this->get_items() ) ) {
-			return new \WP_Error( 'none-selected', 'You must select at least one contact to export.' );
+			return new WP_Error( 'none-selected', 'You must select at least one contact to export.' );
 		}
 
 		return admin_page_url( 'gh_tools', [
@@ -949,42 +918,13 @@ class Contacts_Page extends Admin_Page {
 		}
 
 		if ( empty( $this->get_items() ) ) {
-
-			return new \WP_Error( 'no_items', 'You must select at least one contact to edit.' );
+			return new WP_Error( 'no_items', 'You must select at least one contact to edit.' );
 		}
 
 		return admin_page_url( 'gh_contacts', [
 			'action'  => 'bulk_edit',
 			'include' => implode( ',', $this->get_items() )
 		] );
-	}
-
-	function process_bulk_edit() {
-		if ( ! current_user_can( 'edit_contacts' ) ) {
-			$this->wp_die_no_access();
-		}
-
-		$query = get_post_var( 'query' );
-
-		$exclude_keys = [
-			'_wpnonce'         => '',
-			'_wp_http_referer' => '',
-			'query'            => '',
-			'submit'           => '',
-		];
-
-		$edits = array_diff_key( $_POST, $exclude_keys );
-
-		set_transient( 'gh_bulk_edit_fields', array_filter( $edits ) );
-		set_transient( 'gh_bulk_edit_query', $query );
-
-//		wp_send_json( [
-//			'query'    => $query,
-//			'edits'    => $edits,
-//			'mappable' => array_keys( get_mappable_fields() )
-//		] );
-
-		bulk_jobs()->bulk_edit_contacts->start( $query );
 	}
 
 	/**
