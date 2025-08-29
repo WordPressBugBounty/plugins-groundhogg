@@ -7555,6 +7555,15 @@ function is_recaptcha_enabled() {
 }
 
 /**
+ * Whether Google Recaptcha is enabled
+ *
+ * @return bool
+ */
+function is_turnstile_enabled() {
+	return is_option_enabled( 'gh_turnstile_site_key' ) && is_option_enabled( 'gh_turnstile_secret_key' );
+}
+
+/**
  * Whether a file can be copied because the file exists or it's a downloadable URL of the same hostname
  *
  * @param $file string
@@ -9005,6 +9014,16 @@ function redact_meta_table( $table ) {
 	$table_name = $table->table_name;
 	$id_col     = $table->get_object_id_col();
 
+	// maybe we check if there are redactions to do first?
+	$query = new Table_Query( $table );
+	$query->setSelect( 'meta_id' )->setLimit( 1 )->where()->startsWith( 'meta_key', '_redact_' );
+	$exists = $query->get_results();
+
+    // there are no redactions found
+	if ( empty( $exists ) ) {
+		return;
+	}
+
 	$time = time();
 
 	global $wpdb;
@@ -9020,7 +9039,8 @@ function redact_meta_table( $table ) {
               ON meta.$id_col = expires.$id_col
               AND expires.meta_key = CONCAT('_redact_', meta.meta_key)
             SET meta.meta_value = REGEXP_REPLACE(meta.meta_value, '[^[:space:]]', '█')
-            WHERE expires.meta_value < {$time}
+            WHERE expires.meta_value REGEXP '^[0-9]+$'
+            AND CAST(expires.meta_value AS UNSIGNED) < {$time};
         SQL;
 	} else {
 		// Use REPEAT(█, CHAR_LENGTH(...))
@@ -9030,7 +9050,8 @@ function redact_meta_table( $table ) {
               ON meta.$id_col = expires.$id_col
               AND expires.meta_key = CONCAT('_redact_', meta.meta_key)
             SET meta.meta_value = REPEAT('█', CHAR_LENGTH(meta.meta_value))
-            WHERE expires.meta_value < {$time}
+            WHERE expires.meta_value REGEXP '^[0-9]+$'
+            AND CAST(expires.meta_value AS UNSIGNED) < {$time};
         SQL;
 	}
 

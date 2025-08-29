@@ -2686,7 +2686,9 @@
             html)))
     }
 
-    let classes = []
+    let classes = [
+      `b-${block.type}`,
+    ]
 
     if (block.hide_on_mobile) {
       classes.push('hide-on-mobile')
@@ -3318,11 +3320,6 @@
         // moving block
         let parent = $sortable.is('.column,.children') ? $sortable.closest('.builder-block').data('id') : false
         let column = parseInt(e.target.dataset.col)
-
-        console.log({
-          parent,
-          column,
-        })
 
         // adding block
         if (ui.item.is('.new-block')) {
@@ -7064,9 +7061,7 @@
   }) => {
 
     if (!content) {
-      return Div({
-        className: 'text-content-wrap',
-      }, '')
+      return ''
     }
 
     const parser = new DOMParser()
@@ -7106,10 +7101,7 @@
       doc.body.lastElementChild.style.marginBottom = 0
     }
 
-    return Div({
-        className: 'text-content-wrap',
-      },
-      doc.body.childNodes)
+    return Div([],doc.body.childNodes).innerHTML
   }
 
   const LinkPicker = props => Autocomplete({
@@ -7134,7 +7126,11 @@
   // Register the text block
   registerBlock('text', 'Text', {
     attributes: {
-      content: el => el.querySelector('.text-content-wrap').innerHTML,
+      content: el => {
+        console.log('content', el)
+        let divWrap = el.querySelector('.text-content-wrap')
+        return divWrap ? divWrap.innerHTML : el.innerHTML
+      },
     },
     //language=HTML
     svg: `
@@ -7190,7 +7186,7 @@
           // Replace the content after formatting
           tinyMCE.activeEditor.setContent(textContent({
             ...getActiveBlock(),
-          }).innerHTML)
+          }))
         }
       }
 
@@ -7263,7 +7259,7 @@
             },
             value   : textContent({
               content, ...block,
-            }).innerHTML,
+            }),
             id      : editorId,
             onInput : e => {
               updateBlock({
@@ -7277,7 +7273,7 @@
     html     : ({
       id,
       ...block
-    }) => textContent(block),
+    }) => Fragment([textContent(block)]),
     css      : ({
       selector = '',
       content,
@@ -10745,6 +10741,7 @@
   Groundhogg.EmailEditor = initialize
   Groundhogg.emailEditor = {
     PostTagReference,
+    BlockRegistry,
     registerBlock,
     registerDynamicBlock,
     getActiveBlock,
