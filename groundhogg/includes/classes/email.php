@@ -105,6 +105,8 @@ class Email extends Base_Object_With_Meta {
 			$this->title = $subject;
 		}
 
+		$this->is_template = boolval( $this->is_template );
+
 		$this->set_from_select();
 
 		// Maybe update from the meta message type
@@ -505,6 +507,18 @@ class Email extends Base_Object_With_Meta {
 		$subject = do_replacements( $this->get_subject_line(), $this->get_contact() );
 
 		return apply_filters( 'groundhogg/email/subject', $subject, $this, $this->get_contact() );
+	}
+
+	/**
+	 * What goes in the <title> tag
+	 *
+	 * @return string
+	 */
+	public function get_html_head_title() {
+		$subject = $this->get_merged_subject_line();
+		// if actually sending, the <title> should be the same as the subject line
+		/* translators: Login screen title. 1: Login screen name, 2: Network or site name */
+		return is_sending() ? $subject : sprintf( '%1$s &lsaquo; %2$s', $this->get_merged_subject_line(), get_bloginfo( 'name', 'display' ) );
 	}
 
 	/**

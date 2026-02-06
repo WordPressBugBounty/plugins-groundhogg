@@ -14,6 +14,7 @@ use Groundhogg\Files;
 use Groundhogg\Plugin;
 use Groundhogg\Properties;
 use Groundhogg\Queue\Event_Queue;
+use Groundhogg\Reports;
 use WP_Error;
 use function Groundhogg\action_input;
 use function Groundhogg\action_url;
@@ -129,11 +130,19 @@ class Tools_Page extends Tabbed_Admin_Page {
 				'reports',
 			];
 			$dot_min = is_option_enabled( 'gh_script_debug' ) ? '' : '.min';
+
+            wp_localize_script( 'groundhogg-admin-api-docs', 'GroundhoggReports', Reports::get_registered_reports() );
+
 			foreach ( $routes as $route ) {
 				wp_enqueue_script( "groundhogg-admin-api-docs-$route", GROUNDHOGG_ASSETS_URL . "js/admin/api-docs/{$route}{$dot_min}.js", [ 'groundhogg-admin-api-docs' ], GROUNDHOGG_VERSION );
 			}
 			wp_enqueue_script( 'groundhogg-admin-filter-emails' );
 			do_action( 'groundhogg/enqueue_api_docs' );
+		}
+
+		if ( $this->get_current_tab() === 'export' ) {
+			wp_enqueue_script( 'groundhogg-make-el' );
+			wp_enqueue_script( 'groundhogg-admin-element' );
 		}
 	}
 

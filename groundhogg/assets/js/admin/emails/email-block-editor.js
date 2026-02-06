@@ -103,6 +103,45 @@
     imageSizes = [],
   } = _BlockEditor
 
+  class TokenList extends Array {
+    add (...tokens) {
+      tokens.forEach(t => {
+        if (!this.includes(t)) {
+          this.push(t)
+        }
+      })
+    }
+
+    remove (...tokens) {
+      tokens.forEach(t => {
+        const i = this.indexOf(t)
+        if (i > -1) {
+          this.splice(i, 1)
+        }
+      })
+    }
+
+    toggle (token) {
+      if (this.includes(token)) {
+        this.remove(token)
+        return false
+      }
+      else {
+        this.add(token)
+        return true
+        return true
+      }
+    }
+
+    contains (token) {
+      return this.includes(token)
+    }
+
+    clear () {
+      this.length = 0;
+    }
+  }
+
   improveTinyMCE({})
 
   let fontWeights = [
@@ -117,28 +156,57 @@
   ]
 
   let fonts = [
-    'system-ui, sans-serif',
-    'Arial, sans-serif', // Web, Mobile, Desktop
-    'Arial Black, Arial, sans-serif', // Web
-    'Arial Narrow, Arial, sans-serif', // Web
-    'Times New Roman, Times, serif', // All
-    'Georgia, serif',
-    'Courier New, Courier, monospace',
-    'Verdana, Geneva, sans-serif',
-    'Tahoma, sans-serif',
-    'Trebuchet MS, sans-serif',
+    'Arial, sans-serif',
+    'Arial Black, Arial, sans-serif',
+    'Arial Narrow, Arial, sans-serif',
+    'Book Antiqua, Palatino, serif',
     'Calibri, sans-serif',
     'Century Gothic, sans-serif',
-    'Palatino, Times New Roman, Times, serif',
+    'Comic Sans MS, Comic Sans, cursive',
+    'Copperplate Gothic Light, Copperplate, Century Gothic, Arial, sans-serif',
+    'Copperplate, sans-serif',
+    'Courier New, Courier, monospace',
+    'Futura, Calibri, Arial, sans-serif',
     'Garamond, Palatino, Times New Roman, Times, serif',
-    'Book Antiqua, Palatino, serif',
+    'Georgia, serif',
+    'Helvetica, Arial, sans-serif',
+    'Impact, Arial Black, sans-serif',
     'Lucida Grande, sans-serif',
     'Lucida Sans, Lucida Grande, Arial, sans-serif',
-    'Impact, Arial Black, sans-serif',
-    'Copperplate, sans-serif',
-    'Copperplate Gothic Light, Copperplate, Century Gothic, Arial, sans-serif',
-    'Futura, Calibri, Arial, sans-serif',
+    'Palatino, Times New Roman, Times, serif',
+    'system-ui, sans-serif',
+    'Tahoma, sans-serif',
+    'Times New Roman, Times, serif',
+    'Trebuchet MS, sans-serif',
+    'Verdana, Geneva, sans-serif'
   ]
+
+  const removeQuotes = data => {
+    return data.replaceAll(/"|'|(&quot;)/g, '')
+  }
+
+  const fontId = font => {
+    let fontParts = removeQuotes(font).split(',')
+    return fontParts[0].trim().toLowerCase().replaceAll(' ', '-')
+  }
+
+  const fontLookupObject = fonts.reduce((fontLookUp, font) => {
+    fontLookUp[fontId(font)] = font
+    return fontLookUp
+  }, {})
+
+  const normalizeFont = ( font ) => {
+    let fontStack = removeQuotes(font).split(',').map(f => f.trim())
+
+    for (let i = 0; i < fontStack.length; i++) {
+      let currFont = fontId(fontStack[i])
+      if (fontLookupObject[currFont]) {
+        return fontLookupObject[currFont]
+      }
+    }
+
+    return 'Arial, sans-serif'
+  }
 
   const subFonts = fonts.reduce((fonts, font) => {
       let subFonts = font.split(',').map(f => f.trim())
@@ -153,10 +221,6 @@
     [])
 
   const subFontsWithSpaces = subFonts.filter(font => font.includes(' '))
-
-  const removeQuotes = data => {
-    return data.replaceAll(/"|'|(&quot;)/g, '')
-  }
 
   const removeFontQuotesFromCommentData = data => data.replaceAll(new RegExp(`["'](${ subFontsWithSpaces.join('|') })["']`,
       'g'),
@@ -1684,21 +1748,13 @@
         id      : 'border-style',
         options : {
           none: __('None', 'groundhogg'),
-
           solid: __('Solid', 'groundhogg'),
-
           dashed: __('Dashed', 'groundhogg'),
-
           dotted: __('Dotted', 'groundhogg'),
-
           double: __('Double', 'groundhogg'),
-
           ridge: __('Ridge', 'groundhogg'),
-
           groove: __('Groove', 'groundhogg'),
-
           inset: __('Inset', 'groundhogg'),
-
           outset: __('Outset', 'groundhogg'),
 
         },
@@ -1874,7 +1930,7 @@
   const parseFontStyle = style => ( {
     color: style.getPropertyValue('color'),
 
-    fontFamily: removeQuotes(style.getPropertyValue('font-family')),
+    fontFamily: normalizeFont(style.getPropertyValue('font-family')),
 
     lineHeight: style.getPropertyValue('line-height'),
 
@@ -2549,6 +2605,107 @@
     deleteBlock,
   }) => {
 
+    const handleInsertBlock = e => {
+
+      const InsertState = Groundhogg.createState({
+        generating: false,
+        prompt: '',
+        index: 0
+      })
+
+      MiniModal({
+        target: e.target,
+        dialogClasses: 'insert-block-grid',
+        onClose: e => {
+          setState({
+            insertAfter: null,
+            insertBefore: null,
+          })
+        }
+      }, ({close}) => [
+        ! Groundhogg.ai.enabled ? null : Div({
+          id: 'ai-prompt-block-form',
+          className: 'display-flex column gap-5',
+        }, morph => Fragment([
+          Textarea({
+            name   : 'ai_prompt',
+            id     : 'ai-prompt',
+            placeholder: 'Create a prompt for the AI to generate blocks...',
+            value  : InsertState.prompt,
+            onInput: e => {
+              InsertState.set({
+                prompt: e.target.value,
+              })
+            },
+          }),
+          Button({
+            id: 'ai-generate-blocks',
+            className: 'gh-button primary' + ( InsertState.generating ? ' loading-dots' : '' ),
+            // disabled: InsertState.generating, // disabled causes focus to leave
+            onClick: e => {
+
+              if ( InsertState.generating ) return
+
+              InsertState.set({
+                generating: true
+              })
+
+              let textInterval = setInterval(()=>{
+                InsertState.set({
+                  index: InsertState.index + 1,
+                })
+                morph()
+              }, 3000)
+
+              Groundhogg.ai.request({
+                type: 'blockJson',
+                userPrompt: InsertState.prompt,
+                blockJson: JSON.stringify(getBlocks())
+              }).then(r => {
+
+                let {
+                  blocks = [],
+                } = r
+
+                blocks = blocks.map(block => __replaceId(block))
+
+                if ( State.insertAfter ) {
+                  insertBlockAfter(blocks, State.insertBefore)
+                } else if ( State.insertBefore ) {
+                  insertBlockBefore(blocks, State.insertBefore)
+                }
+
+                setActiveBlock( blocks[blocks.length - 1].id )
+                close()
+
+              }).catch(err => {
+                dialog({
+                  type   : 'error',
+                  message: err.message,
+                })
+                InsertState.set({
+                  generating: false,
+                })
+                morph()
+              }).finally(() => {
+                clearInterval(textInterval)
+              })
+
+              morph()
+            },
+          }, InsertState.generating ? Groundhogg.ai.AiGeneratingText(InsertState.index) : '🤖 Generate blocks'),
+        ])),
+        ! Groundhogg.ai.enabled ? null : makeEl('hr', {
+          style: {
+            margin: '10px 0',
+          }
+        }),
+        Div({ className: 'block-grid' },
+          Object.values(BlockRegistry.blocks).map(b => Block(b)))
+      ] )
+
+    }
+
     return Div({
         className: 'block-toolbar',
       },
@@ -2559,6 +2716,26 @@
             className: 'move-block',
           },
           icons.move),
+        Button({
+            className: 'insert-block insert-before',
+            onClick: e => {
+              setState({
+                insertBefore: block.id,
+              })
+              handleInsertBlock(e)
+            },
+          },
+          Dashicon('plus-alt2')),
+        Button({
+            className: 'insert-block insert-after',
+            onClick: e => {
+              setState({
+                insertAfter: block.id,
+              })
+              handleInsertBlock(e)
+            },
+          },
+          Dashicon('plus-alt2')),
         Div({
             className: 'block-buttons',
           },
@@ -2823,7 +3000,7 @@
           }
 
           // Using the toolbar
-          if (clickedIn(e, '.delete-block, .duplicate-block')) {
+          if (clickedIn(e, '.delete-block, .duplicate-block, .insert-block')) {
             return
           }
 
@@ -3036,6 +3213,41 @@
    * @return {boolean|*}
    * @private
    */
+  const __insertBefore = (newBlock, blockId, blocks) => {
+
+    for (let block of blocks) {
+      if (block.id === blockId) {
+        blocks.splice(blocks.findIndex(b => b.id === blockId), 0, newBlock)
+        return true
+      }
+
+      if (block.children && Array.isArray(block.children)) {
+        if (__insertBefore(newBlock, blockId, block.children)) {
+          return true
+        }
+      }
+
+      if (block.columns && Array.isArray(block.columns)) {
+        for (let column of block.columns) {
+          if (__insertBefore(newBlock, blockId, column)) {
+            return true
+          }
+        }
+      }
+    }
+
+    return false
+  }
+
+  /**
+   * Insert a block after the given block
+   *
+   * @param newBlock
+   * @param blockId
+   * @param blocks
+   * @return {boolean|*}
+   * @private
+   */
   const __insertAfter = (newBlock, blockId, blocks) => {
 
     for (let block of blocks) {
@@ -3095,6 +3307,20 @@
     }
 
     return false
+  }
+
+  const __walkBlocks = (fn, blocks) => {
+    for (let block of blocks) {
+      fn(block)
+      if (block.children && Array.isArray(block.children)) {
+        __walkBlocks(fn, block.children)
+      }
+      if (block.columns && Array.isArray(block.columns)) {
+        for (let column of block.columns) {
+          __walkBlocks(fn, column)
+        }
+      }
+    }
   }
 
   /**
@@ -3239,12 +3465,41 @@
    * Insert a block after another one
    *
    * @param newBlock
+   * @param before
+   */
+  const insertBlockBefore = (newBlock, before) => {
+    let tempBlocks = getBlocksCopy()
+
+    if ( Array.isArray(newBlock) ) {
+      newBlock.forEach(block => {
+        __insertBefore(block, before, tempBlocks)
+      })
+    } else {
+      __insertBefore(newBlock, before, tempBlocks)
+    }
+
+    setBlocks(tempBlocks)
+    morphBlocks()
+    updateStyles()
+  }
+
+
+  /**
+   * Insert a block after another one
+   *
+   * @param newBlock
    * @param after
    */
   const insertBlockAfter = (newBlock, after) => {
     let tempBlocks = getBlocksCopy()
 
-    __insertAfter(newBlock, after, tempBlocks)
+    if ( Array.isArray(newBlock)){
+      newBlock.forEach(block => {
+        __insertAfter(block, after, tempBlocks)
+      })
+    } else {
+      __insertAfter(newBlock, after, tempBlocks)
+    }
 
     setBlocks(tempBlocks)
     morphBlocks()
@@ -3395,6 +3650,27 @@
         className : 'block-wrap',
         id        : `add-${ type }`,
         title     : name,
+        onClick: e => {
+
+          let newBlock = createBlock(type)
+
+          if ( State.insertBefore ){
+            insertBlockBefore(newBlock, State.insertBefore )
+          } else if ( State.insertAfter ){
+            insertBlockAfter(newBlock, State.insertAfter )
+          } else {
+            return
+          }
+
+          setState({
+            insertAfter: null,
+            insertBefore: null,
+          })
+
+          setActiveBlock(newBlock.id)
+          document.getElementById(`edit-${ newBlock.id }`).scrollIntoView(true)
+
+        },
         onDblclick: e => {
 
           let newBlock = createBlock(type)
@@ -4098,7 +4374,7 @@
             },
             Toggle({
               id      : 'save-as-template',
-              checked : Boolean(is_template),
+              checked : is_template == 1,
               onChange: e => {
                 setEmailData({
                   is_template: e.target.checked,
@@ -5546,6 +5822,14 @@
                   className: 'gh-input-group',
                 },
                 [
+                  ! Groundhogg.ai.enabled ? null : Button({
+                      id       : 'generate-ai',
+                      className: 'gh-button secondary',
+                      onClick: NewAImodal,
+                    },
+                    [
+                      '🤖 AI',
+                    ]),
                   Button({
                       id       : 'import-html',
                       className: 'gh-button secondary',
@@ -6661,11 +6945,11 @@
   const tinyMceCSS = () => {
 
     let {
-      p,
-      h1,
-      h2,
-      h3,
-      a,
+      p = {},
+      h1 = {},
+      h2 = {},
+      h3 = {},
+      a = {},
       css = '',
     } = getActiveBlock()
 
@@ -6773,7 +7057,7 @@
       ...fontDefaults(style),
       color,
       fontSize  : `${ fontSize }px`,
-      fontFamily: removeQuotes(fontFamily),
+      fontFamily: normalizeFont(fontFamily),
 
     }
   }
@@ -6808,7 +7092,7 @@
     const fontDisplay = font => Span({ style: { fontFamily: font } },
       fontFamilies[font])
 
-    fontFamily = removeQuotes(fontFamily)
+    fontFamily = normalizeFont(fontFamily)
 
     return Div({
         className: 'font-controls display-flex column gap-10',
@@ -7123,11 +7407,28 @@
     },
   })
 
+  // cleverly get the style from the content
+  const parseFontStyleFromTag = (el,tag) => {
+
+    let styledEl = el.querySelector(tag)
+    if ( ! styledEl ){
+      return BlockRegistry.defaults({
+        type: 'text'
+      })[tag]
+    }
+
+    return parseFontStyle(styledEl.style)
+  }
+
   // Register the text block
   registerBlock('text', 'Text', {
     attributes: {
+      p: el  => parseFontStyleFromTag(el, 'p,li'),
+      a: el  => parseFontStyleFromTag(el, 'a'),
+      h1: el => parseFontStyleFromTag(el, 'h1'),
+      h2: el => parseFontStyleFromTag(el, 'h2'),
+      h3: el => parseFontStyleFromTag(el, 'h3'),
       content: el => {
-        console.log('content', el)
         let divWrap = el.querySelector('.text-content-wrap')
         return divWrap ? divWrap.innerHTML : el.innerHTML
       },
@@ -7289,6 +7590,12 @@
           return `${ selector } p, ${ selector } li{${ fontStyle(style) }}`
         }
 
+        // don't use fill here
+        if ( tag === 'a' ){
+          //language=CSS
+          return `${ selector } a{ ${objectToStyle(style)} }`
+        }
+
         return `${ selector } ${ tag }{${ fontStyle(style) }}`
       }
 
@@ -7357,9 +7664,7 @@
       align          : el => el.querySelector('td[align]').getAttribute('align'),
       borderStyle    : el => parseBorderStyle(el.querySelector('td.email-button').style),
       backgroundColor: el => el.querySelector('td.email-button').getAttribute('bgcolor'),
-      style          : el => {
-        return parseFontStyle(el.querySelector('a').style)
-      },
+      style          : el => parseFontStyle(el.querySelector('a').style),
     },
 //language=HTML
     svg: `
@@ -8381,13 +8686,15 @@
 
   // Register the shortcode block
   registerDynamicBlock('shortcode', 'Shortcode', {
-    attributes: ['shortcode'],
+    attributes:{
+      content: el => el.firstElementChild.firstElementChild.innerHTML,
+    },
     svg       : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96.24 96.24">
   <path fill="currentColor" d="M48.122 0C21.587 0 .001 21.585.001 48.118c0 26.535 21.587 48.122 48.12 48.122 26.532 0 48.117-21.587 48.117-48.122C96.239 21.586 74.654 0 48.122 0zM4.857 48.118a43.085 43.085 0 0 1 3.746-17.606l20.638 56.544C14.81 80.042 4.857 65.243 4.857 48.118zm43.265 43.267c-4.247 0-8.346-.623-12.222-1.763l12.98-37.719 13.301 36.433c.086.215.191.411.308.596a43.204 43.204 0 0 1-14.367 2.453zm5.961-63.551c2.604-.137 4.953-.412 4.953-.412 2.33-.276 2.057-3.701-.277-3.564 0 0-7.007.549-11.532.549-4.25 0-11.396-.549-11.396-.549-2.332-.137-2.604 3.427-.273 3.564 0 0 2.208.275 4.537.412l6.74 18.469-9.468 28.395-15.752-46.863c2.608-.136 4.952-.412 4.952-.412 2.33-.275 2.055-3.702-.278-3.562 0 0-7.004.549-11.53.549a94.6 94.6 0 0 1-2.784-.052C19.709 12.611 33.008 4.856 48.122 4.856c11.265 0 21.519 4.306 29.215 11.357-.187-.01-.368-.035-.562-.035-4.248 0-7.264 3.702-7.264 7.679 0 3.564 2.055 6.582 4.248 10.146 1.647 2.882 3.567 6.585 3.567 11.932 0 3.704-1.422 8-3.293 13.986l-4.315 14.421zm15.788 57.682 13.215-38.208c2.471-6.171 3.29-11.106 3.29-15.497 0-1.591-.104-3.07-.292-4.449a43.011 43.011 0 0 1 5.301 20.758c-.001 15.96-8.653 29.896-21.514 37.396z"/>
 </svg>`,
 
     controls    : ({
-      shortcode,
+      content,
       updateBlock,
     }) => Fragment([
       ControlGroup({
@@ -8402,12 +8709,12 @@
             },
             Textarea({
               className  : 'code',
-              value      : shortcode,
+              value      : content,
               id         : 'shortcode-paste',
               placeholder: '[your-shortcode]',
               onChange   : e => {
                 updateBlock({
-                  shortcode: e.target.value,
+                  content: e.target.value,
                 })
               },
             })),
@@ -8417,6 +8724,8 @@
           `<p>Shortcodes will <b>not</b> load any JavaScript or CSS dependencies. You can add style using custom CSS in the advanced tab.</p>`,
         ]),
     ]),
+    html        : ({ DynamicContent, content }) => isGeneratingHTML() ? content : DynamicContent(),
+    edit        : ({ DynamicContent, content }) => DynamicContent(),
     gutenberg   : ({ content }) => {
       return Div({}, [
         `<!-- wp:shortcode ${ JSON.stringify({ ghReplacements: true }) } -->`,
@@ -9208,7 +9517,8 @@
 </svg>`,
     attributes: {
       children: (el) => {
-        return parseBlocksFromTable(el.firstElementChild)
+        let blockTable = el.querySelector( 'table:not(.email-columns)' )
+        return parseBlocksFromTable( blockTable )
       },
     },
     controls  : ({
@@ -9322,7 +9632,7 @@
     tiktok     : 'TikTok',
     tumblr     : 'Tumblr',
     twitch     : 'Twitch',
-    twitter    : 'X',
+    twitter    : '𝕏',
     vimeo      : 'Vimeo',
     whatsapp   : 'WhatsApp',
     wordpress  : 'WordPress',
@@ -9467,6 +9777,8 @@
     sortable: true,
     onChange,
   })
+
+  // const fixSocials = (socials) => {}
 
   // Register the socials block
   registerBlock('social', 'Socials', {
@@ -10574,6 +10886,7 @@
       }
       catch (e) {
         block[getter] = BlockType.defaults[getter]
+        console.warn( e )
       }
     }
 
@@ -10738,6 +11051,379 @@
     })
   })
 
+  const setupEmailFromAIresponse = r => {
+    const {
+      subject = '',
+      preview = '',
+      blocks = [],
+      settings = {},
+    } = r
+
+    const {
+      template = 'boxed',
+      width = 600,
+      direction = 'ltr',
+      alignment = 'center',
+      backgroundColor = '',
+    } = settings
+
+    setEmailData({
+      title       : subject,
+      subject     : subject,
+      preview_text: preview,
+      message_type: 'marketing',
+    })
+
+    setEmailMeta({
+      template,
+      width,
+      direction,
+      alignment,
+      backgroundColor,
+    })
+
+    setIsGeneratingHTML(true)
+    let content = renderBlocksHTML( blocks.map(__replaceId) )
+    setIsGeneratingHTML(false)
+
+    // run through build first?
+    let parsedBlocks = parseBlocksFromContent( content )
+    // let parsedBlocks = blocks.map(__replaceId)
+    // normalize known block issues with AI
+
+    setState({ page: 'editor' })
+    setBlocks(parsedBlocks, false)
+    renderEditor()
+    TitlePrompt()
+  }
+
+  const NewAImodal = () => {
+
+    const elements = new TokenList()
+    elements.add('text')
+    elements.add('images')
+
+    const AiState = Groundhogg.createState({
+      method    : 'prompt', // or 'email'
+      generating: false,
+      topic     : '',
+      tone      : 'casual',
+      design    : 'simple',
+      context   : 'N/A',
+      index     : 0,
+      ai_email  : null,
+      job_id    : null,
+    })
+
+    let prevPrompts = JSON.parse(localStorage.getItem('gh-ai-prompts') ?? '[]')
+
+    const PromptMethod = ({
+      close,
+      morph,
+    }) => Div({},
+      [
+        `<h2>Describe the email you want to generate!</h2>`,
+        Pg({ className: 'no-margin-bottom' }, 'What is the topic for this email?'),
+        Textarea({
+          id         : 'ai-topic',
+          name       : 'ai_topic',
+          placeholder: __('Most recent blog posts.', 'groundhogg'),
+          className  : 'full-width',
+          value      : AiState.topic,
+          readonly   : AiState.generating,
+          onInput    : e => {
+            AiState.set({
+              topic: e.target.value,
+            })
+          },
+        }),
+        Div({
+          className: 'display-flex gap-5 column',
+        }, [
+          Pg({ className: 'no-margin-bottom' }, 'In what tone do you want the content?'),
+          Select({
+            id      : 'ai-tone',
+            name    : 'ai-tone',
+            selected: AiState.tone,
+            options : {
+              happy      : 'Happy',
+              silly      : 'Silly',
+              goofy      : 'Goofy',
+              formal     : 'Formal',
+              casual     : 'Casual',
+              personal   : 'Personal',
+              serious    : 'Serious',
+              grave      : 'Grave',
+              angry      : 'Angry',
+              flirtatious: 'Flirtatious',
+            },
+            onChange: e => AiState.set({ tone: e.target.value }),
+          }),
+          Pg({ className: 'no-margin-bottom' }, 'What kind of design do you want?'),
+          Select({
+            id      : 'ai-design',
+            name    : 'ai-design',
+            selected: AiState.design,
+            options : {
+              simple    : 'Simple',
+              newsletter: 'Newsletter',
+              flashy    : 'Flashy',
+              personal  : 'Personal',
+              corporate : 'Corporate',
+              minimal   : 'Minimal',
+              playful   : 'Playful',
+              ecommerce : 'Ecommerce',
+              seasonal  : 'Seasonal',
+            },
+            onChange: e => AiState.set({ design: e.target.value }),
+          }),
+          Pg({ className: 'no-margin-bottom' }, 'Do you want to include any specific blocks?'),
+          ...[
+            'text',
+            'headings',
+            'images',
+            'columns',
+            'social links',
+            'posts',
+            'buttons',
+          ].map(element => {
+            return Div({ className: 'display-flex gap-5' }, [
+              Toggle({
+                id      : 'ai-include-' + element,
+                checked : elements.contains(element),
+                onChange: e => {
+                  if (e.target.checked) {
+                    elements.add(element)
+                  }
+                  else {
+                    elements.remove(element)
+                  }
+                },
+              }),
+              element,
+            ])
+          }),
+          Pg({ className: 'no-margin-bottom' }, 'Any context you want to add?'),
+          Textarea({
+            id         : 'ai-context',
+            name       : 'ai_context',
+            placeholder: __('The target audience of this email is marketers.', 'groundhogg'),
+            className  : 'full-width',
+            value      : AiState.context,
+            readonly   : AiState.generating,
+            onInput    : e => {
+              AiState.set({
+                context: e.target.value,
+              })
+            },
+          }),
+          Button({
+            id       : 'upload-ai-prompt',
+            className: 'gh-button primary' + ( AiState.generating ? ' loading-dots' : '' ),
+            disabled : AiState.generating,
+            onClick  : e => {
+              AiState.set({
+                generating: true,
+              })
+
+              let interval = setInterval(() => {
+                AiState.set({
+                  index: AiState.index + 1,
+                })
+                morph()
+              }, 3000)
+
+              morph()
+
+              let prompt = {
+                topic   : AiState.topic,
+                tone    : AiState.tone,
+                design  : AiState.design,
+                elements: [...elements],
+                context : AiState.context,
+              }
+
+              prevPrompts.push(prompt)
+              localStorage.setItem('gh-ai-prompts', JSON.stringify(prevPrompts))
+
+              prompt.elements = Groundhogg.element.andList(prompt.elements)
+
+              Groundhogg.ai.request({
+                type: 'emailJson',
+                ...prompt,
+              }).then(setupEmailFromAIresponse).catch(err => {
+                dialog({
+                  type   : 'error',
+                  message: err.message,
+                })
+                AiState.set({
+                  generating: false,
+                })
+                morph()
+              }).finally(() => {
+                close()
+                clearInterval(interval)
+              })
+            },
+          }, AiState.generating ? Groundhogg.ai.AiGeneratingText(AiState.index) : 'Generate'),
+          prevPrompts.length ? Button({
+            id       : 'restore-last-prompt',
+            className: 'gh-button secondary',
+            disabled : AiState.generating,
+            onClick  : e => {
+
+              let lastPrompt = prevPrompts.shift()
+              localStorage.setItem('gh-ai-prompts', JSON.stringify(prevPrompts))
+
+              AiState.set({
+                topic  : lastPrompt.topic,
+                tone   : lastPrompt.tone,
+                design : lastPrompt.design,
+                context: lastPrompt.context,
+              })
+
+              elements.clear()
+              elements.add(...lastPrompt.elements)
+
+              morph()
+            },
+          }, 'Restore last prompt') : null,
+        ]),
+      ])
+
+    const EmailMethod = ({
+      close,
+      morph,
+    }) => {
+
+      if ( ! AiState.ai_email ) {
+        ajax({
+          action: 'gh_generate_ai_converter_email_address'
+        }).then( r => {
+
+          if ( r.success === false ){
+            throw new Error(r.data.error)
+          }
+
+          AiState.set({
+            ai_email: r.email,
+            job_id  : r.job_id,
+          })
+          morph()
+        }).catch( err => {
+          dialog({
+            type: 'error',
+            message: err.message
+          })
+        })
+      }
+
+      return Div({}, [
+        `<h2>Make any email Groundhogg compatible with AI!</h2>`,
+        Pg({ className: 'no-margin-bottom' }, 'Forward any email to the following email address...'),
+        AiState.ai_email ? Div({ className: 'gh-input-group' }, [
+          Input({
+            value    : AiState.ai_email,
+            readonly : true,
+            className: 'code full-width',
+            onClick  : e => {
+              e.target.select()
+              navigator.clipboard.writeText(AiState.ai_email)
+              dialog({
+                message: 'Copied to clipboard!',
+              })
+            },
+          }),
+          Button({
+            className: 'gh-button icon secondary',
+            onClick  : e => {
+              navigator.clipboard.writeText(AiState.ai_email)
+              dialog({
+                message: 'Copied to clipboard!',
+              })
+            },
+          }, icons.duplicate),
+        ]) : Div({ className: 'skeleton-loading full-width', style: {
+          height: '30px'
+        } }),
+        Pg({ className: 'no-margin-bottom' }, 'When you have forwarded the email, click the button to continue.'),
+        Button({
+          id       : 'check-ai-job',
+          className: 'gh-button primary' + ( AiState.generating ? ' loading-dots' : '' ),
+          disabled : AiState.generating || ! AiState.job_id,
+          onClick  : e => {
+            AiState.set({
+              generating: true,
+            })
+
+            let interval = setInterval(() => {
+              AiState.set({
+                index: AiState.index + 1,
+              })
+              morph()
+            }, 3000)
+
+            morph()
+
+            prompt.elements = Groundhogg.element.andList(prompt.elements)
+
+            Groundhogg.ai.poll(AiState.job_id).then(setupEmailFromAIresponse).catch(err => {
+              dialog({
+                type   : 'error',
+                message: err.message,
+              })
+              AiState.set({
+                generating: false,
+              })
+              morph()
+            }).finally(() => {
+              clearInterval(interval)
+              close()
+            })
+          },
+        }, AiState.generating ? Groundhogg.ai.AiGeneratingText(AiState.index) : 'I sent an email!'),
+      ])
+    }
+
+    Modal({
+        onOpen: ({ modal }) => {
+          document.getElementById('ai-topic').focus()
+        },
+      },
+      ({
+        close,
+        morph,
+      }) => Div({},
+        [
+          ButtonToggle({
+            id      : 'change-ai-method',
+            options : [
+              {
+                text: '💬 Prompt',
+                id  : 'prompt',
+              },
+              {
+                text: '📨 Email',
+                id  : 'email',
+              },
+            ],
+            selected: AiState.method,
+            onChange: method => {
+              AiState.set({ method })
+              morph()
+            },
+          }),
+          AiState.method === 'prompt' ? PromptMethod({
+            close,
+            morph,
+          }) : EmailMethod({
+            close,
+            morph,
+          }),
+        ]))
+
+  }
+
   Groundhogg.EmailEditor = initialize
   Groundhogg.emailEditor = {
     PostTagReference,
@@ -10750,6 +11436,13 @@
     isCreating,
     isBlockEditor,
     isHTMLEditor,
+    getBlocks,
+    pollAi: job_id => Groundhogg.ai.poll(job_id).then(setupEmailFromAIresponse).catch(err => {
+      dialog({
+        type   : 'error',
+        message: err.message,
+      })
+    }),
     functions : {
       optimizeCSS,
     },

@@ -247,6 +247,20 @@ class Main_Updater extends Old_Updater {
 					}
 				}
 			],
+			'4.2.6' => [
+				'automatic'   => true,
+				'description' => __( 'Update the safe-mode must-use plugin file.', 'groundhogg' ),
+				'callback'    => function () {
+					maybe_install_safe_mode_plugin();
+				}
+			],
+			'4.2.10' => [
+				'automatic'   => true,
+				'description' => __( 'Update the tag relationships table.', 'groundhogg' ),
+				'callback'    => function () {
+					db()->tag_relationships->create_table(); // add the date_created column
+				}
+			]
 		];
 	}
 

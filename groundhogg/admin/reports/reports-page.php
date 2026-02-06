@@ -140,6 +140,7 @@ class Reports_Page extends Tabbed_Admin_Page {
 				wp_enqueue_style( 'groundhogg-admin-loader' );
 				wp_enqueue_style( 'baremetrics-calendar' );
 				wp_enqueue_script( 'groundhogg-admin-reporting' );
+				wp_enqueue_script( 'groundhogg-admin-components' );
 
 				$start = get_request_var( 'start' );
 				$end   = get_request_var( 'end' );
@@ -285,7 +286,9 @@ class Reports_Page extends Tabbed_Admin_Page {
 				'table_broadcast_stats',
 				'table_broadcast_link_clicked',
 			] : [
-				'table_all_broadcasts_performance'
+				'table_all_broadcasts_performance',
+				'total_emails_sent',
+				'num_broadcasts_sent',
 			],
 			'forms'      => [
 				'table_form_activity',

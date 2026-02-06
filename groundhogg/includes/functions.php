@@ -75,6 +75,7 @@ add_constant_support( 'gh_recaptcha_secret_key' );
 add_constant_support( 'gh_recaptcha_site_key' );
 add_constant_support( 'gh_click_tracking_delay' );
 add_constant_support( 'gh_open_tracking_delay' );
+add_constant_support( 'gh_managed_page_name_override' );
 
 /**
  * If an email address is provided but a space is in place of a plus then swap out the space for a plus
@@ -560,6 +561,22 @@ function get_url_var( $key = '', $default = false ) {
  */
 function get_url_param( $key = '', $default = false ) {
 	return get_url_var( $key, $default );
+}
+
+/**
+ * Retrieve a URL param from the referrer
+ *
+ * @param $key string
+ * @param $default mixed
+ *
+ * @return mixed
+ */
+function get_referrer_url_param($key = '', $default = false ) {
+
+    $referrer = wpgh_get_referer();
+    wp_parse_str( wp_parse_url( $referrer, PHP_URL_QUERY ), $query );
+
+	return get_array_var( $query, $key, $default );
 }
 
 /**
@@ -2277,6 +2294,46 @@ function get_exportable_fields( $extra = [] ) {
 }
 
 /**
+ * Nicely displays a variable
+ *
+ * @param $var
+ * @param $echo
+ *
+ * @return mixed
+ */
+function display_var( $var, $echo = false ) {
+
+	switch ( gettype( $var ) ) {
+		case 'string':
+			break;
+		case 'integer':
+			$var = _nf( $var );
+			break;
+		case 'boolean':
+			$var = $var ? __( 'Yes', 'groundhogg' ) : __( 'No', 'groundhogg' );
+			break;
+		case 'array':
+			$var = multi_implode( ', ', array_map( function ( $v ) {
+				return display_var( $v );
+			}, $var ) );
+			break;
+		case 'object':
+			$var = display_var( get_object_vars( $var ) );
+			break;
+		case 'NULL':
+		default:
+			$var = '';
+			break;
+	}
+
+	if ( $echo ) {
+		echo esc_html( $var );
+	}
+
+	return $var;
+}
+
+/**
  * Export a field for the contact exporter
  *
  * @param Contact $contact
@@ -2291,9 +2348,6 @@ function export_field( $contact, $field = '' ) {
 	switch ( $field ) {
 		case 'full_name':
 			$return = $contact->get_full_name();
-			break;
-		default:
-			$return = $contact->$field;
 			break;
 		case 'notes':
 			$return = wp_json_encode( $contact->get_notes() );
@@ -2339,6 +2393,17 @@ function export_field( $contact, $field = '' ) {
 				case 'unsub_feedback':
 					$return = $activity->get_meta( 'feedback' );
 					break;
+			}
+
+			break;
+		default:
+
+			$custom_field = Properties::instance()->get_field( $field );
+
+			if ( $custom_field ) {
+				$return = display_custom_field( $custom_field, $contact, false );
+			} else {
+				$return = display_var( $contact->$field );
 			}
 
 			break;
@@ -3314,7 +3379,15 @@ function blacklist_check( $data = '' ) {
  * @return mixed|void
  */
 function get_managed_page_name() {
-	return apply_filters( 'groundhogg/managed_page_name', get_option( 'gh_managed_page_name_override', 'gh' ) );
+
+    $name = 'gh';
+
+    $option_override = get_option( 'gh_managed_page_name_override' );
+    if ( ! empty( $option_override ) ) {
+        $name = $option_override;
+    }
+
+	return apply_filters( 'groundhogg/managed_page_name', $name );
 }
 
 /**
@@ -3401,22 +3474,11 @@ function add_managed_rewrite_rule( $regex = '', $query = '', $after = 'top' ) {
 		$query = $ahead . $query;
 	}
 
-	if ( strpos( $regex, '^' . $managed_page_name ) !== 0 ) {
-		$regex = '^' . $managed_page_name . '/' . $regex;
+	if ( ! str_starts_with( $regex, '^' . $managed_page_name ) ) {
+		$regex = '^' . $managed_page_name . '/' . ltrim( $regex );
 	}
 
 	add_rewrite_rule( $regex, $query, $after );
-}
-
-/**
- * @deprecated since 2.0.9.2
- *
- * @param string $string
- *
- * @return string
- */
-function managed_rewrite_rule( $string = '' ) {
-	return sprintf( 'index.php?pagename=%s&', get_managed_page_name() ) . $string;
 }
 
 /**
@@ -3627,6 +3689,11 @@ function remote_post_json( $url = '', $body = [], $method = 'POST', $headers = [
 	if ( $method !== 'GET' && ! isset_not_empty( $headers, 'Content-type' ) ) {
 		$headers['Content-type'] = sprintf( 'application/json; charset=%s', get_bloginfo( 'charset' ) );
 	}
+
+    // for some reason when body is false or null it breaks, just make it am empty array instead
+    if ( is_null( $body ) || $body === false ){
+        $body = [];
+    }
 
 	switch ( $method ) {
 		case 'POST':
@@ -5560,12 +5627,18 @@ function handle_ajax_user_meta_picker() {
 	}
 
 	$search = sanitize_text_field( get_post_var( 'term' ) );
+    $cache_key = 'ump/' . $search;
+	$keys = wp_cache_get( $cache_key, 'groundhogg/pickers', false, $found );
 
-	global $wpdb;
+	if ( ! $found ) {
+		global $wpdb;
 
-	$keys = $wpdb->get_col(
-		"SELECT DISTINCT meta_key FROM {$wpdb->usermeta} WHERE `meta_key` RLIKE '{$search}' ORDER BY meta_key ASC"
-	);
+		$keys = $wpdb->get_col(
+			$wpdb->prepare( "SELECT DISTINCT meta_key FROM {$wpdb->usermeta} WHERE `meta_key` RLIKE %s ORDER BY meta_key ASC", $search )
+		);
+
+        wp_cache_set( $cache_key, $keys, 'groundhogg/pickers', HOUR_IN_SECONDS );
+	}
 
 	$response = array_map( function ( $key ) {
 		return [
@@ -5598,14 +5671,20 @@ function handle_ajax_meta_picker() {
 	}
 
 	$search = sanitize_text_field( get_post_var( 'term' ) );
+	$cache_key = 'cmp/' . $search;
+	$keys = wp_cache_get( $cache_key, 'groundhogg/pickers', false, $found );
 
-	$table = get_db( 'contactmeta' );
+    if ( ! $found ) {
+	    $table = db()->contactmeta;
 
-	global $wpdb;
+	    global $wpdb;
 
-	$keys = $wpdb->get_col(
-		"SELECT DISTINCT meta_key FROM {$table->get_table_name()} WHERE `meta_key` RLIKE '{$search}' ORDER BY meta_key ASC"
-	);
+	    $keys = $wpdb->get_col(
+		    $wpdb->prepare( "SELECT DISTINCT meta_key FROM {$table->get_table_name()} WHERE `meta_key` RLIKE %s ORDER BY meta_key ASC", $search )
+	    );
+
+        wp_cache_set( $cache_key, $keys, 'groundhogg/pickers', HOUR_IN_SECONDS );
+    }
 
 	$response = array_map( function ( $key ) {
 		return [
@@ -5640,13 +5719,20 @@ function handle_ajax_meta_value_picker() {
 	$search   = sanitize_text_field( get_post_var( 'term' ) );
 	$meta_key = sanitize_text_field( get_post_var( 'meta_key' ) );
 
-	$table = get_db( 'contactmeta' );
+	$cache_key = 'cmp/' . $meta_key . '/' . $search;
+	$keys = wp_cache_get( $cache_key, 'groundhogg/pickers', false, $found );
 
-	global $wpdb;
+    if ( ! $found ){
+	    $table = db()->contactmeta;
 
-	$keys = $wpdb->get_col(
-		"SELECT DISTINCT meta_value FROM {$table->get_table_name()} WHERE `meta_key` = '{$meta_key}' AND `meta_value` RLIKE '{$search}' ORDER BY meta_value ASC"
-	);
+	    global $wpdb;
+
+	    $keys = $wpdb->get_col(
+		    $wpdb->prepare( "SELECT DISTINCT meta_value FROM {$table->get_table_name()} WHERE `meta_key` = %s AND `meta_value` RLIKE %s ORDER BY meta_value ASC", $meta_key, $search )
+	    );
+
+        wp_cache_set( $cache_key, $keys, 'groundhogg/pickers', HOUR_IN_SECONDS );
+    }
 
 	$response = array_map( function ( $key ) {
 		return [
@@ -6120,6 +6206,28 @@ function array_filter_by_keys( array $associative_array, array $keys_to_keep ) {
 }
 
 /**
+ * Given an array and a list of keys, extract those keys from the array and return them, as a new array
+ *
+ * @param $array
+ * @param $keys
+ *
+ * @return array
+ */
+function array_splice_keys( &$array, $keys ) {
+
+    $new = [];
+
+	foreach ( $keys as $key ) {
+        if ( isset( $array[ $key ] ) ) {
+            $new[ $key ] = $array[ $key ];
+            unset( $array[ $key ] );
+        }
+    }
+
+    return $new;
+}
+
+/**
  * Given an associative array apply a list of callbacks provided by the callbacks array
  *
  * @param array      $array     the items
@@ -6336,6 +6444,7 @@ function uninstall_groundhogg() {
 	$wpdb->query( "DELETE FROM $wpdb->options WHERE option_name LIKE '_site_transient_timeout_gh_%'" );
 
 	uninstall_gh_cron_file();
+    uninstall_safe_mode_plugin();
 
 	do_action( 'groundhogg/uninstall' );
 }
@@ -6396,7 +6505,7 @@ function get_default_field_label( $field = '' ) {
  *
  * @return mixed[]
  */
-function array_map_to_class( &$array, $class ) {
+function array_map_to_class( array &$array, string $class ) {
 	foreach ( $array as &$mixed ) {
 
 		if ( is_a( $mixed, $class ) ) {
@@ -6417,7 +6526,7 @@ function array_map_to_class( &$array, $class ) {
  *
  * @return mixed[]
  */
-function map_to_class( $array, $class ) {
+function map_to_class( array $array, string $class ) {
 	foreach ( $array as &$mixed ) {
 
 		if ( is_a( $mixed, $class ) ) {
@@ -6433,9 +6542,11 @@ function map_to_class( $array, $class ) {
 /**
  * @param $array
  *
+ * @depreacted use `as_contacts()` instead
+ *
  * @return Contact[]
  */
-function array_map_to_contacts( &$array ) {
+function array_map_to_contacts( array &$array ) {
 	return array_map_to_class( $array, Contact::class );
 }
 
@@ -6444,8 +6555,50 @@ function array_map_to_contacts( &$array ) {
  *
  * @return Step[]
  */
-function array_map_to_step( &$array ) {
+function as_contacts( array $array ) {
+	return map_to_class( $array, Contact::class );
+}
+
+/**
+ * @param $array
+ *
+ * @depreacted use `as_steps()` instead
+ *
+ * @return Step[]
+ */
+function array_map_to_step( array &$array ) {
 	return array_map_to_class( $array, Step::class );
+}
+
+/**
+ * @param $array
+ *
+ * @return Step[]
+ */
+function as_steps( array $array ) {
+	return map_to_class( $array, Step::class );
+}
+
+/**
+ * @param $array
+ *
+ * @return Event_Queue_Item[]
+ */
+function as_event_queue_items( array $array ) {
+	return map_to_class( $array, Event_Queue_Item::class );
+}
+
+function as_class( array $array, string $class ) {
+	return map_to_class( $array, $class );
+}
+
+/**
+ * @param $array
+ *
+ * @return Event[]
+ */
+function as_events( array $array ) {
+	return map_to_class( $array, Event::class );
 }
 
 /**
@@ -9065,4 +9218,38 @@ function redact_meta_table( $table ) {
     " );
 
 	$table->cache_set_last_changed();
+}
+
+/**
+ * Get a value from an object or array using dot notation instead of direct key access
+ *
+ * @param $data array|object
+ * @param $path string
+ * @param $default mixed
+ *
+ * @return mixed|null
+ */
+function get_by_dotn($data, $path, $default = null) {
+	if ($data === null || $path === '') {
+		return $default;
+	}
+
+	$keys = explode('.', $path);
+
+	foreach ($keys as $key) {
+		// convert purely numeric keys to int for array index access
+		if (ctype_digit($key)) {
+			$key = (int) $key;
+		}
+
+		if (is_array($data) && array_key_exists($key, $data)) {
+			$data = $data[$key];
+		} elseif (is_object($data) && (isset($data->$key) || property_exists($data, $key))) {
+			$data = $data->$key;
+		} else {
+			return $default;
+		}
+	}
+
+	return $data;
 }

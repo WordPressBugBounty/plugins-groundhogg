@@ -2,10 +2,13 @@
 
 namespace Groundhogg\Reporting\New_Reports;
 
+use Groundhogg\Broadcast;
 use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\Event;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\base64_json_encode;
+use function Groundhogg\get_referrer_url_param;
+use function Groundhogg\get_url_var;
 
 class Total_Emails_Sent extends Base_Quick_Stat {
 
@@ -28,6 +31,10 @@ class Total_Emails_Sent extends Base_Quick_Stat {
 
 		if ( $this->get_funnel_id() ) {
 			$filter['funnel_id'] = $this->get_funnel_id();
+		}
+
+		if ( get_url_var( 'tab' ) === 'broadcasts' ){
+			$filter['type'] = 'broadcast_received';
 		}
 
 		return admin_page_url( 'gh_contacts', [
@@ -85,6 +92,22 @@ class Total_Emails_Sent extends Base_Quick_Stat {
 		            ->notEquals( 'email_id', 0 )
 		            ->greaterThanEqualTo( 'time', $start )
 		            ->lessThanEqualTo( 'time', $end );
+
+		if ( get_referrer_url_param( 'tab' ) === 'broadcasts' ){
+			$eventsQuery->where()->equals( 'event_type', Event::BROADCAST );
+			$eventsQuery->where()->equals( 'funnel_id', Broadcast::FUNNEL_ID );
+		}
+
+		// filter results by campaign
+		if ( $this->get_campaign_id() ) {
+			// Events
+			$join = $eventsQuery->addJoin( 'LEFT', 'object_relationships' );
+			$join->onColumn( 'primary_object_id', 'step_id' )
+			     ->equals( $join->alias . '.primary_object_type', 'broadcast' );
+
+			$eventsQuery->where()->equals( 'secondary_object_id', $this->get_campaign_id() )
+			          ->equals( 'secondary_object_type', 'campaign' );
+		}
 
 		return $eventsQuery->count();
 	}

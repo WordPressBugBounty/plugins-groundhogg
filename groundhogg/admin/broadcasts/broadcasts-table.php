@@ -243,6 +243,10 @@ class Broadcasts_Table extends WP_List_Table {
 			'href' => admin_page_url( $broadcast->is_email() ? 'gh_emails' : 'gh_sms', [ 'action' => 'edit', $broadcast->get_broadcast_type() => $broadcast->get_object_id() ] )
 		], $broadcast->is_email() ? esc_html__( 'Edit email', 'groundhogg' ) : esc_html__( 'Edit SMS' , 'groundhogg' ) );
 
+		if ( $broadcast->is_email() ){
+			$actions[] = html()->a( '#', esc_html__( 'Preview', 'groundhogg' ), [ 'class' => 'gh-email-preview', 'data-id' => $broadcast->get_object_id() ] );
+		}
+
 		// Add query action
 		$query = $broadcast->get_query();
 
@@ -500,15 +504,17 @@ class Broadcasts_Table extends WP_List_Table {
 
 		$actions = [];
 
-		switch ( $this->get_view() ) {
-			default:
-			case 'scheduled':
-				$actions['cancel'] = _x( 'Cancel', 'List table bulk action', 'groundhogg' );
-				break;
-			case 'cancelled':
-			case 'sent':
-				$actions['delete'] = _x( 'Delete', 'List table bulk action', 'groundhogg' );
-				break;
+		if ( in_array( $this->get_view(), [ 'scheduled', 'pending', 'sending' ] ) ) {
+			$actions['cancel'] = _x( 'Cancel', 'List table bulk action', 'groundhogg' );
+		}
+
+		if ( in_array( $this->get_view(), [ 'scheduled', 'pending', 'sending', 'sent' ] ) ) {
+			$actions['add_campaigns'] = _x( 'Add to campaign', 'List table bulk action', 'groundhogg' );
+			$actions['remove_campaigns'] = _x( 'Remove from campaign', 'List table bulk action', 'groundhogg' );
+		}
+
+		if ( in_array( $this->get_view(), [ 'cancelled', 'sent' ] ) ) {
+			$actions['delete'] = _x( 'Delete', 'List table bulk action', 'groundhogg' );
 		}
 
 		return apply_filters( 'wpgh_broadcast_bulk_actions', $actions );

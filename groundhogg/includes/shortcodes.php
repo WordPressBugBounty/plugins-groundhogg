@@ -54,10 +54,12 @@ class Shortcodes {
 			'class'   => '',
 			'id'      => 0,
 			'fill'    => false,
-			'contact' => null
+			'contact'     => null,
+			'theme'       => '',
+			'accent-color' => ''
 		], $atts );
 
-		$step = new Step( $atts['id'] );
+		$step = new Step( absint( $atts['id'] ) );
 
 		if ( $step->type_is( 'form_fill' ) ) {
 			$form = new Form( $atts );
@@ -163,23 +165,27 @@ class Shortcodes {
 
 	/**
 	 * Process the contact shortcode
+     * @depreacted use [ghr][/ghr] instead
 	 */
 	public function contact_replacement_shortcode( $atts ) {
+
 		$a = shortcode_atts( array(
 			'field'   => 'first',
 			'default' => ''
 		), $atts );
 
 		$contact = get_contactdata();
-		$default = $a['default'];
+		$default = esc_html( $a['default'] );
 
-		if ( ! empty( $default ) ) {
-			$content = sprintf( '{%s::%s}', $a['field'], $default );
-		} else {
-			$content = sprintf( '{%s}', $a['field'] );
-		}
+        $code = $a['field'];
 
-		return do_replacements( $content, $contact );
+        if ( ! replacements()->has_replacement( $code ) ) {
+            return '';
+        }
+
+        $replacement = ! empty( $default ) ? "{{$code}::{$default}}" : "{{$code}}";
+
+        return do_replacements( $replacement, $contact );
 	}
 
 	/**

@@ -133,6 +133,11 @@
    * @returns {*}
    */
   function domElementToReact (element, props = {}) {
+
+    if ( element.nodeType !== Node.ELEMENT_NODE ) {
+      return element.nodeValue
+    }
+
     // Get the tag name
     let tagName = element.tagName.toLowerCase()
 
@@ -286,6 +291,8 @@
 
         el.appendChild(child)
       })
+
+      el.morph = morph
     }
 
     for (let attributeName in attributes) {
@@ -482,6 +489,7 @@
         dataCell: cellIndex,
         onChange: e => onCellChange(rowIndex, cellIndex, e.target.value),
         setValue: value => onCellChange(rowIndex, cellIndex, value),
+        onCellChange
       }, row)),
       // Sortable Handle
       sortable ? makeEl('span', {
@@ -760,6 +768,7 @@
    */
   const MiniModal = ({
     selector = '',
+    target = null,
     from = 'right',
     dialogClasses = '',
     onOpen = () => {},
@@ -811,7 +820,7 @@
     // Run before positioning
     onOpen()
 
-    let targetElement = document.querySelector(selector)
+    let targetElement = selector && target === null ? document.querySelector(selector) : target
 
     let {
       right,

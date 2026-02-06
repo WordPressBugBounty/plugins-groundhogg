@@ -18,19 +18,20 @@ class Scripts {
 		add_action( 'admin_enqueue_scripts', [ $this, 'register_admin_styles' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'register_admin_scripts' ] );
 
-		add_action( 'enqueue_block_editor_assets', [ $this, 'register_block_editor_assets' ] );
-
 		add_action( 'wp_after_admin_bar_render', [ $this, 'toolbar_scripts' ] );
 
 		add_filter( 'wp_refresh_nonces', [ $this, 'refresh_nonces' ], 10, 3 );
 
-		add_action( 'enqueue_block_editor_assets', [ $this, 'block_editor_scripts' ] );
+		add_action( 'enqueue_block_editor_assets', [ $this, 'block_editor_assets' ], 5 );
 		add_action( 'enqueue_block_assets', [ $this, 'block_assets' ] );
 	}
 
-	public function block_editor_scripts() {
+	public function block_editor_assets() {
+		wp_enqueue_script( 'groundhogg-admin' );
+		wp_enqueue_script( 'groundhogg-make-el' );
 		wp_enqueue_script( 'groundhogg-gutenberg-filters' );
 		wp_enqueue_style( 'groundhogg-admin-filters' );
+		wp_register_style( 'groundhogg-form', GROUNDHOGG_ASSETS_URL . 'css/frontend/form.css', [], GROUNDHOGG_VERSION );
 	}
 
 	public function block_assets() {
@@ -84,10 +85,6 @@ class Scripts {
 
 	}
 
-	public function register_block_editor_assets() {
-		wp_register_style( 'groundhogg-form', GROUNDHOGG_ASSETS_URL . 'css/frontend/form.css', [], GROUNDHOGG_VERSION );
-	}
-
 	public function is_script_debug_enabled() {
 		return Plugin::$instance->settings->is_option_enabled( 'script_debug' );
 	}
@@ -128,13 +125,13 @@ class Scripts {
 				'site_key' => $site_key
 			] );
 
-			$form_v2_dependencies[] = 'google-recaptcha';
+//			$form_v2_dependencies[] = 'google-recaptcha';
 			$form_dependencies[]    = 'groundhogg-google-recaptcha';
 		}
 
 		if ( is_turnstile_enabled() ){
 			wp_register_script( 'cf-turnstile', 'https://challenges.cloudflare.com/turnstile/v0/api.js' );
-			$form_v2_dependencies[] = 'cf-turnstile';
+//			$form_v2_dependencies[] = 'cf-turnstile';
 		}
 
 		wp_register_script( 'groundhogg-ajax-form', GROUNDHOGG_ASSETS_URL . 'js/frontend/ajax-form' . $dot_min . '.js', $form_dependencies, GROUNDHOGG_VERSION, true );
@@ -269,6 +266,10 @@ class Scripts {
 			'groundhogg-admin',
 			'wp-api-request' // needed for wpApiSettigns.nonce
 		], GROUNDHOGG_VERSION );
+
+		wp_register_script( 'groundhogg-ai', GROUNDHOGG_ASSETS_URL . 'js/admin/ai' . $dot_min . '.js', [
+			'groundhogg-admin-data'
+		], GROUNDHOGG_VERSION, true );
 
 		wp_register_script( 'groundhogg-admin-element', GROUNDHOGG_ASSETS_URL . 'js/admin/element' . $dot_min . '.js', [
 			'groundhogg-admin',
@@ -434,6 +435,7 @@ class Scripts {
 
 		wp_register_script( 'groundhogg-email-block-editor', GROUNDHOGG_ASSETS_URL . 'js/admin/emails/email-block-editor' . $dot_min . '.js', [
 			'groundhogg-admin',
+			'groundhogg-ai',
 			'groundhogg-admin-element',
 			'groundhogg-admin-components',
 			'groundhogg-admin-saved-replies',
@@ -681,7 +683,10 @@ class Scripts {
 				'turnstile'        => [
 					'enabled' => is_turnstile_enabled(),
 				],
-				'screen'           => get_current_screen()
+				'screen' => get_current_screen(),
+				'ai'     => [
+					'enabled' => false
+				]
 			] ), 'before' );
 
 		wp_register_script( 'groundhogg-admin-fullframe', GROUNDHOGG_ASSETS_URL . 'js/frontend/fullframe' . $dot_min . '.js', [ 'jquery' ], GROUNDHOGG_VERSION, true );

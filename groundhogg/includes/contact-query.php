@@ -1153,7 +1153,51 @@ class Contact_Query extends Table_Query {
 			}
 
 			$alias = $activityQuery->joinMeta( $key );
-			$activityQuery->where()->compare( "$alias.meta_value", $value, $compare );
+
+			Filters::string( "$alias.meta_value", [
+				'compare' => $compare,
+				'value'   => $value
+			], $activityQuery->where() );
+		}
+	}
+
+	/**
+	 * Special handler for WPFusion activity
+	 *
+	 * @throws \Exception
+	 *
+	 * @param  Where  $where
+	 * @param $filter
+	 *
+	 * @return void
+	 */
+	public static function filter_wp_fusion_activity( $filter, Where $where ) {
+
+		$filter = wp_parse_args( $filter, [
+			'event_name'          => '',
+			'event_name_compare'  => 'equals',
+			'event_value'         => '',
+			'event_value_compare' => 'equals'
+		] );
+
+		$activityQuery = self::basic_activity_filter( 'wp_fusion', $filter, $where );
+
+		if ( ! empty( $filter['event_name'] ) ){
+			$alias = $activityQuery->joinMeta( 'event_name' );
+
+			Filters::string( "$alias.meta_value", [
+				'compare' => $filter['event_name_compare'],
+				'value'   => $filter['event_name']
+			], $activityQuery->where() );
+		}
+
+		if ( ! empty( $filter['event_value'] ) ) {
+			$alias = $activityQuery->joinMeta( 'event_value' );
+
+			Filters::string( "$alias.meta_value", [
+				'compare' => $filter['event_value_compare'],
+				'value'   => $filter['event_value']
+			], $activityQuery->where() );
 		}
 	}
 
@@ -1195,7 +1239,12 @@ class Contact_Query extends Table_Query {
 			}
 
 			$alias = $submissionQuery->joinMeta( $key );
-			$submissionQuery->where()->compare( "$alias.meta_value", $value, $compare );
+
+			Filters::string( "$alias.meta_value", [
+				'compare' => $compare,
+				'value'   => $value
+			], $submissionQuery->where() );
+
 		}
 
 		$where->in( 'ID', $submissionQuery );
@@ -1537,6 +1586,52 @@ class Contact_Query extends Table_Query {
 		$filter['before'] = "$today {$filter['before']}";
 
 		self::filter_current_datetime( $filter, $where );
+	}
+
+	/**
+	 * If today's date is a specific day of the week
+	 *
+	 * @param $filter
+	 * @param  Where  $where
+	 *
+	 * @return void
+	 */
+	public static function filter_day_of_week( $filter, Where $where ) {
+
+		$days = wp_parse_id_list( $filter['days'] );
+		$today = new DateTimeHelper();
+
+		if ( in_array( absint( $today->format( 'w') ), $days ) ){
+			$where->addCondition( '1=1' ); // always true
+		} else {
+			$where->addCondition( '0=1' ); // short circuit false
+		}
+	}
+
+	/**
+	 * If today's date is a specific day of the month
+	 *
+	 * @param $filter
+	 * @param  Where  $where
+	 *
+	 * @return void
+	 */
+	public static function filter_day_of_month( $filter, Where $where ) {
+
+		$dates = wp_parse_id_list( $filter['dates'] );
+		$today = new DateTimeHelper();
+
+		// using last
+		if ( in_array( 0, $dates ) && $today->format( 'j' ) === $today->format('t') ){
+			$where->addCondition( '1=1' ); // always true
+			return;
+		}
+
+		if ( in_array( absint( $today->format( 'j') ), $dates ) ){
+			$where->addCondition( '1=1' ); // always true
+		} else {
+			$where->addCondition( '0=1' ); // short circuit false
+		}
 	}
 
 	/**

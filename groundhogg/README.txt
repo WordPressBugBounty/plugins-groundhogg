@@ -4,9 +4,9 @@ Contributors: trainingbusinesspros, Groundhogg
 Tags: wordpress crm, marketing automation, crm, email marketing, email automation
 Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 7.1
-Stable tag: 4.2.5.3
+Stable tag: 4.2.10
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -292,6 +292,9 @@ If you have the Google Recaptcha integration enabled, scripts will be loaded fro
 ### Cloudflare Turnstile
 If you have the Cloudflare Turnstile integration enabled, scripts will be loaded from `https://challenges.cloudflare.com/turnstile/v0/api.js` and requests will be made to `https://challenges.cloudflare.com/turnstile/v0/siteverify` sharing only essential information (such as your turnstile site key) to facilitate the integration.
 
+### Geolocation services
+Groundhogg will attempt to use the free service [ipquery.io](https://ipquery.io) to determine a contact's location and timezone using their IP address.
+
 [](http://coderisk.com/wp/plugin/groundhogg/RIPS-RLU9faYUDI)
 
 == Screenshots ==
@@ -374,6 +377,58 @@ You can purchase a premium plan for access to support and our premium extensions
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage and handle any security vulnerabilities. [Report a security vulnerability.]( https://patchstack.com/database/vdp/9e5fb9d9-417e-4ba2-a0bf-8b7529b7122b )
 
 == Changelog ==
+
+= 4.2.10 (2025-12-12) =
+* ADDED Start tracking the date when a tag is added to a contact. *Not* retroactive.
+* ADDED Developer filters to modify queries for the email archive.
+* FIXED UI issue in The Flow History filter.
+* FIXED Form selection in the Form Block not working unless a form was already selected.
+* FIXED Description formatting for the Advanced Timer action.
+* FIXED PHP Notice if a custom field tab was not configured correctly.
+
+= 4.2.9 (2025-11-21) =
+* ADDED WP Fusion event tracking filter so you don't **have** to use the custom activity filter.
+* ADDED "Day of Week" and "Day of Month" filters for conditional logic.
+* ADDED Email preview action to the broadcasts table and broadcast report.
+* IMPROVED Recaptcha and Turnstile scripts are now only enqueued if the fields are actually being used.
+* FIXED Some of the meta-comparisons for the custom activity filter and submission filters not returning correct results.
+
+= 4.2.8 (2025-11-14) =
+* IMPROVED Gutenberg form embed block has been updated to be compatible with latest Gutenberg standards.
+* IMPROVED The Gutenberg form embed block supports theme and color directly and can override the form's settings in the flow.
+* FIXED Preview text spacer has unrecognized HTML entity in outlook inboxes.
+* FIXED Anchor tags in text blocks getting inline CSS fill inconsistent with surrounding text.
+* FIXED Fatal error if trigger attempts to capture details from private class properties or methods.
+
+= 4.2.7 (2025-11-12) =
+* ADDED Built-in support for Polylang for the preferences page.
+* ADDED Bulk editing campaigns for emails, broadcasts, and flows.
+* ADDED New broadcasts reports. Broadcasts sent and total broadcast emails sent.
+* TWEAKED More space between preview text and content.
+* SECURITY Patched vulnerability. Credit to WordFence for practicing responsible disclosure.
+* FIXED Email template toggle showing enabled even if disabled.
+* FIXED Broken GeoIP reference.
+
+= 4.2.6.1 (2025-10-29) =
+* FIXED Recaptcha field missing in rendered form if the recaptcha version is v3
+* FIXED Font style not parsed correctly from text blocks if no `<p>` tag is present.
+* FIXED Escaped HTML visible on the licenses page.
+
+= 4.2.6 (2025-10-28) =
+* ADDED Frequency limits for triggers.
+* ADDED Batch scheduling for adding contacts to flows.
+* ADDED Support for `litespeed_finish_request()` in the `gh-cron.php` file.
+* ADDED Groundwork for AI in the email editor.
+* ADDED New API endpoint to fetch broadcast reports.
+* ADDED Step notes will appear in the flow editor, and now also support **basic** HTML.
+* IMPROVED Exporting of custom fields and metadata.
+* TWEAKED The flow emails table report will show *unique* clicks instead of *all* clicks.
+* FIXED Broadcast delayed by 24 hours when using the *send in local timezone* setting with a dynamic segment.
+* FIXED `<title>` tag in HTML emails should be the same as the subject line.
+* FIXED safe-mode causing errors on multisite.
+* FIXED Step settings not copied correctly when duplicating or copying steps with unpublished changes.
+* FIXED Turnstile/Recaptcha ignored if disabled in settings even if enabled in forms.
+* FIXED Export page not working if admin toolbar is disabled.
 
 = 4.2.5.3 (2025-08-30) =
 * FIXED Web form editor missing when adding a new blank Web Form trigger.
