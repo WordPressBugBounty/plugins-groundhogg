@@ -79,6 +79,13 @@ class Emails_Table extends Table {
 			'last_updated' => _x( 'Last Updated', 'Column label', 'groundhogg' ),
 		];
 
+        if ( $this->view_is( 'global-blocks' ) ){
+            unset( $columns['subject'] );
+            unset( $columns['from_user'] );
+            unset( $columns['campaigns'] );
+            unset( $columns['funnels'] );
+        }
+
 		return apply_filters( 'wpgh_email_columns', $columns );
 	}
 
@@ -145,6 +152,10 @@ class Emails_Table extends Table {
 
 		if ( $email->is_template() && ! $this->view_is( 'template' ) ) {
 			$html .= " &#x2014; " . "<span class='post-state'>" . esc_html__( 'Template', 'groundhogg' ) . "</span>";
+		}
+
+		if ( $email->get_message_type() === 'global_block' && ! $this->view_is( 'global-blocks' ) ) {
+			$html .= " &#x2014; " . "<span class='post-state'>" . esc_html__( 'Global Block', 'groundhogg' ) . "</span>";
 		}
 
 		$html .= "</strong>";
@@ -303,6 +314,9 @@ class Emails_Table extends Table {
 				$actions['delete']  = _x( 'Delete Permanently', 'List table bulk action', 'groundhogg' );
 				$actions['restore'] = _x( 'Restore', 'List table bulk action', 'groundhogg' );
 				break;
+			case 'global-blocks':
+				$actions['delete'] = _x( 'Delete', 'List table bulk action', 'groundhogg' );
+				break;
 		}
 
 		return apply_filters( 'wpgh_email_bulk_actions', $actions );
@@ -351,6 +365,15 @@ class Emails_Table extends Table {
 				$actions[] = [
 					'class'   => 'trash',
 					'display' => esc_html__( 'Delete' , 'groundhogg' ),
+					'url'     => action_url( 'delete', [ 'email' => $item->get_id() ] )
+				];
+				break;
+			case 'global-blocks':
+				$actions[] = [ 'class' => 'edit', 'display' => esc_html__( 'Edit', 'groundhogg' ), 'url' => $item->admin_link() ];
+				$actions[] = [ 'class' => 'gh-email-preview', 'display' => esc_html__( 'Preview', 'groundhogg' ), 'url' => '#gh-email-preview/' . $item->get_id() ];
+				$actions[] = [
+					'class'   => 'trash',
+					'display' => esc_html__( 'Delete', 'groundhogg' ),
 					'url'     => action_url( 'delete', [ 'email' => $item->get_id() ] )
 				];
 				break;
@@ -426,6 +449,11 @@ class Emails_Table extends Table {
 //					'unused' => true
 //				],
 //			],
+			[
+				'view'    => 'global-blocks',
+				'display' => esc_html__( 'Global Blocks', 'groundhogg' ),
+				'query'   => [ 'message_type' => 'global_block', 'status' => 'global' ],
+			],
 			[
 				'view'    => 'trash',
 				'display' => esc_html__( 'Trash', 'groundhogg' ),

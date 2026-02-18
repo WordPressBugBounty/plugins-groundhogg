@@ -266,7 +266,7 @@
       },
       [
         type.svg,
-        type.name,
+        block.type === 'global' ? block.templateName : type.name,
       ])
 
   }
@@ -684,6 +684,11 @@
   let onClose = () => {
   }
 
+  /**
+   * Saves the editor settings
+   *
+   * @returns {Promise<void>}
+   */
   const saveEditorSettings = () => {
 
     setState({
@@ -703,6 +708,97 @@
     })
   }
 
+  function createAlphaGenerator() {
+    let counter = 0;
+
+    return function () {
+      counter++;
+
+      let result = '';
+      let n = counter;
+
+      while (n > 0) {
+        n--; // shift because there is no 0 digit
+        result = String.fromCharCode(97 + (n % 26)) + result;
+        n = Math.floor(n / 26);
+      }
+
+      return result;
+    };
+  }
+
+  const nextGlobalIdPrefix = createAlphaGenerator()
+
+  /**
+   * Retrieve the global blocks from a template and prefix their IDs with the global block namespace
+   *
+   * @param templateId
+   * @param idPrefix
+   * @returns {*[]|[]}
+   */
+  const getGlobalBlocksFromTemplate = ( templateId, idPrefix ) => {
+    let blocks = parseBlocksFromContent(EmailsStore.get(templateId).data.content)
+    __walkBlocks( block => {
+      block.id = `${idPrefix}__${block.id}`
+    }, blocks )
+
+    return blocks
+  }
+
+  /**
+   * Updates global block content
+   * Surprisingly I think this will handle nested global blocks out of the box as well.
+   */
+  const saveGlobalBlocks = () => {
+
+    // find all of the global blocks being used in the email
+    // for each of the global blocks, generate their HTML, plain text, and css
+    // we can do an emailsStore.patchMany call to save them all at once.
+    let patchPayload = []
+
+    setIsGeneratingHTML(true)
+
+    __walkBlocks(block => {
+
+      // skip non-global blocks
+      if (block.type !== 'global') {
+        return
+      }
+
+      // remove namespace
+      let children = block.children
+
+      // remove the namespace
+      __walkBlocks(block => {
+        block.id = block.id.replace(/^[^_]+__/, '');
+      }, children )
+
+      let css = renderBlocksCSS(children)
+      let content = renderBlocksHTML(children)
+      let plain_text = renderBlocksPlainText(children)
+
+      patchPayload.push({
+        ID  : parseInt(block.templateId),
+        data: {
+          content,
+          plain_text,
+        },
+        meta: {
+          css,
+        },
+      })
+
+    }, getBlocksCopy())
+
+    setIsGeneratingHTML(false)
+
+    if ( patchPayload.length === 0 ) {
+      return
+    }
+
+    return EmailsStore.patchMany(patchPayload)
+  }
+
   /**
    * Saves the email
    *
@@ -712,6 +808,8 @@
 
     // Save editor settings
     saveEditorSettings()
+
+    saveGlobalBlocks()
 
     // No ID, creating the email
     if (isCreating()) {
@@ -919,6 +1017,7 @@
   })
 
   const isBlockEditor = () => State.page === 'editor'
+  const isGlobalBlockEditor = () => getEmail().data.message_type === 'global_block'
   const isHTMLEditor = () => State.page === 'html-editor'
 
   /**
@@ -2701,7 +2800,7 @@
           }
         }),
         Div({ className: 'block-grid' },
-          Object.values(BlockRegistry.blocks).map(b => Block(b)))
+          [...Object.values(BlockRegistry.blocks).map(b => Block(b))])
       ] )
 
     }
@@ -2711,7 +2810,7 @@
       },
       [
         Span({ className: 'block-type' },
-          BlockRegistry.get(block.type).name),
+          block.type === 'global' ? block.templateName : BlockRegistry.get(block.type).name),
         Button({
             className: 'move-block',
           },
@@ -2740,7 +2839,88 @@
             className: 'block-buttons',
           },
           [
-            Button({
+            block.type === 'global' ? Button({
+              className: 'gh-button primary small icon detach-block',
+              id       : `detach-${ block.id }`,
+              onClick: e => {
+
+                let curr = __findBlock( block.id, getBlocks() )
+
+                insertBlockBefore( __replaceId( curr.children ), curr.id )
+
+                deleteBlock(curr.id)
+
+              }
+            }, [
+              Dashicon('editor-unlink'),
+              ToolTip('Detach')
+            ]) : Button({
+                className: 'gh-button primary small icon globalize-block',
+                id       : `globalize-${ block.id }`,
+                onClick  : async e => {
+
+                  // show a prompt to name the block
+                  MakeEl.TextPrompt({
+                    header  : 'Name this global block',
+                    text    : `Global ${ BlockRegistry.get(block.type).name }`,
+                    onSubmit: text => {
+
+                      // pull the current state of the block
+                      block = __findBlock(block.id, getBlocks())
+
+                      // get needed rendered format of the current block
+                      setIsGeneratingHTML(true)
+                      let css = renderBlocksCSS([block])
+                      let content = renderBlocksHTML([block])
+                      let plain_text = renderBlocksPlainText([block])
+                      setIsGeneratingHTML(false)
+
+                      // save the block as a global block in the emails table
+                      EmailsStore.post({
+                        data: {
+                          title       : text,
+                          subject     : '',
+                          content,
+                          plain_text,
+                          message_type: 'global_block',
+                          is_template : false,
+                          status      : 'global',
+                        },
+                        meta: {
+                          css,
+                        },
+
+                      }).then(item => {
+
+                        let globalBlock = createBlock('global', {
+                          templateId  : item.ID,
+                          templateName: item.data.title,
+                          children    : getGlobalBlocksFromTemplate(item.ID, nextGlobalIdPrefix() ),
+                        })
+
+                        replaceBlock(block, globalBlock)
+
+                        dialog({
+                          message: 'Global block saved!',
+                        })
+
+                      }).catch(err => {
+                        dialog({
+                          message: err.message,
+                          type   : 'error',
+                        })
+                      })
+
+                    },
+                  })
+
+                },
+              },
+              [
+                Dashicon('admin-site-alt3'),
+                ToolTip('Save as Global'),
+              ]),
+            block.type === 'global' ? null : Button({
                 className: 'gh-button primary small icon duplicate-block',
                 id       : `duplicate-${ block.id }`,
                 onClick  : e => {
@@ -2983,6 +3163,23 @@
       classes.push('hide-in-browser')
     }
 
+    let blockLabels = []
+
+    if (typeof block.isGlobalBlock !== 'undefined' && block.isGlobalBlock !== null) {
+      classes.push('is-global-block')
+      blockLabels.push(Div({
+          className: 'is-global-block-label',
+        },
+        Dashicon('admin-site')))
+    }
+
+    if (block.filters_enabled) {
+      blockLabels.push(Div({
+          className: 'filters-enabled',
+        },
+        icons.eye))
+    }
+
     return Div({
         id: `edit-${ block.id }`,
 
@@ -3000,7 +3197,7 @@
           }
 
           // Using the toolbar
-          if (clickedIn(e, '.delete-block, .duplicate-block, .insert-block')) {
+          if (clickedIn(e, '.delete-block, .duplicate-block, .insert-block, .detach-block')) {
             return
           }
 
@@ -3046,10 +3243,7 @@
             },
           },
           [html]),
-        block.filters_enabled ? Div({
-            className: 'filters-enabled',
-          },
-          icons.eye) : null,
+        blockLabels.length ? Div({ className: 'block-labels' }, blockLabels) : null,
         // don't show toolbar if editing the block defaults
         State.editDefaults ? null : BlockToolbar({
           block,
@@ -3057,6 +3251,85 @@
           deleteBlock,
         }),
 
+      ])
+  }
+
+  /**
+   * The html of a block as shown in the editor
+   *
+   * @param block
+   * @return {*}
+   * @constructor
+   */
+  const BlockPreview = (block) => {
+
+    let {
+      advancedStyle = {},
+    } = block
+
+    let {
+      width = '',
+      a,
+    } = advancedStyle
+
+    if (!width) {
+      width = getEmailWidth()
+    }
+
+    let html = BlockRegistry.html(block)
+
+    if (isTopLevelBlock(block.id) && templateIs(FULL_WIDTH_CONTAINED)) {
+      html = Div({
+          className: 'block-inner-content',
+          style    : {
+            width: `${ width }px`,
+
+          },
+        },
+        html)
+    }
+
+    let classes = []
+
+    if (block.hide_on_mobile) {
+      classes.push('hide-on-mobile')
+    }
+
+    if (block.hide_on_desktop) {
+      classes.push('hide-on-desktop')
+    }
+
+    if (block.hide_in_browser) {
+      classes.push('hide-in-browser')
+    }
+
+    let blockLabels = []
+
+    if (block.filters_enabled) {
+      blockLabels.push(Div({
+          className: 'filters-enabled',
+        },
+        icons.eye))
+    }
+
+    return Div({
+        id: `preview-${ block.id }`,
+
+        className: `preview-block`,
+        dataId   : block.id,
+        dataType : block.type,
+        tabindex : 0,
+      },
+      [
+        Div({
+            id       : `b-${ block.id }`,
+            className: classes.join(' '),
+            style    : {
+              ...AdvancedStyleControls.getInlineStyle(block),
+            },
+          },
+          [html]),
+        blockLabels.length ? Div({ className: 'block-labels' }, blockLabels) : null,
       ])
   }
 
@@ -3275,6 +3548,41 @@
   }
 
   /**
+   * Insert a block after the given block
+   *
+   * @param oldBlock
+   * @param newBlock
+   * @param blocks
+   * @return {boolean|*}
+   * @private
+   */
+  const __replaceBlock = (oldBlock, newBlock, blocks) => {
+
+    for (let block of blocks) {
+      if (block.id === oldBlock.id) {
+        blocks.splice(blocks.findIndex(b => b.id === oldBlock.id), 1, newBlock)
+        return true
+      }
+
+      if (block.children && Array.isArray(block.children)) {
+        if (__replaceBlock(oldBlock, newBlock, block.children)) {
+          return true
+        }
+      }
+
+      if (block.columns && Array.isArray(block.columns)) {
+        for (let column of block.columns) {
+          if (__replaceBlock(oldBlock, newBlock, column)) {
+            return true
+          }
+        }
+      }
+    }
+
+    return false
+  }
+
+  /**
    * Find a block recursively and delete it
    *
    * @param blockId
@@ -3331,6 +3639,11 @@
    * @private
    */
   const __replaceId = (block) => {
+
+    // if providing an array of blocks
+    if ( Array.isArray(block)){
+      return block.map( b => __replaceId(b) )
+    }
 
     if (block.columns && Array.isArray(block.columns)) {
       block.columns = block.columns.map(column => column.map(_block => __replaceId(_block)))
@@ -3459,6 +3772,22 @@
     insertBlockAfter(newBlock, blockId)
 
     setActiveBlock(newBlock.id)
+  }
+
+  /**
+   * repalce a block with another one
+   *
+   * @param oldBlock
+   * @param newBlock
+   */
+  const replaceBlock = (oldBlock, newBlock) => {
+    let tempBlocks = getBlocksCopy()
+
+    __replaceBlock(oldBlock, newBlock, tempBlocks)
+
+    setBlocks(tempBlocks)
+    morphBlocks()
+    updateStyles()
   }
 
   /**
@@ -4107,6 +4436,11 @@
         name: 'Template Settings',
       },
       [
+        isGlobalBlockEditor() ? Fragment([
+          Pg({},
+          '⚠️ These settings will not have any affect on the templates where the global block is being used and are for visual aid only.'),
+          `<hr/>`
+        ]) : null,
         Control({
             label: 'Template',
           },
@@ -4250,7 +4584,7 @@
     ].filter(onlyUnique)
 
     return Fragment([
-      ControlGroup({
+      isGlobalBlockEditor() ? null : ControlGroup({
           name    : 'Email Settings',
           closable: false,
         },
@@ -4384,7 +4718,7 @@
 
         ]),
       isBlockEditor() ? TemplateControls() : null,
-      ControlGroup({
+      isGlobalBlockEditor() ? null : ControlGroup({
           id  : 'campaigns',
           name: 'Campaigns',
         },
@@ -4701,7 +5035,7 @@
               },
             },
             __('Settings')),
-          Button({
+          isGlobalBlockEditor() ? null : Button({
               className: `tab ${ getEmailControlsTab() === 'advanced' ? 'active' : 'inactive' }`,
               onClick  : e => {
                 setEmailControlsTab('advanced')
@@ -4756,7 +5090,6 @@
 
   }
 
-  // todo working here
   const getDefaultBlock = () => {
 
     let type = State.editDefaults
@@ -4944,7 +5277,7 @@
         Div({
           className: 'gh-panel',
         }, [
-          Div({
+          isGlobalBlockEditor() ? null : Div({
               className: 'inside',
             },
             [
@@ -5391,6 +5724,18 @@
     const isDraft = () => getEmailData().status === 'draft'
     const isReady = () => getEmailData().status === 'ready'
 
+    if (isGlobalBlockEditor()) {
+      return Button({
+          id       : 'update-email',
+          className: 'gh-button primary',
+          onClick  : e => {
+            e.currentTarget.innerHTML = `<span class="gh-spinner"></span>`
+            saveEmail().then(morphHeader)
+          },
+        },
+        'Update')
+    }
+
     return Div({
         className: 'publish-actions display-flex gap-10',
       },
@@ -5461,14 +5806,14 @@
         Groundhogg.isWhiteLabeled ? Span({ className: 'white-label-icon' }, Groundhogg.whiteLabelName) : icons.groundhogg,
         Title(),
         UndoRedo(),
-        PreviewButtons(),
+        isGlobalBlockEditor() ? null : PreviewButtons(),
         PublishActions(),
         getEmail().ID ? Button({
             id       : 'email-more-menu',
             className: 'gh-button secondary text icon',
             onClick  : e => {
               moreMenu('#email-more-menu', [
-                {
+                isGlobalBlockEditor() ? null : {
                   key     : 'broadcast',
                   text    : 'Broadcast',
                   onSelect: e => {
@@ -5502,7 +5847,7 @@
 
                   },
                 },
-                {
+                isGlobalBlockEditor() ? null : {
                   key     : 'html',
                   text    : 'Export as HTML',
                   onSelect: e => {
@@ -5526,7 +5871,7 @@
 
                   },
                 },
-                {
+                isGlobalBlockEditor() ? null : {
                   key     : 'embed',
                   text    : __('Embed', 'groundhogg'),
                   onSelect: e => {
@@ -5570,7 +5915,7 @@
                         ]))
                   },
                 },
-                isHTMLEditor() ? null : {
+                isHTMLEditor() || isGlobalBlockEditor() ? null : {
                   key     : 'gutenberg',
                   text    : __('Convert to post', 'groundhogg'),
                   onSelect: e => {
@@ -5659,7 +6004,7 @@
                     })
                   },
                 },
-              ])
+              ].filter( item => item !== null ))
             },
           },
           icons.verticalDots) : null,
@@ -6029,39 +6374,16 @@
       ])
   }
 
-  const TitlePrompt = () => MakeEl.ModalWithHeader({
+  const TitlePrompt = () => MakeEl.TextPrompt({
     header: 'Name this email',
-    onOpen: () => {
-      let input = document.getElementById('prompt-email-title')
-      input.focus()
-      input.select()
-    },
-  }, ({ close }) => MakeEl.Form({
-    onSubmit: e => {
-      e.preventDefault()
-      let fd = new FormData(e.currentTarget)
-      let title = fd.get('email_title')
+    text    : getEmailData().title,
+    onSubmit: text => {
       setEmailData({
-        title,
+        title: text,
       })
       morphHeader()
-      close()
     },
-  }, [
-    Div({
-      className: 'display-flex gap-5',
-    }, [
-      Input({
-        id   : 'prompt-email-title',
-        name : 'email_title',
-        value: getEmailData().title,
-      }),
-      Button({
-        className: 'gh-button primary',
-        type     : 'submit',
-      }, 'Save'),
-    ]),
-  ]))
+  })
 
   const Template = ({
     ID,
@@ -10203,6 +10525,131 @@
       tel          : true,
       terms        : true,
       privacyPolicy: true,
+    },
+  })
+
+  //
+  //
+  // working here
+  registerBlock('global', 'Global Block', {
+    svg       : icons.global,
+    attributes: {
+      children    : (el, block) => {
+        return getGlobalBlocksFromTemplate(block.templateId, nextGlobalIdPrefix() )
+      },
+      templateName: (el, block) => {
+        return EmailsStore.get(block.templateId).data.title
+      },
+    },
+    controls  : ({
+      templateId,
+    }) => {
+
+      if ( ! EmailsStore.has(templateId) ) {
+        templateId = null
+      }
+
+      return Fragment([
+        ControlGroup({ name: 'Global Block Template' }, [
+          Control({
+              label: 'Select Global Block Template',
+              stacked: true,
+            },
+            ItemPicker({
+              id          : `global-block-picker`,
+              noneSelected: 'Search for a block...',
+              selected    : templateId ? {
+                id  : templateId,
+                text: EmailsStore.get(templateId).data.title,
+              } : [],
+              multiple    : false,
+              clearable: false,
+              fetchOptions: async (search) => EmailsStore.filter(email => email.data.message_type === 'global_block' && email.data.title.match(search)).
+                filter(email => !isGlobalBlockEditor() || email.ID !== getEmailId()).
+                map(({
+                  ID,
+                  data,
+                }) => ( {
+                  id  : ID,
+                  text: data.title,
+                } )),
+              onChange    : item => {
+                updateBlock({
+                  templateId  : item.id,
+                  children    : getGlobalBlocksFromTemplate(item.id, nextGlobalIdPrefix() ),
+                  templateName: EmailsStore.get(item.id).data.title,
+                })
+              },
+            }),
+          ),
+          templateId ? An({ href: adminPageURL( 'gh_emails', { action: 'edit', email: templateId } ), target:'_blank', style: {textDecoration:'none'} }, [ Dashicon( 'external' ), ' Edit in another tab' ]) : null,
+          An({ href: adminPageURL( 'gh_emails', { view: 'global-blocks', message_type: 'global_block' } ), style: {textDecoration:'none'}, target: '_blank' }, [ Dashicon( 'admin-site-alt3' ), ' Manage global blocks' ]),
+        ]),
+      ])
+
+    },
+    html      : ({
+      id,
+      children = [],
+      templateId = null,
+    }) => {
+
+      // when actually generating, this should not include the inner blocks, but just the template ID
+      if (isGeneratingHTML()) {
+        return ''
+      }
+
+      if (!templateId) {
+        return Fragment([
+          Pg({
+            style: {
+              textAlign: 'center',
+            },
+          }, 'Select a global block template 👉<br/>No global blocks yet? Hover over any block and click the 🌐 icon!'),
+        ])
+      }
+
+      if (templateId && ! EmailsStore.get(templateId)) {{
+        return Fragment([
+          Pg({
+            className: 'gh-text error red',
+            style: {
+              textAlign: 'center',
+            },
+          }, '⚠️ The global block template that was selected is no longer available.'),
+        ])
+      }}
+
+      // verify that this block has not been placed within itself
+      // check the children, and if any of the children are global and the templateId is the same, prevent it
+      __walkBlocks( block => {
+        // self referential template, not allowed
+        if ( block.type === 'global' && block.templateId === templateId ){
+          block.templateId = null
+          block.children = []
+        }
+      }, children )
+
+      return ChildBlocks({ children })
+    },
+    plainText : ({
+      children = [],
+    }) => {
+      // when actually generating, this should not include the inner blocks, but just the template ID
+      if (isGeneratingHTML()) {
+        return ''
+      }
+
+      return renderBlocksPlainText(children)
+    },
+    css: ( {templateId }) => {
+      // language=CSS
+      return `.global-block.t-${templateId}{visibility: hidden;}`
+    },
+    defaults  : {
+      templateId: '', // the ID of the block template in the DB,
+      templateName: 'Global Block', // replaced by the email title when a template is selected
+      children  : [],
     },
   })
 
