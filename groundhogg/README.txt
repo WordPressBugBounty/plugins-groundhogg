@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.9
 Requires PHP: 7.1
-Stable tag: 4.3
+Stable tag: 4.3.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -378,16 +378,23 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 
 == Changelog ==
 
+= 4.3.1 (2026-03-06) =
+* ADDED Quarter time ranges (This Quarter, Next Quarter, Last Quarter) for date filters.
+* ADDED Decimal support for number fields.
+* ADDED View profile button to the simulator contact card.
+* FIXED Missing support for event arguments in the simulator (backend magic wizardy).
+* FIXED Flow template categories and search feature not working if the toolbar widget was disabled.
+
 = 4.3 (2026-02-13) =
 * ADDED 🌐 Global blocks (email template parts) in the email editor.
- * Save any block as a Global Block
- * Are synced across all your templates
- * Can be edited inline
- * Can be detached to edit separately
- * Can be exported and imported
+ * Save any block as a Global Block.
+ * Are synced across all your templates.
+ * Can be edited inline.
+ * Can be detached to edit separately.
+ * Can be exported and imported.
 * TWEAKED Editor design
- * Reduced block toolbar icon sizes
- * Added a container border for container blocks in the block inspector
+ * Reduced block toolbar icon sizes.
+ * Added a container border for container blocks in the block inspector.
 
 = 4.2.12 (2026-02-10) =
 * ADDED Bluesky social icons for the email editor.
