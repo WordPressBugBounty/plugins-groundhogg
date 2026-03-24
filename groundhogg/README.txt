@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 6.9
 Requires PHP: 7.1
-Stable tag: 4.3.2
+Stable tag: 4.3.3
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -377,6 +377,13 @@ You can purchase a premium plan for access to support and our premium extensions
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage and handle any security vulnerabilities. [Report a security vulnerability.]( https://patchstack.com/database/vdp/9e5fb9d9-417e-4ba2-a0bf-8b7529b7122b )
 
 == Changelog ==
+
+= 4.3.3 (2026-03-11) =
+* ADDED Automatic detection of free inbox providers for contacts.
+* ADDED The "Is Free Email?" search filter to filter by free email inbox providers.
+* ADDED New base components and classes for use in addons.
+* FIXED Settings page pickers were not working due to a missing script if the toolbar widget is disabled.
+* FIXED Broadcast send time estimate not showing correct time estimate.
 
 = 4.3.2 (2026-03-09) =
 * FIXED Sanitization issue with number fields causing numbers with more than 4 digits not to save.
