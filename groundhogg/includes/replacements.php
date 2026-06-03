@@ -599,6 +599,14 @@ class Replacements implements \JsonSerializable {
 				'code'         => 'redact',
 				'callback'     => [ $this, 'replacement_redact' ],
 			],
+			[
+				'group'        => 'formatting',
+				'default_args' => 'text',
+				'name'         => __( 'urlencode', 'groundhogg' ),
+				'description'  => _x( 'Encodes text for use in URL params.', 'replacement', 'groundhogg' ),
+				'code'         => 'urlencode',
+				'callback'     => [ $this, 'replacement_urlencode' ],
+			],
 		];
 
 		$replacements = apply_filters( 'groundhogg/replacements/defaults', $replacements );
@@ -1577,8 +1585,7 @@ class Replacements implements \JsonSerializable {
 		$return = "";
 
 		foreach ( $notes as $note ) {
-			$return .= sprintf( "\n\n===== %s =====", date( get_date_time_format(), $note->timestamp ) );
-			$return .= sprintf( "\n\n%s", $note->content );
+			$return .= sprintf( "\n\n===== %s =====", (new DateTimeHelper($note->timestamp))->i18n() );
 			$return .= sprintf( "\n\n%s", $note->content );
 		}
 
@@ -2253,8 +2260,11 @@ class Replacements implements \JsonSerializable {
 			'tag'        => '',
 			'orderby'    => 'date',
 			'order'      => 'DESC',
+            // phpcs:ignore WordPress.DB.SlowDBQuery
 			'meta_key'   => '',
+			// phpcs:ignore WordPress.DB.SlowDBQuery
 			'meta_value' => '',
+			'meta_compare' => '',
 			'within'     => '',
 			'include'    => [],
 			'exclude'    => [],
@@ -2269,8 +2279,11 @@ class Replacements implements \JsonSerializable {
 			'tag'            => $props['tag'],
 			'orderby'        => $props['orderby'],
 			'order'          => $props['order'],
+			// phpcs:ignore WordPress.DB.SlowDBQuery
 			'meta_key'       => $props['meta_key'],
+			// phpcs:ignore WordPress.DB.SlowDBQuery
 			'meta_value'     => $props['meta_value'],
+			'meta_compare'   => $props['meta_compare'],
 			'post__in'       => $props['include'],
 			'post__not_in'   => $props['exclude'],
 			'no_found_rows'  => true,
@@ -2367,11 +2380,25 @@ class Replacements implements \JsonSerializable {
 
 		add_filter( 'excerpt_more', [ $this, 'post_excerpt_ellipses' ] );
 
-		if ( $this->context_is_plain() ) {
+        // force plain layout if not supported
+		if ( $this->context_is_plain() && ! in_array( $props['layout'], [ 'and', 'or', 'plain' ] ) ) {
 			$props['layout'] = 'plain';
 		}
 
 		switch ( $props['layout'] ) {
+            case 'and':
+			case 'or':
+
+                $posts = $query->get_posts();
+
+                $callback = $this->context_is_plain()
+				    ? fn ( $post ) => sprintf( '- [%s](%s)', html_entity_decode( get_the_title( $post ) ), get_permalink( $post ) )
+                    : fn ( $post ) => html()->a( get_permalink( $post ), get_the_title( $post ) );
+
+                $posts   = array_map( $callback, $posts );
+				$content = $props['layout'] === 'and' ? andList($posts) : orList($posts);
+
+                break;
 			default:
 			case 'ul':
 			case 'ol':
@@ -2891,6 +2918,14 @@ class Replacements implements \JsonSerializable {
         add_redaction( $text );
 
         return $text;
+    }
+
+    public function replacement_urlencode( $text = '') {
+	    if ( ! is_string( $text ) ) {
+		    return '';
+	    }
+
+        return urlencode( $text );
     }
 
 	/**

@@ -4,9 +4,9 @@ Contributors: trainingbusinesspros, Groundhogg
 Tags: wordpress crm, marketing automation, crm, email marketing, email automation
 Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.1
-Stable tag: 4.4.1
+Stable tag: 4.5
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -377,6 +377,30 @@ You can purchase a premium plan for access to support and our premium extensions
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage and handle any security vulnerabilities. [Report a security vulnerability.]( https://patchstack.com/database/vdp/9e5fb9d9-417e-4ba2-a0bf-8b7529b7122b )
 
 == Changelog ==
+
+= 4.5 (2026-06-03) =
+* ADDED Recurring broadcast scheduler and schedules admin.
+* ADDED Recent recipient queries will appear in the segmentation step when scheduling broadcasts.
+* ADDED Necessary groundwork for send time optimization advanced feature.
+* ADDED Sales Manager team assignments.
+* ADDED URL allowlist and filter for UTM params in emails.
+* ADDED Draft indicator in Flow email picker.
+* ADDED `meta_compare` support in the `{posts}` replacement code.
+* ADDED `{urlencode}` replacement code.
+* IMPROVED Updated Groundhogg UI and colors to match moder WordPress admin theme.
+* IMPROVED Export preview UI.
+* IMPROVED New tracking link structure offers shorter but hardened links.
+* TWEAKED GDPR Consents will also appear on the "Manage Preferences" screen.
+* TWEAKED Moved the unsubscribe form to the top of "Manage Preferences" screen so it's not hidden.
+* TWEAKED Object duplication will also duplicate any object relationships.
+* SECURITY Hardened tracking links to prevent possible redirect attack.
+* SECURITY Fixed possible SQL injection attack.
+* SECURITY Removed delete file endpoints for imports and exports.
+* FIXED Compatibility with WordPress 7.0.
+* FIXED Trashed emails appearing in the Flow email picker.
+* FIXED Some Sales Rep dashboard widgets not loading.
+* FIXED Contact count preview showing 0 for sales reps.
+* FIXED Partial first & last name quick search was not working.
 
 = 4.4.1 (2026-04-08) =
 * ADDED Automatic staging environment detection to prevent outgoing emails.

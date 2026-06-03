@@ -1,5 +1,6 @@
 ( function ($) {
 
+  const { urlEncodeFilters } = Groundhogg.filters
   const { createFilters } = Groundhogg.filters.functions
   const {
     searchOptionsWidget,
@@ -12,11 +13,8 @@
     objectEquals,
     toggle,
     moreMenu,
-    select,
     dangerConfirmationModal,
     confirmationModal,
-    clickInsideElement,
-    progressBar,
     dialog,
     bold,
     tooltip,
@@ -27,20 +25,13 @@
     addContactModal,
   } = Groundhogg.components
   const { ajax } = Groundhogg.api
-  const { base64_json_encode } = Groundhogg.functions
   const {
     searches: SearchesStore,
     contacts: ContactsStore,
-    tags: TagsStore,
-    funnels: FunnelsStore,
   } = Groundhogg.stores
-  const { tagPicker, funnelPicker } = Groundhogg.pickers
   const { userHasCap } = Groundhogg.user
   const {
     formatNumber,
-    formatTime,
-    formatDate,
-    formatDateTime,
   } = Groundhogg.formatting
   const { sprintf, __, _x, _n } = wp.i18n
 
@@ -85,8 +76,8 @@
       const { signal } = abortHandler
 
       ContactsStore.count({
-        filters: base64_json_encode(this.query.filters),
-        exclude_filters: base64_json_encode(
+        filters: urlEncodeFilters(this.query.filters),
+        exclude_filters: urlEncodeFilters(
           this.excludeEnabled ? this.query.exclude_filters : []),
       }, {
         signal,
@@ -189,7 +180,7 @@
         //language=HTML
         return `
             <div class="enable-filters-wrap">
-                <button class="enable-filters white"><span
+                <button class="gh-button icon purple enable-filters"><span
                         class="dashicons dashicons-filter"></button>
             </div>
             <div class="search-filters-wrap">
@@ -241,7 +232,7 @@
 
       //language=HTML
       return `
-          <button class="enable-filters white" style="padding-right: 10px"><span
+          <button class="gh-button purple enable-filters small"><span
                   class="dashicons dashicons-filter"></span>
               ${ this.currentSearch ? __('Edit Filters', 'groundhogg') : __(
                       'Filter Contacts', 'groundhogg') }
@@ -249,7 +240,7 @@
           ${ this.savedSearchEnabled
                   ? `<div id="searches-picker"></div>`
                   : ( ContactSearch.searches.length
-                                  ? `<button id="load-saved-search" class="has-dashicon button button-secondary"><span class="dashicons dashicons-search"></span> <span class="text">${ this.loadingSearch
+                                  ? `<button id="load-saved-search" class="gh-button secondary small"><span class="dashicons dashicons-search" style="line-height: 1"></span> <span class="text">${ this.loadingSearch
                                           ? __('Loading search', 'groundhogg')
                                           : __('Load saved search',
                                                   'groundhogg') }</span></button>`
@@ -334,11 +325,10 @@
         }
         else {
 
-          let query = `filters=${ base64_json_encode(this.query.filters) }`
+          let query = `filters=${ urlEncodeFilters(this.query.filters) }`
 
           if (this.excludeEnabled) {
-            query += `&exclude_filters=${ base64_json_encode(
-              this.query.exclude_filters) }`
+            query += `&exclude_filters=${ urlEncodeFilters(this.query.exclude_filters) }`
           }
 
           loadFilters(query)
@@ -549,9 +539,8 @@
               window.location.href = adminPageURL('gh_contacts', {
                 ...query,
                 action: 'bulk_edit',
-                filters: base64_json_encode(query.filters),
-                exclude_filters: base64_json_encode(
-                  query.exclude_filters),
+                filters: urlEncodeFilters(query.filters ?? []),
+                exclude_filters: urlEncodeFilters(query.exclude_filters ?? []),
               })
               break
             case 'export':
@@ -560,9 +549,8 @@
                 action: 'choose_columns',
                 query: {
                   ...query,
-                  filters: base64_json_encode(query.filters),
-                  exclude_filters: base64_json_encode(
-                    query.exclude_filters),
+                  filters: urlEncodeFilters(query.filters ?? []),
+                  exclude_filters: urlEncodeFilters(query.exclude_filters ?? []),
                 },
               })
               break
@@ -669,13 +657,13 @@
         confirmText: __('Delete'),
         alert: `<p>${ sprintf(
           __('Are you sure you want to delete %s?', 'groundhogg'), bold(
-            `${ contact.data.first_name } ${ contact.data.last_name }`)) }</p>`,
+            contact.i18n.displayAs )) }</p>`,
         onConfirm: () => {
           ContactsStore.delete(contact.ID).then(() => {
             $(`#contact-${ contact.ID }`).remove()
             dialog({
               message: sprintf(__('%s was deleted!', 'groundhogg'),
-                `${ contact.data.first_name } ${ contact.data.last_name }`),
+                contact.i18n.displayAs ),
             })
           })
         },

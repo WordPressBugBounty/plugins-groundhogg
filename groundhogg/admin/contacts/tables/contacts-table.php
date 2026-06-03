@@ -5,6 +5,7 @@ namespace Groundhogg\Admin\Contacts\Tables;
 use Groundhogg\Contact;
 use Groundhogg\Contact_Query;
 use Groundhogg\DB\Query\Table_Query;
+use Groundhogg\Main_Roles;
 use Groundhogg\Preferences;
 use WP_List_Table;
 use wpdb;
@@ -18,6 +19,7 @@ use function Groundhogg\base64_json_decode;
 use function Groundhogg\get_gh_page_screen_id;
 use function Groundhogg\get_request_query;
 use function Groundhogg\get_request_var;
+use function Groundhogg\get_team_ids;
 use function Groundhogg\get_screen_option;
 use function Groundhogg\get_url_var;
 use function Groundhogg\html;
@@ -114,12 +116,11 @@ class Contacts_Table extends WP_List_Table {
 		$full_name = split_name( $search );
 
 		if ( $full_name[0] && $full_name[1] ) {
-			$query['first_name']         = $full_name[0];
-			$query['first_name_compare'] = 'starts_with';
-			$query['last_name']          = $full_name[1];
-			$query['last_name_compare']  = 'starts_with';
-			// If search by first and last clear regular search
 			$search = null;
+            add_action( 'groundhogg/contact_query/pre_get_contacts',
+                fn( Contact_Query $query ) => $query->where
+                    ->startsWith( 'first_name', $full_name[0] )
+                    ->startsWith( 'last_name', $full_name[1] ) );
 		}
 
 		// Since unconfirmed is 0 (aside maybe we should change that) we need to specify we actually want it still.
@@ -329,6 +330,8 @@ class Contacts_Table extends WP_List_Table {
 
 		$statusQuery = new Table_Query( 'contacts' );
 		$statusQuery->setSelect( 'optin_status', [ 'COUNT(ID)', 'contacts' ] )->setGroupby( 'optin_status' );
+
+        $statusQuery->restrict_results_by_owner();
 
 		$statusCounts = $statusQuery->get_results();
 

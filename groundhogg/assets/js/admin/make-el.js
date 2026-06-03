@@ -413,7 +413,7 @@
         type: 'checkbox',
       }),
       //language=HTML
-      `<span class="slider round"></span>
+      `<span class="slider"></span>
       <span class="on">${ onLabel }</span>
       <span class="off">${ offLabel }</span>
       `,
@@ -1397,6 +1397,7 @@
 
             }
             else {
+              optionsContainer.classList.add('gh-picker-options-above')
               optionsContainer.style.bottom = window.innerHeight - top + 'px'
               optionsContainer.style.left = left + 'px'
               optionsContainer.style.width = width + 'px'
@@ -1590,11 +1591,81 @@
     return Div({ className: `gh-tooltip ${ position }` }, content)
   }
 
+  const MultiButtonToggle = ({
+    id = '',
+    options = [],
+    selected = [],
+    onChange = values => {},
+  }) => {
+
+    const tokens = new Groundhogg.TokenList
+
+    selected.forEach(value => {
+      tokens.add(value)
+    })
+
+    const render = () => Div({
+      id,
+      className: 'gh-input-group',
+    }, options.map(opt => ButtonOption(opt)))
+
+    const ButtonOption = option => Button({
+      id       : `${ id }-opt-${ option.id }`,
+      className: `gh-button gh-button small ${ tokens.contains(option.id) ? 'dark' : 'grey' }`,
+      onClick  : e => {
+        tokens.toggle(option.id)
+        morphdom(document.getElementById(id), render())
+        onChange([...tokens])
+      },
+    }, [
+      option.text,
+      option.tooltip ? ToolTip(option.tooltip) : null,
+    ])
+
+    return render()
+  }
+
+  const DayOfMonthPicker = ({
+    id = '',
+    selected = [],
+    onChange = days => {},
+  }) => {
+
+    const days = new Groundhogg.TokenList
+
+    selected.forEach(day => {
+      days.add(day)
+    })
+
+    let daysOfWeek = Array(32).fill(0).map((_, i) => {
+      return i === 31 ? 'last' : (i+1)
+    })
+
+    return Div({
+      id,
+      className: 'gh-dom-picker',
+    }, morph => Fragment([
+      ...daysOfWeek.map(day => {
+        return Button({
+          id       : `${ id }-day-${ day }`,
+          className: `gh-dom-date ${ days.contains(day) ? 'selected' : '' }`,
+          onClick  : e => {
+            days.toggle(day)
+            morph()
+            onChange([...days])
+          },
+        }, day === 'last' ? 'Last' : `${day}` )
+      })
+    ]) )
+
+  }
+
   const ButtonToggle = ({
     id = '',
     options = [],
     selected = '',
     onChange = value => {},
+    icons = false
   }) => {
 
     const render = () => Div({
@@ -1604,7 +1675,7 @@
 
     const ButtonOption = option => Button({
       id       : `${ id }-opt-${ option.id }`,
-      className: `gh-button gh-button small ${ selected === option.id ? 'dark' : 'grey' }`,
+      className: `gh-button gh-button small ${icons ? 'icon' : ''} ${ selected === option.id ? 'dark' : 'grey' }`,
       onClick  : e => {
         selected = option.id
         morphdom(document.getElementById(id), render())
@@ -1766,6 +1837,62 @@
     }))
   }
 
+  const RequiresPro = ( children, props = {} ) => {
+
+    if ( Groundhogg.isProFeaturesActive ){
+      return Fragment(children)
+    }
+
+    let {
+      pillText = 'Pro Feature',
+      toolTipText = 'This feature requires a <a href="https://groundhogg.io/pricing/">paid license</a>.',
+    } = props
+
+    return Div({
+      className: 'requires-pro-features-wrapper',
+    }, [
+      Div({ className: 'require-pro-features' }, children ),
+      Span({ className: 'pro-pill' }, [ pillText, ToolTip( toolTipText, 'top' ) ] )
+    ] )
+  }
+
+  const RequiresProModal = () => {
+
+    if ( Groundhogg.isProFeaturesActive ){
+      return
+    }
+
+    ModalFrame({}, ({ morph, close }) => Fragment([
+      Div({ className: 'full gh-site' }, Div({
+        className: 'gh-primary-card display-flex align-center',
+        style: {
+          position: 'relative',
+        }
+      },[
+        Div({
+          style: {
+            padding: '2rem'
+          }
+        },[
+          Button({
+            id: 'dismiss-pro-ad',
+            className: 'gh-button secondary icon text',
+            style: {
+              position: 'absolute',
+              top: '5px',
+              right: '5px',
+            },
+            onClick: e => close()
+          }, Dashicon( 'no-alt' ) ),
+          H3({}, 'Do cron jobs give you <i>anxiety</i>?' ),
+          Pg({}, 'Let our team help you set them up correctly! First time customers can have our team install Groundhogg, import contacts, connect SMTP, and set up cron jobs!'),
+          Pg({}, An( { href: 'https://www.groundhogg.io/downloads/initial-setup-installation', className: 'bold' }, 'MORE DETAILS &rarr;' ) ),
+        ]),
+        Img({ src: `${Groundhogg.assets.images}/phil-cutoff.png` })
+      ]))
+    ]))
+  }
+
   window.MakeEl = {
     Skeleton,
     TinyMCE,
@@ -1800,6 +1927,8 @@
     Iframe,
     Dashicon,
     ButtonToggle,
+    MultiButtonToggle,
+    DayOfMonthPicker,
     Autocomplete,
     ProgressBar,
     Accordion,
@@ -1816,6 +1945,8 @@
     H4,
     Hr,
     Nav,
+    RequiresPro,
+    RequiresProModal,
     maybeCall,
     forDom,
     forReact,
