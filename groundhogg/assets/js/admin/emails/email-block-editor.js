@@ -1274,7 +1274,7 @@
       }
 
       if (tagName === 'b' || tagName === 'strong') {
-        return `**${ text }**`
+        return `__${ text }__`
       }
 
       if (tagName === 'i' || tagName === 'em') {
@@ -2946,6 +2946,7 @@
         'id',
         'hide_on_mobile',
         'hide_on_desktop',
+        'hide_in_plain',
         'hide_in_browser',
       ].includes(prop)) {
         continue
@@ -3016,6 +3017,10 @@
 
     if (block.hide_on_desktop) {
       classes.push('hide-on-desktop')
+    }
+
+    if (block.hide_in_plain) {
+      classes.push('hide-in-plain')
     }
 
     if (block.hide_in_browser) {
@@ -3120,6 +3125,10 @@
 
     if (block.hide_on_desktop) {
       classes.push('hide-on-desktop')
+    }
+
+    if (block.hide_in_plain) {
+      classes.push('hide-in-plain')
     }
 
     if (block.hide_in_browser) {
@@ -3260,6 +3269,10 @@
 
     if (block.hide_on_desktop) {
       classes.push('hide-on-desktop')
+    }
+
+    if (block.hide_in_plain) {
+      classes.push('hide-in-plain')
     }
 
     if (block.hide_in_browser) {
@@ -4040,7 +4053,6 @@
               onChange: e => updateBlock({ hide_on_desktop: e.target.checked }),
 
             })),
-
         ]),
       ControlGroup({
           name: 'Conditional Visibility',
@@ -4093,6 +4105,14 @@
               checked : getActiveBlock().hide_in_browser || false,
               onChange: e => updateBlock({ hide_in_browser: e.target.checked }),
 
+            })),
+          Control({
+              label: 'Remove from plain text',
+            },
+            Toggle({
+              id      : 'hide-in-plain',
+              checked : getActiveBlock().hide_in_plain || false,
+              onChange: e => updateBlock({ hide_in_plain: e.target.checked }),
             })),
 
         ]),
@@ -4243,7 +4263,7 @@
         },
         [
           `<p>${ __(
-            'Automatically add UTM parameters to links in your email. <a href="https://help.groundhogg.io/article/903-utm-parameters-in-emails">About UTM</a>.',
+            'Automatically add UTM parameters to links in your email. <a href="https://www.groundhogg.io/doc/utm-parameters/">About UTM</a>.',
             'groundhogg') }</p>`,
           `<p>${ __('Replacements are currently <b>NOT</b> supported. Empty values are ignored.', 'groundhogg') }</p>`,
           Control({
@@ -4647,7 +4667,7 @@
             })),
           Control({
               label  : 'Message type',
-              tooltip: '<a href="https://help.groundhogg.io/article/523-what-is-transactional-email">Transactional</a> emails bypass contact marketability.<br><b>Marketing</b> emails respect contact marketability.',
+              tooltip: '<a href="https://www.groundhogg.io/doc/transactional-vs-marketing-emails/">Transactional</a> emails bypass contact marketability.<br><b>Marketing</b> emails respect contact marketability.',
             },
             Select({
               id      : 'message-type',
@@ -5544,7 +5564,7 @@
                         one will be created.</p>
                     <p>When testing links, we recommend opening them in an incognito window or different
                         browser. See our <a target="_blank"
-                                            href="https://help.groundhogg.io/article/888-testing-funnels-and-emails">recommended
+                                            href="https://www.groundhogg.io/doc/recommended-test-procedures/">recommended
                             testing procedures.</a></p>
                     <p>
                         ❌ <b>[TEST]</b> in subject line.<br/>
@@ -10962,9 +10982,10 @@
 
       let {
         hide_on_desktop = false,
+        hide_in_plain = false
       } = block
 
-      if (hide_on_desktop) {
+      if (hide_on_desktop || hide_in_plain) {
         return ''
       }
 
@@ -11316,6 +11337,7 @@
     block.advancedStyle = AdvancedStyleControls.parse(el)
     block.hide_on_mobile = el.classList.contains('hide-on-mobile')
     block.hide_on_desktop = el.classList.contains('hide-on-desktop')
+    block.hide_in_plain = el.classList.contains('hide-in-plain')
     block.hide_in_browser = el.classList.contains('hide-in-browser')
 
     return block

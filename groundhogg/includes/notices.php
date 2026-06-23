@@ -2,6 +2,9 @@
 
 namespace Groundhogg;
 
+use Groundhogg\Utils\Replacer;
+use WP_Error;
+
 /**
  * Notices
  *
@@ -23,7 +26,7 @@ class Notices {
 	const TRANSIENT = 'groundhogg_notices';
 	const DISMISSED_NOTICES_OPTION = 'gh_dismissed_notices';
 	const READ_NOTICES_OPTION = 'gh_read_notices';
-	const REMOTE_NOTICES_URL = 'https://groundho.gg/wp-json/wp/v2/plugin-notification/';
+	const REMOTE_NOTICES_URL = 'https://groundhogg.io/wp-json/gh/v4/broadcasts/archive';
 
 	public static $dismissed_notices = [];
 	public static $read_notices = [];
@@ -141,32 +144,37 @@ class Notices {
 	 */
 	function fetch_remote_notices() {
 
-		$response = wp_remote_get( self::REMOTE_NOTICES_URL );
+		$response = remote_post_json( self::REMOTE_NOTICES_URL, [ 'campaign' => 'dashboard-notifications' ], 'GET', [], true, DAY_IN_SECONDS );
 
 		if ( is_wp_error( $response ) ) {
-			return [];
+			return $response;
 		}
 
-		$json = json_decode( wp_remote_retrieve_body( $response ), true );
+		$json = $response;
 
 		if ( ! $json ) {
-			return [];
+			return new WP_Error( 'no_json', __( 'No JSON returned from remote server.', 'groundhogg' ) );
 		}
 
-		return $json;
-	}
+		$items = $json['items'];
 
-	/**
-	 * Fetches only the  remote notices
-	 *
-	 * @return array|mixed
-	 */
-	function fetch_unread_remote_notices() {
-		$notices = $this->fetch_remote_notices();
+        $replacer = new Replacer( [
+            'siteowner' => wp_get_current_user()->first_name,
+        ] );
 
-		return array_filter( $notices, function ( $notice ) {
-			return ! in_array( $notice['id'], self::$read_notices );
-		} );
+		return array_map( function ( $item ) use ( $replacer ){
+
+            $content = wp_kses_post( markdown2html( $item['plain'] ) );
+            $content = $replacer->replace( $content );
+
+			return [
+				'id'      => absint( $item['ID'] ),
+                'title'   => sanitize_text_field( $item['subject'] ),
+				'content' => $content,
+                'sent'    => sanitize_text_field( $item['sent'] )
+  			];
+
+		}, $items );
 	}
 
 	/**
@@ -175,15 +183,9 @@ class Notices {
 	 * @return int
 	 */
 	function count_unread() {
-		$ids = get_transient( 'gh_notification_ids' );
+		$ids = wp_parse_id_list( wp_list_pluck( $this->fetch_remote_notices(), 'id' ) );
 
-        // expired, fetch from remote
-		if ( $ids === false ) {
-			$ids = wp_parse_id_list( wp_list_pluck( $this->fetch_remote_notices(), 'id' ) );
-			set_transient( 'gh_notification_ids', $ids, DAY_IN_SECONDS );
-		}
-
-		return count( array_diff( $ids, array_values( Notices::$read_notices ) ) );
+		return count( array_diff( $ids, array_values( self::$read_notices ) ) );
 	}
 
 	/**

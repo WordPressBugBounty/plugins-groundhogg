@@ -358,7 +358,8 @@ h2.nav-tab-wrapper.gh .nav-tab {
   margin-right: 5px;
 }
 h2.nav-tab-wrapper.gh .nav-tab.nav-tab-active {
-  border: none;
+  border: 1px solid var(--gh-panel-gray);
+  border-bottom: none;
   background-color: #FFFFFF;
 }
 h2.nav-tab-wrapper.gh button {
@@ -918,8 +919,8 @@ span.gh-text.bold {
   background: #FFFFFF;
   box-shadow: 5px 5px 30px 0 rgba(24, 45, 70, 0.05);
   /*margin: 20px;*/
-  border-radius: var(--gh-border-radius);
-  border: none;
+  border-radius: var(--gh-panel-border-radius);
+  border: 1px solid var(--gh-panel-gray);
 }
 .gh-panel a {
   text-decoration: none;
@@ -938,7 +939,7 @@ span.gh-text.bold {
   border-top-left-radius: 0;
 }
 .gh-panel .gh-panel-header {
-  border-bottom: 1px solid var(--gh-dark-10);
+  border-bottom: 1px solid var(--gh-panel-gray);
   display: flex;
   justify-content: space-between;
 }
@@ -985,7 +986,7 @@ span.gh-text.bold {
   line-height: 1;
 }
 .gh-panel .gh-panel-header button.toggle-indicator {
-  border-top-right-radius: var(--gh-border-radius);
+  border-top-right-radius: var(--gh-panel-border-radius);
 }
 .gh-panel .gh-panel-header button.toggle-indicator::before {
   content: "\f142";
@@ -1191,6 +1192,7 @@ button.gh-submit#gh-submit,
 button.gh-submit.primary {
   background: var(--gh-primary);
   border: 1px solid var(--gh-primary);
+  color: #ffffff;
 }
 a.gh-button#gh-submit.text, a.gh-button.primary.text, a.gh-submit#gh-submit.text, a.gh-submit.primary.text,
 input[type=button].gh-button#gh-submit.text,
@@ -1223,6 +1225,7 @@ button.gh-button.primary:hover:not(:disabled),
 button.gh-submit#gh-submit:hover:not(:disabled),
 button.gh-submit.primary:hover:not(:disabled) {
   background: var(--gh-primary-darker);
+  color: #ffffff;
 }
 a.gh-button#gh-submit:hover:not(:disabled).text, a.gh-button.primary:hover:not(:disabled).text, a.gh-submit#gh-submit:hover:not(:disabled).text, a.gh-submit.primary:hover:not(:disabled).text,
 input[type=button].gh-button#gh-submit:hover:not(:disabled).text,
@@ -1722,6 +1725,31 @@ button.gh-submit .gh-spinner {
   top: 0;
   box-sizing: border-box;
 }
+.gh-modal.sidebar {
+  right: 0;
+  top: 32px;
+  bottom: 0;
+  left: auto;
+  width: 400px;
+  background: #FFF;
+  border-left: 1px solid var(--gh-panel-gray);
+  box-shadow: var(--gh-box-shadow);
+  display: block;
+}
+.gh-modal.sidebar .gh-header {
+  z-index: 1;
+}
+.gh-modal.sidebar .gh-modal-dialog {
+  height: 100%;
+  width: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+}
+.gh-modal.sidebar .gh-modal-dialog-content {
+  padding: 10px;
+}
 .gh-modal.hidden {
   display: none;
 }
@@ -1784,12 +1812,12 @@ button.gh-submit .gh-spinner {
 .gh-modal-dialog {
   box-sizing: border-box;
   background: white;
-  border-radius: var(--gh-border-radius);
   position: relative;
   max-width: calc(100vw - 100px);
   max-height: calc(92vh - 64px);
   overflow: auto;
   overflow-x: hidden;
+  border-radius: var(--gh-panel-border-radius);
 }
 .gh-modal-dialog .gh-header {
   position: sticky;
@@ -2877,6 +2905,10 @@ button:has(.gh-dropdown-menu) {
   text-overflow: ellipsis;
   overflow: hidden;
 }
+.gh-picker .gh-picker-options .gh-picker-option.highlighted {
+  color: #fff;
+  background: var(--gh-primary);
+}
 .gh-picker .gh-picker-options .gh-picker-option:hover {
   color: var(--gh-dark);
   background: var(--gh-primary-7);
@@ -2909,16 +2941,29 @@ button:has(.gh-dropdown-menu) {
   border-top-right-radius: 0 !important;
 }
 
-#remote-notifications .gh-button.dismiss {
+.remote-notifications .gh-button.dismiss {
   background: transparent;
   color: var(--gh-dark);
-  margin: 3px;
-  padding: 4px 4px;
+  margin: 8px;
+  aspect-ratio: 1/1;
 }
-#remote-notifications .gh-button.dismiss:hover {
+.remote-notifications .gh-button.dismiss:hover {
   background: var(--gh-dark-10);
 }
-#remote-notifications p.all-dismissed {
+.remote-notifications .gh-panel .show-more {
+  display: block;
+  margin: 1em auto 1em 20px;
+}
+.remote-notifications .gh-panel img {
+  max-width: 100%;
+}
+.remote-notifications .gh-panel.collapsed .inside {
+  height: 200px;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
+}
+.remote-notifications p.all-dismissed {
   font-size: 16px;
   text-align: center;
 }

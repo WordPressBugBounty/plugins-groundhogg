@@ -490,8 +490,10 @@ h2.nav-tab-wrapper.gh {
     margin-right: 5px;
 
     &.nav-tab-active {
-      border: none;
+      border: 1px solid var(--gh-panel-gray);
+      border-bottom: none;
       background-color: #FFFFFF;
+      //box-shadow: 0 0 2 -1px #FFFFFF;
     }
   }
 
@@ -1172,8 +1174,8 @@ span.gh-text {
   background: #FFFFFF;
   box-shadow: $box-shadow;
   /*margin: 20px;*/
-  border-radius: var(--gh-border-radius);
-  border: none;
+  border-radius: var(--gh-panel-border-radius);
+  border: 1px solid var(--gh-panel-gray);
 
   a {
     text-decoration: none;
@@ -1198,7 +1200,7 @@ span.gh-text {
 
   .gh-panel-header {
 
-    border-bottom: 1px solid var(--gh-dark-10);
+    border-bottom: 1px solid var(--gh-panel-gray);
     display: flex;
     justify-content: space-between;
 
@@ -1247,7 +1249,7 @@ span.gh-text {
       line-height: 1;
 
       &.toggle-indicator {
-        border-top-right-radius: var(--gh-border-radius);
+        border-top-right-radius: var(--gh-panel-border-radius);
       }
 
       &.toggle-indicator::before {
@@ -1414,6 +1416,7 @@ button {
     &.primary {
       background: var(--gh-primary );
       border: 1px solid var(--gh-primary);
+      color: #ffffff;
 
       &.text {
         background-color: transparent;
@@ -1423,6 +1426,7 @@ button {
 
       &:hover:not(:disabled) {
         background: var(--gh-primary-darker);
+        color: #ffffff;
 
         &.text {
           background-color: var(--gh-primary-10);
@@ -1827,6 +1831,35 @@ button {
   top: 0;
   box-sizing: border-box;
 
+  &.sidebar {
+    right: 0;
+    top: 32px;
+    bottom: 0;
+    left: auto;
+    width: 400px;
+    background: #FFF;
+    border-left: 1px solid var(--gh-panel-gray);
+    box-shadow: var(--gh-box-shadow);
+    display: block;
+
+    .gh-header {
+      z-index: 1;
+    }
+
+    .gh-modal-dialog {
+      height: 100%;
+      width: 100%;
+      max-height: 100%;
+      max-width: 100%;
+      padding: 0;
+      border-radius: 0;
+
+      &-content{
+        padding: 10px;
+      }
+    }
+  }
+
   &.hidden {
     display: none;
   }
@@ -1907,12 +1940,12 @@ button {
 
     box-sizing: border-box;
     background: white;
-    border-radius: var(--gh-border-radius);
     position: relative;
     max-width: calc(100vw - 100px);
     max-height: calc(92vh - 64px);
     overflow: auto;
     overflow-x: hidden;
+    border-radius: var(--gh-panel-border-radius);
 
     .gh-header {
       position: sticky;
@@ -3268,6 +3301,11 @@ button:has(.gh-dropdown-menu) {
       text-overflow: ellipsis;
       overflow: hidden;
 
+      &.highlighted {
+        color: #fff;
+        background: var(--gh-primary);
+      }
+
       &:hover {
         color: var(--gh-dark);
         background: var(--gh-primary-7);
@@ -3313,15 +3351,52 @@ button:has(.gh-dropdown-menu) {
   }
 }
 
-#remote-notifications {
+.remote-notifications {
   .gh-button.dismiss {
     background: transparent;
     color: var(--gh-dark);
-    margin: 3px;
-    padding: 4px 4px;
+    margin: 8px;
+    //padding: 4px 4px;
+    aspect-ratio: 1 / 1;
 
     &:hover {
       background: var(--gh-dark-10);
+    }
+  }
+
+  .gh-panel {
+
+    .show-more {
+      display: block;
+      margin: 1em auto 1em 20px;
+    }
+
+    img {
+      max-width: 100%;
+    }
+
+    &.collapsed {
+
+      .inside {
+
+        height: 200px;
+        overflow: hidden;
+
+        mask-image: linear-gradient(
+                        to bottom,
+                        black 0%,
+                        black 70%,
+                        transparent 100%
+        );
+
+        -webkit-mask-image: linear-gradient(
+                        to bottom,
+                        black 0%,
+                        black 70%,
+                        transparent 100%
+        );
+
+      }
     }
   }
 

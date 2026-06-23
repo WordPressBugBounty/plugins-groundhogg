@@ -1,34 +1,9 @@
 ( ($) => {
 
-  const {
-    spinner,
-  } = Groundhogg.element
-
   const { ajax } = Groundhogg.api
   const {
-    sprintf,
     __,
-    _x,
-    _n,
   } = wp.i18n
-
-  const doReplacements = (content) => {
-
-    const replacements = {
-      admin       : Groundhogg.url.admin,
-      home        : Groundhogg.url.home,
-      name        : Groundhogg.name,
-      display_name: Groundhogg.currentUser.data.display_name,
-    }
-
-    Object.keys(replacements).forEach(s => {
-
-      let regex = new RegExp(`#${s}#`, 'g')
-      content = content.replaceAll(regex, replacements[s])
-    })
-
-    return content
-  }
 
   const {
     Div,
@@ -47,11 +22,22 @@
     dismissed    : [],
     notifications: [],
     read         : false,
+    loaded       : false,
+    is_expanded  : new Groundhogg.TokenList(),
+    unread       : 3,
   })
 
   if (typeof GroundhoggNotifications !== 'undefined') {
+
+    let { unread = 3, dismissed_notices = [] } = GroundhoggNotifications
+
+    if ( ! unread ){
+      unread = 3
+    }
+
     State.set({
-      dismissed: GroundhoggNotifications.dismissed_notices,
+      dismissed: dismissed_notices,
+      unread
     })
   }
 
@@ -59,10 +45,16 @@
    * Mark all notifications as read
    * @returns {*}
    */
-  const readAllNotifications = () => ajax({
-    action: 'gh_read_notice',
-    notice: State.notifications.map(n => n.id),
-  })
+  const readAllNotifications = () => {
+
+    // clear the class from the UI as well
+    document.querySelectorAll( '.gh-has-notifications.unread-notices' ).forEach(el => el.classList.remove('unread-notices', 'gh-has-notifications') )
+
+    return ajax({
+      action: 'gh_read_notice',
+      notice: State.notifications.map(n => n.id),
+    })
+  }
 
   /**
    * Fetch remote notifications
@@ -71,7 +63,7 @@
   const fetchNotifications = () => ajax({
     action: 'gh_remote_notifications',
   }).then(notifications => {
-    State.set({ notifications })
+    State.set({ notifications, loaded: true })
     return notifications
   })
 
@@ -99,16 +91,23 @@
     id,
     title,
     content,
-    acf,
+    sent,
     morph,
   }) => Div({
     id       : `n-${ id }`,
-    className: 'gh-panel outlined overflow-visible',
+    className: `gh-panel outlined ${ State.is_expanded.contains( id ) ? '' : 'collapsed' }`,
   }, [
     Div({
       className: 'gh-panel-header',
     }, [
-      H2({}, title.rendered),
+      H2({}, [
+        title,
+        '<br>',
+        MakeEl.makeEl( 'abbr', {title: 'sent on', style: {
+          fontSize: '12px',
+          fontWeight: '400'
+        }}, sent )
+      ]),
       State.show === 'active' ? Button({
         id       : `dismiss-${ id }`,
         className: 'gh-button dismiss small',
@@ -118,33 +117,43 @@
         },
       }, [
         Dashicon('no-alt'),
-        ToolTip('Dismiss', 'right'),
+        ToolTip('Dismiss', 'left'),
       ]) : null,
     ]),
     Div({
       className: 'inside',
     }, [
-      doReplacements(content.rendered),
-      acf.cta_text ? An({
-        className: 'gh-button primary small',
-        href     : doReplacements(acf.cta_url),
-        target   : '_blank',
-      }, doReplacements(acf.cta_text)) : null,
+      content,
     ]),
+    An({
+      type: 'button',
+      className: 'show-more',
+      href : `#n-${ id }`,
+      id: `#expand-${id}`,
+      onClick: e => {
+        e.preventDefault()
+        State.is_expanded.toggle(id)
+        morph()
+      }
+    },  State.is_expanded.contains( id ) ? 'See less' : 'Read more...' )
   ])
 
-  const Notifications = () => Div({
-    id       : 'remote-notifications',
-    className: 'notifications',
+  const Notifications = ({ id = 'remote-notifications'}) => Div({
+    id,
+    className: 'remote-notifications',
   }, morph => {
 
-    if (!State.notifications.length) {
+    if (!State.loaded) {
       fetchNotifications().then(() => morph())
-      return Skeleton({}, [
-        'full',
-        'full',
-        'full',
-      ])
+      return Skeleton({
+        cellAttributes: {
+          style: {
+            height: '200px',
+            borderRadius: '8px'
+          }
+        },
+        className: 'display-grid gap-10',
+      }, Array( State.unread ).fill('full' ) )
     }
 
     let notifications, button
@@ -189,6 +198,35 @@
     ])
   })
 
+  const NotificationsSidebar = () => MakeEl.Sidebar({
+    header: '🔔 Notifications',
+    onClose: () => {
+      // clear the fragment
+      history.pushState(
+        {},
+        document.title,
+        window.location.pathname + window.location.search
+      );
+    }
+  }, [
+    Groundhogg.Notifications({
+      id: 'sidebar-notifications',
+    })
+  ])
+
   Groundhogg.Notifications = Notifications
+  Groundhogg.NotificationsSidebar = NotificationsSidebar
+
+  const handleHashChange = () => {
+    let hash = window.location.hash.replace('#', '')
+    if ( ! hash.startsWith('gh-show-notifications') ) {
+      return
+    }
+
+    NotificationsSidebar()
+  }
+
+  window.addEventListener('hashchange', handleHashChange )
+  window.addEventListener('load', handleHashChange )
 
 } )(jQuery)

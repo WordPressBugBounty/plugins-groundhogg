@@ -6,7 +6,7 @@ Donate link: https://www.groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 7.0
 Requires PHP: 7.1
-Stable tag: 4.5.3
+Stable tag: 4.5.4
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -28,7 +28,7 @@ Do your business a favor and switch to Groundhogg.
 
 Businesses that switch to Groundhogg save on average **$240/m** on CRM fees.
 
-👉 [Official Site](https://groundhogg.io/) | 📃 [Documentation](https://help.groundhogg.io/) | 🎓 [Groundhogg Academy](https://academy.groundhogg.io/)
+👉 [Official Site](https://groundhogg.io/) | 📃 [Documentation](https://groundhogg.io/documentation) | 🎓 [Training](https://groundhogg.io/events/)
 
 🌎 [Facebook Group](https://www.facebook.com/groups/groundhoggwp/) | 📺 [YouTube Channel](https://www.youtube.com/groundhogg) | [Ⅹ (Twitter)](https://twitter.com/Groundhoggwp/)
 
@@ -91,7 +91,7 @@ Groundhoggers are very generous with their business intelligence. Just as the Gr
 * 🚀 [**Free** 1-Hour Quickstart Course!](https://academy.groundhogg.io/course/groundhogg-quickstart/)
 * 🌎 Community care & support in the [open Facebook group!](https://www.facebook.com/groups/groundhoggwp/)
 * 📺 Over **60 hours** of easy Groundhogg [Youtube tutorials!](https://www.youtube.com/groundhogg)
-* 📃 Use our [Knowledge Centre](https://help.groundhogg.io/) to get the answers you need.
+* 📃 Use our [Knowledge Centre](https://groundhogg.io/documentation/) to get the answers you need.
 * 🎙️ Ask your burning questions in **Office Hours** on our _live Facebook stream every Tuesday!_
 
 ## 🤷‍♂️ Who can benefit from Groundhogg CRM and Marketing Automation?
@@ -377,6 +377,20 @@ You can purchase a premium plan for access to support and our premium extensions
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage and handle any security vulnerabilities. [Report a security vulnerability.]( https://patchstack.com/database/vdp/9e5fb9d9-417e-4ba2-a0bf-8b7529b7122b )
 
 == Changelog ==
+
+= 4.5.4 (2026-06-23) =
+* ADDED REST API endpoints for email archives.
+* ADDED Conditional replacements to show content in plain text or HTML context only.
+* ADDED Simple markdown support in flow step notes.
+* IMPROVED Updated all documentation references to the new [documentation site](https://groundhogg.io/documenation).
+* IMPROVED Item Picker keyboard accessibility.
+* IMPROVED Notifications now pull from Groundhogg's updates email archive, and only show when clicking the 🔔 icon.
+* TWEAKED Use `wp_safe_redirect()` when using auto-login.
+* REMOVED Notifications from the weekly/monthly email report.
+* FIXED Broken meta-queries when using `Legacy_Contact_Query`
+* FIXED Tag applied dates showing in incorrect timezone.
+* FIXED Tracking links stopped working after WordPress salt rotation.
+* FIXED WordPress User info card not showing for users with `list_users` cap in multisite.
 
 = 4.5.3 (2026-06-11) =
 * FIXED Broken email processing rule causing some links to not work.

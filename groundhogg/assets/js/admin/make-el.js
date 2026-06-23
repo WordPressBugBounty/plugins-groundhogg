@@ -584,6 +584,101 @@
    * @param (object) options Config options to overwrite defaults.
    * @param children
    */
+  const Sidebar = ({
+    dialogClasses = '',
+    className = '',
+    onOpen = () => {},
+    onClose = () => {},
+    width = 'auto',
+    closeButton = true,
+    header = 'Groundhogg'
+  }, children) => {
+
+    const Dialog = ({
+      content = null,
+    }) => Div({
+      className: `gh-modal-dialog ${ dialogClasses }`,
+      style    : {
+        width,
+      },
+    }, [
+      Div({
+        className: 'gh-header modal-header',
+      }, [
+        MakeEl.H3({}, header),
+        closeButton ? MakeEl.Button({
+          className: 'gh-button icon secondary text',
+          onClick  : () => close(),
+        }, MakeEl.Dashicon('no-alt')) : null,
+      ]),
+      Div({
+        className: 'gh-modal-dialog-content',
+      }, content),
+    ])
+
+    let modal = Div({
+      className: `gh-modal sidebar ${ className }`,
+      tabindex : 0,
+      onFocusout: e => {
+        // close()
+      }
+    }, [
+      Dialog({
+        content: null,
+      }),
+    ])
+
+    const close = () => {
+      onClose(modal)
+      modal.remove()
+    }
+
+    const morph = (args = {}) => {
+
+      let content = getContent()
+
+      morphdom(modal.querySelector('.gh-modal-dialog'), Dialog({
+        content,
+      }), args)
+    }
+
+    const getContent = () => maybeCall(children, {
+      close,
+      modal,
+      morph,
+    })
+
+    document.body.appendChild(modal)
+
+    morph()
+
+    // Run before positioning
+    onOpen({
+      modal,
+      close,
+      morph,
+    })
+
+    if (!modal.contains(document.activeElement)) {
+      modal.focus()
+    }
+
+    return modal
+  }
+
+  /**
+   * Custom modal appended to the body.
+   *
+   * options:
+   * (bool) isConfirmation Shows confirmation button if true.
+   * (bool) closeOnOverlayClick Close the modal when the background overlay is clicked.
+   * (bool) showCloseButton Show the close button at the top of the modal.
+   * (string) messageHtml Html to be showed at the top of the modal.
+   * (function) confirmCallBack Called when "confirm" button is clicked.
+   *
+   * @param (object) options Config options to overwrite defaults.
+   * @param children
+   */
   const Modal = ({
     dialogClasses = '',
     className = '',
@@ -898,7 +993,7 @@
 
   const Autocomplete = ({
     fetchResults = async search => {},
-    onInput,
+    onInput = e => {},
     ...attributes
   }) => {
 
@@ -1065,27 +1160,8 @@
 
   const Ellipses = (content, atts = {}) => Span({
     ...atts,
-    onCreate: el => {
-
-      let ellipses = ''
-      let count = 0
-
-      let interval = setInterval(() => {
-
-        // parentNode will be null once removed from the dom
-        if (!el.parentNode) {
-          clearInterval(interval)
-          return
-        }
-
-        count = ( count + 1 ) % 4
-        ellipses = '.'.repeat(count)
-        el.textContent = content + ellipses
-
-      }, 500)
-
-    },
-  }, content + '...')
+    className: 'loading-dots'
+  }, content)
 
   const ItemPicker = ({
     id = '',
@@ -1234,6 +1310,7 @@
 
       setState({
         search: '',
+        optionsIndex: -1,
       })
 
       morph()
@@ -1307,7 +1384,7 @@
       text,
     }, index) => {
       return Div({
-        className: 'gh-picker-option',
+        className: `gh-picker-option ${index === state.optionsIndex ? 'highlighted' : '' }`,
         dataId   : id,
         tabindex : '0',
         id       : `option-${ index }-${ id }`,
@@ -1316,6 +1393,8 @@
         },
       }, text)
     }
+
+    const selectableOptions = () => state.options.filter(opt => !selected.some(_opt => opt.id == _opt.id))
 
     /**
      * The item picker options
@@ -1368,7 +1447,7 @@
       }
 
       // Filter out already selected options
-      let options = state.options.filter(opt => !selected.some(_opt => opt.id == _opt.id))
+      let options = selectableOptions()
 
       return Div({
         className: 'gh-picker-options',
@@ -1435,6 +1514,7 @@
       setState({
         search,
         searching: true,
+        optionsIndex: -1,
       }, 'start search')
 
       if (timeout) {
@@ -1451,6 +1531,7 @@
 
           setState({
             searching: false,
+            optionsIndex: -1,
             options,
           }, 'options fetched')
         })
@@ -1477,12 +1558,18 @@
         startSearch(e.target.value)
       },
       onKeydown  : e => {
-        if (tags) {
-          if (e.key !== 'Enter' && e.key !== ',') {
-            return
-          }
+        if (e.key !== 'Enter' && e.key !== ',') {
+          return
+        }
 
+        e.stopPropagation()
+        e.stopImmediatePropagation()
+        e.preventDefault()
+
+        if (tags && ! state.optionsIndex) {
           handleCreateOption(e.target.value)
+        } else {
+          handleSelectOption(selectableOptions()[state.optionsIndex].id)
         }
       },
     })
@@ -1506,9 +1593,28 @@
         if (e.key === 'Escape') {
           setState({
             searching: false,
+            optionsIndex: -1,
             focused  : false,
           })
           morph()
+        }
+
+        if ( optionsVisible() && ['ArrowUp', 'ArrowDown', 'Up', 'Down'].includes(e.key) ) {
+
+          let index
+
+          if (e.key === 'ArrowDown') {
+            index = Math.min(state.options.length, state.optionsIndex + 1)
+          }
+
+          if (e.key === 'ArrowUp') {
+            index = Math.max(0, state.optionsIndex - 1)
+          }
+
+          setState({
+            search      : selectableOptions()[index].text,
+            optionsIndex: index,
+          })
         }
       },
       onCreate : el => {
@@ -1522,6 +1628,7 @@
 
             setState({
               search   : '',
+              optionsIndex: -1,
               options  : [],
               searching: false,
               focused  : false,
@@ -1729,14 +1836,15 @@
   const H4 = (props, children) => makeEl('h4', props, children)
   const Hr = (props, children) => makeEl('hr', props, children)
 
-  const Skeleton = (attributes, pieces) => Div({
+  const Skeleton = ({ cellAttributes = {}, ...attributes }, pieces) => Div({
     className: 'display-grid gap-10',
     ...attributes,
   }, pieces.map(span => Div({
     className: `${ span } skeleton-loading`,
     style    : {
-      height: `40px`,
+      height: '40px',
     },
+    ...cellAttributes
   })))
 
   const useState = (initialState, id) => {
@@ -1918,6 +2026,7 @@
     Tr,
     Td,
     Th,
+    Sidebar,
     Modal,
     ModalWithHeader,
     MiniModal,

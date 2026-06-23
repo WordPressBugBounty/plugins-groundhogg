@@ -71,6 +71,8 @@ function maybe_get_option_from_constant( $value, $option_name ) {
 	return $value;
 }
 
+add_constant_support( 'gh_secret_key' );
+add_constant_support( 'gh_secret_iv' );
 add_constant_support( 'gh_master_license' );
 add_constant_support( 'gh_recaptcha_secret_key' );
 add_constant_support( 'gh_recaptcha_site_key' );
@@ -4415,10 +4417,12 @@ add_action( 'admin_menu', function () {
  */
 function maybe_print_menu_styles() {
 
+    $unread = notices()->count_unread();
+
 	?>
     <style>
 
-        <?php if ( $unread = notices()->count_unread() > 0 ): ?>
+        <?php if ( $unread > 0 ): ?>
         .unread-notices::after {
             content: '<?php echo esc_attr( $unread ) ?>' !important;
         }
@@ -5719,7 +5723,7 @@ function track_activity_actions( $activity ) {
  */
 function handle_ajax_user_meta_picker() {
 
-	if ( ! current_user_can( 'edit_users' ) || ! wp_verify_nonce( get_post_var( 'nonce' ), 'meta-picker' ) ) {
+	if ( ! current_user_can( 'list_users' ) || ! wp_verify_nonce( get_post_var( 'nonce' ), 'meta-picker' ) ) {
 		wp_send_json_error();
 	}
 
@@ -8866,6 +8870,179 @@ function html2markdown( $string, $clean_up = true, $tidy_up = true ) {
 }
 
 /**
+ * Convert a small subset of Markdown to HTML.
+ *
+ * Supports:
+ * - Headings: # through ######
+ * - Paragraphs
+ * - Links: [text](url)
+ * - Images: ![alt](url)
+ * - Bold: **text** or __text__
+ * - Italic: *text* or _text_
+ * - Unordered lists: - item or * item
+ * - Ordered lists: 1. item
+ */
+function markdown2html( string $markdown, bool $br = false ): string {
+
+	$markdown = str_replace( [ "\r\n", "\r" ], "\n", trim( $markdown ) );
+
+	$lines = explode( "\n", $markdown );
+	$html  = [];
+
+	$in_ul = false;
+	$in_ol = false;
+
+	foreach ( $lines as $line ) {
+
+		$line = trim( $line );
+
+		if ( $line === '' ) {
+
+			if ( $in_ul ) {
+				$html[] = '</ul>';
+				$in_ul = false;
+                continue;
+			}
+
+			if ( $in_ol ) {
+				$html[] = '</ol>';
+				$in_ol = false;
+                continue;
+			}
+
+			continue;
+		}
+
+		$line = markdown2html_inline_formatting( $line );
+
+		if ( preg_match( '/^[-*]\s+(.*)$/', $line, $matches ) ) {
+
+			if ( $in_ol ) {
+				$html[] = '</ol>';
+				$in_ol = false;
+			}
+
+			if ( ! $in_ul ) {
+				$html[] = '<ul class="list-disc">';
+				$in_ul = true;
+			}
+
+			$html[] = '<li>' . $matches[1] . '</li>';
+			continue;
+		}
+
+		if ( preg_match( '/^\d+\.\s+(.*)$/', $line, $matches ) ) {
+
+			if ( $in_ul ) {
+				$html[] = '</ul>';
+				$in_ul = false;
+			}
+
+			if ( ! $in_ol ) {
+				$html[] = '<ol>';
+				$in_ol = true;
+			}
+
+			$html[] = '<li>' . $matches[1] . '</li>';
+			continue;
+		}
+
+		if ( $in_ul ) {
+			$html[] = '</ul>';
+			$in_ul = false;
+		}
+
+		if ( $in_ol ) {
+			$html[] = '</ol>';
+			$in_ol = false;
+		}
+
+		if ( preg_match( '/^(#{1,6})\s+(.*)$/', $line, $matches ) ) {
+			$level = strlen( $matches[1] );
+			$html[] = sprintf( '<h%d>%s</h%d>', $level, $matches[2], $level );
+			continue;
+		}
+
+        if ( str_contains( $line, '<img' ) ){
+	        $html[] = '<div>' . $line . '</div>';
+            continue;
+        }
+
+		$html[] = $br ?  $line . '<br>' : '<p>' . $line . '</p>';
+	}
+
+	if ( $in_ul ) {
+		$html[] = '</ul>';
+	}
+
+	if ( $in_ol ) {
+		$html[] = '</ol>';
+	}
+
+	return implode( "\n", $html );
+}
+
+/**
+ * Handle inline Markdown formatting.
+ */
+function markdown2html_inline_formatting( string $text ): string {
+
+	// Escape first so raw HTML does not pass through.
+//	$text = esc_html( $text );
+
+	// Images: ![alt](url)
+	$text = preg_replace_callback(
+		'/!\[(.*?)\]\((.*?)\)/',
+		function ( $matches ) {
+			return sprintf(
+				'<img src="%s" alt="%s">',
+				esc_url( $matches[2] ),
+				esc_attr( $matches[1] )
+			);
+		},
+		$text
+	);
+
+	// Links: [text](url)
+	$text = preg_replace_callback(
+		'/(?<!!)\[(.*?)\]\((.*?)\)/',
+		function ( $matches ) {
+			return sprintf(
+				'<a href="%s">%s</a>',
+				esc_url( $matches[2] ),
+				$matches[1]
+			);
+		},
+		$text
+	);
+
+	// Inline code: `code`
+	$text = preg_replace_callback(
+		'/`([^`]+)`/',
+		function ( $matches ) {
+			return '<code>' . esc_html( html_entity_decode( $matches[1] ) ) . '</code>';
+		},
+		$text
+	);
+
+	// Bold: **text** or __text__
+	$text = preg_replace(
+		'/\*\*(.+?)\*\*|__(.+?)__/',
+		'<strong>$1$2</strong>',
+		$text
+	);
+
+	// Italic: *text* or _text_
+	$text = preg_replace(
+		'/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/',
+		'<em>$1$2</em>',
+		$text
+	);
+
+	return $text;
+}
+
+/**
  * Returns a string representing Good Fiar or Poor given specific thresholds
  *
  * @param int $number
@@ -9491,8 +9668,13 @@ function is_staging_environment() {
  *
  * @return string
  */
-function compute_signature( string $data, int $length = 0 ){
-	$signature = hash_hmac( 'sha256', $data, wp_salt( 'auth' ), true );
+function compute_signature( string $data, int $length = 0, string $secret = '' ){
+
+    if ( empty( $secret ) ){
+        $secret = utils::get_secret_key();
+    }
+
+	$signature = hash_hmac( 'sha256', $data, $secret, true );
     return $length > 0 ? substr( $signature, 0, $length ) : $signature;
 }
 
@@ -9507,16 +9689,167 @@ function compute_signature( string $data, int $length = 0 ){
  */
 function check_signature( string $data, string $signature, int $length = 0 ) {
 
-    $expected = compute_signature( $data );
-
-    if ( $length > 0 ){
-
-        if ( strlen( $signature ) !== $length ){
-            return false;
-        }
-
-        $expected  = substr( $expected, 0, $length );
+    if ( $length > 0 && strlen( $signature ) !== $length ){
+        return false;
     }
 
-	return hash_equals( $expected, $signature );
+    $secrets = [
+        utils::get_secret_key(),
+	    wp_salt( 'auth' ) // back compat for using the auth salt
+    ];
+
+    foreach ( $secrets as $secret ){
+	    $expected = compute_signature( $data, $length, $secret );
+
+        if ( hash_equals( $signature, $expected ) ){
+            return true;
+        }
+    }
+
+	return false;
+}
+
+/**
+ * List public campaigns
+ *
+ * @param  array  $args
+ *
+ * @return array
+ */
+function list_campaigns_archive( array $args ) {
+
+	$args = wp_parse_args( $args, [
+		'page'     => 1,
+		'per_page' => 10,
+		'search'   => '',
+	] );
+
+	$per_page     = max( 1, min( 100, $args['per_page'] ) );
+	$current_page = $args['page'];
+
+	$assetsQuery = new Table_Query( 'object_relationships' );
+	$assetsQuery->setSelect( [ 'COUNT(primary_object_id)', 'total' ], [ 'secondary_object_id', 'campaign_id' ] )->setGroupby( 'secondary_object_id' )
+	            ->where()
+	            ->equals( 'primary_object_type', 'broadcast' )
+	            ->equals( 'secondary_object_type', 'campaign' );
+
+	$campaignsQuery = new Table_Query( 'campaigns' );
+
+	$join = $campaignsQuery->addJoin( 'LEFT', [ $assetsQuery, 'assets' ] );
+	$join->onColumn( 'campaign_id' );
+
+	$campaignsQuery->add_safe_column( "$campaignsQuery->alias.*" );
+
+	$campaignsQuery
+		->setSelect( "$campaignsQuery->alias.*", "$join->alias.total" )
+		->setLimit( $per_page )
+		->setOffset( ( $current_page - 1 ) * $per_page )
+		->setOrderby( [ $join->alias . '.total', 'DESC' ] )
+		->setFoundRows( true )
+		->where()
+		->greaterThan( $join->alias . '.total', 0 )
+		->equals( 'visibility', 'public' );
+
+	if ( $args['search'] ) {
+		$campaignsQuery->where()->subWhere()
+		               ->contains( 'name', $args['search'] )
+		               ->contains( 'description', $args['search'] );
+	}
+
+	/**
+	 * Allow modifying the campaigns query, perhaps to restrict what can appear in the archive.
+	 *
+	 * @param $query Table_Query
+	 */
+	do_action_ref_array( 'groundhogg/archive/campaigns_query', [ &$campaignsQuery ] );
+
+	$items       = $campaignsQuery->get_objects();
+	$total_items = $campaignsQuery->get_found_rows();
+
+	$total_pages = ceil( $total_items / $per_page );
+
+	return [
+		'items'       => $items,
+		'total_items' => $total_items,
+		'total_pages' => $total_pages,
+	];
+}
+
+/**
+ * List public broadcasts given a specific campaign
+ *
+ * @param  array  $args
+ *
+ * @return array
+ */
+function list_broadcasts_archive( array $args ) {
+
+	$args = wp_parse_args( $args, [
+		'page'     => 1,
+		'per_page' => 10,
+		'search'   => '',
+        'campaign' => null
+	] );
+
+    if ( $args['campaign'] === null ){
+        throw new \Exception( 'Missing campaign ID' );
+    }
+
+    $campaign = $args['campaign'];
+
+    if ( ! is_a( $campaign, Campaign::class ) ){
+	    $campaign = new Campaign( $campaign );
+    }
+
+    if ( ! $campaign->is_public() ){
+        throw new \Exception( 'Campaign is not public' );
+    }
+
+	$per_page     = max( 1, min( 100, $args['per_page'] ) );
+	$current_page = $args['page'];
+	$search       = $args['search'];
+
+	$broadcastQuery = new Table_Query( 'broadcasts' );
+	$broadcastQuery
+		->setLimit( $per_page )
+		->setOffset( ( $current_page - 1 ) * $per_page )
+		->setFoundRows( true )
+		->setOrderby( [ 'send_time', 'DESC' ] )
+		->where()
+		->equals( 'object_type', 'email' )
+		->equals( 'status', 'sent' );
+
+	$broadcastQuery->parseFilters( [
+		[
+			[
+				'type'      => 'campaigns',
+				'campaigns' => [ $campaign->get_id() ]
+			]
+		]
+	] );
+
+	if ( $search ) {
+		$join = $broadcastQuery->addJoin( 'LEFT', 'emails' );
+		$join->onColumn( 'ID', 'object_id' );
+		$broadcastQuery->where()->subWhere()
+		               ->contains( "$join->alias.subject", $search )
+		               ->contains( "$join->alias.plain_text", $search );
+	}
+
+	/**
+	 * Allow modifying the broadcast query, perhaps to restrict what can appear in the archive.
+	 *
+	 * @param $query Table_Query
+	 */
+	do_action_ref_array( 'groundhogg/archive/broadcast_query', [ &$broadcastQuery ] );
+
+	$items       = $broadcastQuery->get_objects();
+	$total_items = $broadcastQuery->get_found_rows();
+	$total_pages = ceil( $total_items / $per_page );
+
+    return [
+        'items'       => $items,
+        'total_items' => $total_items,
+        'total_pages' => $total_pages,
+    ];
 }

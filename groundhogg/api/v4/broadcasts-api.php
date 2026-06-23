@@ -7,10 +7,12 @@ use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\DraftException;
 use Groundhogg\NoContactsException;
 use Groundhogg\SchedulingException;
+use Groundhogg\Utils\DateTimeHelper;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
+use function Groundhogg\list_broadcasts_archive;
 use function Groundhogg\sanitize_payload;
 
 // Exit if accessed directly
@@ -50,6 +52,64 @@ class Broadcasts_Api extends Base_Object_Api {
 			'permission_callback' => [ $this, 'update_permissions_callback' ],
 			'callback'            => [ $this, 'cancel_broadcast' ],
 		] );
+
+		register_rest_route( self::NAME_SPACE, "/{$route}/archive", [
+			[
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => [ $this, 'read_archive' ],
+				'permission_callback' => '__return_true'
+			]
+		] );
+	}
+
+	/**
+	 * Fetch a list of public assets associated with a specific public campaign
+	 *
+	 * @param  \WP_REST_Request  $request
+	 *
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function read_archive( \WP_REST_Request $request ) {
+
+		try {
+			$list = list_broadcasts_archive( [
+				'page'     => absint( $request->get_param( 'page' ) ) ?: 1,
+				'per_page' => absint( $request->get_param( 'per_page' ) ) ?: 10,
+				'search'   => sanitize_text_field( $request->get_param( 'search' ) ),
+				'campaign' => sanitize_text_field( $request->get_param( 'campaign' ) ),
+			] );
+		} catch ( \Exception $e ) {
+			return self::ERROR_401( 'error', $e->getMessage() );
+		}
+
+		// sanitize the items for the public endpoint
+		$list['items'] = array_map( function ( Broadcast $item ) use ( $request ) {
+
+			$email = $item->get_object();
+
+			$json = [
+				'ID'         => $item->get_id(),
+				'subject'    => $email->get_merged_subject_line(),
+				'preview'    => $email->get_merged_pre_header(),
+				'content'    => $email->build(),
+				'plain'      => $email->get_merged_alt_body(),
+				'sent'       => ( new DateTimeHelper( $item->get_send_time() ) )->date_i18n(),
+				'from_name'  => $email->get_from_name(),
+				'from_email' => $email->get_from_email(),
+			];
+
+			/**hj
+			 * Allow modifying the response object of an individual item
+			 *
+			 * @param $json array the response item
+			 * @param $item Broadcast the original broadcast
+			 * @param $request WP_REST_Request the current request
+			 */
+			return apply_filters( 'groundhogg/api/broadcasts/archive/item', $json, $item, $request );
+		}, $list['items'] );
+
+		return self::SUCCESS_RESPONSE( $list );
+
 	}
 
 	/**
