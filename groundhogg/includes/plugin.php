@@ -331,7 +331,7 @@ class Plugin {
 		new Blocks\Blocks();
 
 		if ( ! is_white_labeled() ) {
-			new Reviews();
+//			new Reviews();
 			new License_Notice();
 		}
 
@@ -350,7 +350,7 @@ class Plugin {
 		new Big_File_Uploader();
 		new Cleanup_Actions();
 		new Daily_Actions();
-		new Email_Reports(); // Todo remove this because it's just for testing right now
+		new Email_Reports();
 	}
 
 	/**
