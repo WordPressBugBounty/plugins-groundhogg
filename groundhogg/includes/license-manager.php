@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 class License_Manager {
 
 	static $extensions = array(); // array( item_id => array( license, status ) )
-	static $storeUrl = "https://www.groundhogg.io/license-api/";
+	static $storeUrl = "https://groundhogg.io/license-api/";
 	static $user_agent = 'Groundhogg/' . GROUNDHOGG_VERSION . ' license-manager';
 
 	public function __construct() {
@@ -45,7 +45,6 @@ class License_Manager {
 		}
 
 		$item_id = Extension_Upgrader::get_extension_id_by_path( $plugin );
-
 
 		// The plugin that's being activated is a registered extension
 		if ( ! $item_id ) {
@@ -612,7 +611,7 @@ class License_Manager {
 			'number'   => '-1'
 		) );
 
-		$url = 'https://www.groundhogg.io/edd-api/v2/products/';
+		$url = 'https://groundhogg.io/edd-api/v2/products/';
 
 		return remote_post_json( $url, $args, 'GET', [], false, DAY_IN_SECONDS );
 	}
