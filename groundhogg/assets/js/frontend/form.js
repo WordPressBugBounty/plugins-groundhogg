@@ -78,6 +78,9 @@
 
     let uuid = form.dataset.id
 
+    Groundhogg.pageContext.location = window.location.href
+    fd.append( '__page_context', JSON.stringify( Groundhogg.pageContext ) )
+
     apiPostFormData(`${ routes.forms }/${ uuid }/`, fd).then(r => {
 
       stop()
@@ -114,17 +117,25 @@
         setTimeout(() => {
           window.open(r.url, inIframe() ? '_parent' : '_self')
         }, 500)
+        return
+      }
+
+      const setMessage = content => {
+        let msg = document.createElement('div')
+        msg.innerHTML = content
+        msg.classList.add(...['gh-success'])
+        form.parentNode.appendChild(msg)
+      }
+
+      if (r.reload === true) {
+        setMessage(r.message)
+        window.location.reload()
+        return
       }
 
       if (r.message) {
-        let msg = document.createElement('div')
-        //language=HTML
-        msg.innerHTML = r.message
-        msg.classList.add(...['gh-success'])
-        form.parentNode.appendChild(msg)
-
+        setMessage(r.message)
         form.reset()
-
       }
 
     }).then(() => {

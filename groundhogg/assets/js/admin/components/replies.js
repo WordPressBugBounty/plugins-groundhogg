@@ -13,6 +13,7 @@
   const {
     sprintf,
     __,
+    _x,
   } = wp.i18n
 
   const {
@@ -37,6 +38,26 @@
     plural = '',
     note_type = 'saved_reply', // saved replies are stored in the notes table
   } = {}) => {
+
+    let strings = {
+      /* translators: %s: the plural label of saved replies, like "Saved Replies" */
+      manage: sprintf(__('Manage %s', 'groundhogg'), plural),
+      /* translators: singular label of saved reply, such as "Reply" */
+      name: sprintf( __('%s Name', 'groundhogg'), single),
+      /* translators: singular label of saved reply, such as "Reply" */
+      create: sprintf(_x( 'Create %s', 'as in create a saved reply', 'groundhogg' ), single ),
+      /* translators: %s: the singular label of a saved reply, like "Reply" */
+      new: sprintf(__('New %s', 'groundhogg'), single),
+      /* translators: singular label of saved reply, such as "Reply" */
+      update: sprintf( _x( 'Update %s', 'as in update a saved reply', 'groundhogg' ), single),
+      /* translators: singular label of an asset type */
+      delete: sprintf( _x('Delete %s', 'deleting a single item', 'groundhogg'), single),
+      /* translators: %s: the singular label of a saved reply, like "Reply" */
+      deleteConfirmation: sprintf(__('Are you sure you want to delete this %s?', 'groundhogg'), single),
+      /* translators: %s: the plural label of saved replies, like "Saved Replies" */
+      noReplies: sprintf(__('No %s yet.', 'groundhogg'), plural)
+
+    }
 
     const State = Groundhogg.createState({
       adding      : false,
@@ -146,7 +167,7 @@
             }, [
               Label({
                 for: 'reply-summary',
-              }, sprintf(__('%s Name'), single)),
+              }, strings.name ),
               Input({
                 className: 'full-width',
                 id       : 'reply-summary',
@@ -164,7 +185,7 @@
           }, [
             Label({
               for: 'edit-reply-content',
-            }, __('Content')),
+            }, __('Content', 'groundhogg')),
             Textarea({
               id       : 'edit-reply-content',
               className: 'full-width',
@@ -212,7 +233,7 @@
               className: 'gh-button primary',
               id       : 'update-reply',
               type     : 'submit',
-            }, sprintf(State.adding ? 'Create %s' : 'Update %s', single)),
+            }, State.adding ? strings.create : strings.update ),
           ]),
         ])
       }
@@ -260,14 +281,14 @@
               },
             }, [
               Dashicon('edit'),
-              ToolTip('Edit'),
+              ToolTip(__( 'Edit', 'groundhogg' ) ),
             ]),
             userHasCap( 'delete_others_notes' ) ? Button({
               className: 'gh-button danger icon text',
               onClick: e => {
                 dangerConfirmationModal({
-                  alert: `<p>${sprintf(__('Are you sure you want to delete this %s?'), single)}</p>`,
-                  confirmText: __( 'Delete' ),
+                  alert: `<p>${strings.deleteConfirmation}</p>`,
+                  confirmText: __( 'Delete', 'groundhogg' ),
                   onConfirm: () => {
                     RepliesStore.delete(note.ID).then(() => {
                       State.set({
@@ -280,7 +301,7 @@
               }
             }, [
               Dashicon('trash'),
-              ToolTip('Delete'),
+              ToolTip(__( 'Delete', 'groundhogg' ) ),
             ]) : null,
           ]),
         ]))
@@ -293,7 +314,7 @@
         Div({
           className: 'space-between',
         }, [
-          H2({}, sprintf(__('Manage %s'), plural)),
+          H2({}, strings.manage ),
           Button({
             className: 'gh-button primary',
             onClick  : e => {
@@ -302,7 +323,8 @@
               })
               morph()
             },
-          }, sprintf(__('New %s'), single)),
+            /* translators: %s: the singular label of a saved reply, like "Reply" */
+          }, strings.new ),
         ]),
 
         // Add Note Form
@@ -312,7 +334,8 @@
           style: {
             textAlign: 'center',
           },
-        }, sprintf(__('No %s yet.', 'groundhogg'), plural)),
+          /* translators: %s: the plural label of saved replies, like "Saved Replies" */
+        }, strings.noReplies ),
       ])
     })
 
@@ -326,8 +349,8 @@
       // dialogClasses: 'overflow-visible',
     }, Fragment([
       SavedReplies({
-        single: __('Saved Reply'),
-        plural: __('Saved Replies'),
+        single: __('Saved Reply', 'groundhogg'),
+        plural: __('Saved Replies', 'groundhogg'),
         ...props,
       }),
     ]))

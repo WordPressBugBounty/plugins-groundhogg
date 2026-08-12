@@ -9,34 +9,83 @@
     _n,
   } = wp.i18n
 
-  function insertAtCursor (field, value) {
-    //IE support
-    if (document.selection) {
-      field.focus()
-      var sel = document.selection.createRange()
-      sel.text = value
-    }
-    //MOZILLA and others
-    else if (field.selectionStart || field.selectionStart == '0') {
-      var startPos = field.selectionStart
-      var endPos = field.selectionEnd
-      field.value = field.value.substring(0, startPos)
-        + value
-        + field.value.substring(endPos, field.value.length)
+  let savedRange = null;
 
-      field.selectionStart = startPos + value.length
-      field.selectionEnd = startPos + value.length
+  function saveCursorPosition(field) {
+    const selection = window.getSelection();
+
+    if (
+      selection &&
+      selection.rangeCount > 0 &&
+      field.contains(selection.anchorNode)
+    ) {
+      savedRange = selection.getRangeAt(0).cloneRange();
     }
-    else {
-      field.value += value
+  }
+
+  function insertAtCursor(field, value) {
+    field.focus();
+
+    if (field.isContentEditable) {
+      const selection = window.getSelection();
+
+      if (savedRange && field.contains(savedRange.commonAncestorContainer)) {
+        selection.removeAllRanges();
+        selection.addRange(savedRange);
+      }
+
+      let range;
+
+      if (
+        selection.rangeCount > 0 &&
+        field.contains(selection.getRangeAt(0).commonAncestorContainer)
+      ) {
+        range = selection.getRangeAt(0);
+      } else {
+        range = document.createRange();
+        range.selectNodeContents(field);
+        range.collapse(false);
+      }
+
+      range.deleteContents();
+
+      const textNode = document.createTextNode(value);
+
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      savedRange = range.cloneRange();
+    } else if (
+      typeof field.selectionStart === 'number' &&
+      typeof field.selectionEnd === 'number'
+    ) {
+      const startPos = field.selectionStart;
+      const endPos = field.selectionEnd;
+
+      field.value =
+        field.value.substring(0, startPos) +
+        value +
+        field.value.substring(endPos);
+
+      const newPosition = startPos + value.length;
+
+      field.selectionStart = newPosition;
+      field.selectionEnd = newPosition;
+    } else {
+      field.value += value;
     }
 
-    let input = new Event('input')
-    let change = new Event('change')
+    field.dispatchEvent(new Event('input', {
+      bubbles: true,
+    }));
 
-    // Trigger input & change event
-    field.dispatchEvent(input)
-    field.dispatchEvent(change)
+    field.dispatchEvent(new Event('change', {
+      bubbles: true,
+    }));
   }
 
   const Insert = {
@@ -61,10 +110,27 @@
       })
 
       // NOPE, GO TO TEXT
-      $doc.on('focus', 'input:not(.no-insert), textarea:not(.no-insert)',
+      $doc.on('focus', 'input:not(.no-insert), textarea:not(.no-insert), [contenteditable="true"]:not(.no-insert)',
         function () {
           self.active = this
           self.to_mce = false
+
+          if ( ! this.hasCursorPositionListeners ) {
+            this.addEventListener('keyup', () => {
+              saveCursorPosition(this);
+            });
+
+            this.addEventListener('mouseup', () => {
+              saveCursorPosition(this);
+            });
+
+            this.addEventListener('input', () => {
+              saveCursorPosition(this);
+            });
+
+            this.hasCursorPositionListeners = true
+          }
+
           $doc.trigger('ghInsertTargetChanged')
         })
 
@@ -304,8 +370,8 @@
     if (array.length === 1) {
       return array[0]
     }
-    // translators: 1: all items in a list except the last, 2: the last item; used when joining with "and"
     return sprintf(
+      /* translators: 1: all items in a list except the last, 2: the last item; used when joining with "and" */
       _x('%1$s and %2$s', 'and preceding the last item in a list', 'groundhogg'),
       array.slice(0, -1).join(', '), array[array.length - 1])
   }
@@ -318,6 +384,7 @@
       return array[0]
     }
     return sprintf(
+      /* translators: 1: all items in a list except the last, 2: the last item; used when joining with "or" */
       _x('%1$s or %2$s', 'or preceding the last item in a list', 'groundhogg'),
       array.slice(0, -1).join(', '),
       array[array.length - 1])
@@ -1020,7 +1087,7 @@ ${ afterProgress() }`,
    * @param props
    * @return {{setContent: setContent, $modal: (*|jQuery|HTMLElement), close: close}}
    */
-  const loadingModal = (text = 'Loading', props = {}) => {
+  const loadingModal = (text = '', props = {}) => {
 
     return modal({
       content      : spinner(),
@@ -1081,8 +1148,9 @@ ${ afterProgress() }`,
     name,
     ...props
   }) => dangerConfirmationModal({
+    /* translators: %s: the name of an asset (contacts, flows, emails, etc...) */
     alert      : `<p>${ sprintf(__('Are you sure you want to delete %s? This action cannot be undone.', 'groundhogg'), name) }</p>`,
-    confirmText: __('Delete'),
+    confirmText: __('Delete', 'groundhogg'),
     ...props,
   })
 
@@ -1118,11 +1186,12 @@ ${ afterProgress() }`,
     let msg = __('Are you sure? This action cannot be undone.', 'groundhogg')
 
     if (e.currentTarget.dataset.name) {
+      /* translators: %s: the name of an asset (contacts, flows, emails, etc...) */
       msg = sprintf(__('Are you sure you want to delete %s? This action cannot be undone.', 'groundhogg'), bold(e.currentTarget.dataset.name))
     }
 
     dangerModalLink(e, msg, {
-      confirmText: __('Delete'),
+      confirmText: __('Delete','groundhogg'),
     })
   })
 

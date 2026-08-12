@@ -595,7 +595,7 @@
     }
   })
 
-  let State = {
+  const State = Groundhogg.createState({
     email               : {},
     changes             : {},
     activeBlock         : null,
@@ -613,7 +613,8 @@
     blockInspector      : false,
     editDefaults        : false,
     savingEditorSettings: false,
-  }
+    templatesUsed: {},
+  })
 
   const setState = newState => {
 
@@ -622,10 +623,10 @@
       savingEditorSettings: wasSavingEditorSettings,
     } = State
 
-    State = {
+    State.set({
       ...State, ...newState,
       id: uuid(),
-    }
+    })
 
     if (wasSavingEditorSettings !== State.savingEditorSettings) {
       morphControls()
@@ -669,26 +670,31 @@
     })
   }
 
-  function createAlphaGenerator() {
-    let counter = 0;
-
-    return function () {
-      counter++;
-
-      let result = '';
-      let n = counter;
-
-      while (n > 0) {
-        n--; // shift because there is no 0 digit
-        result = String.fromCharCode(97 + (n % 26)) + result;
-        n = Math.floor(n / 26);
-      }
-
-      return result;
-    };
+  /**
+   * Return an array of ids representing the templates in use by global blocks in this email
+   */
+  const getTemplatesInUse = () => {
+    return Object.keys(State.templatesUsed)
   }
 
-  const nextGlobalIdPrefix = createAlphaGenerator()
+  /**
+   * Mark that a template was used
+   *
+   * @param templateId
+   * @param blockId
+   */
+  const markTemplateUsed = (templateId, blockId) => {
+    State.templatesUsed[templateId] = blockId
+  }
+
+  /**
+   * checks to see if a specific template is already in use by a global block already included in the email
+   *
+   * @param templateId
+   */
+  const isTemplateInUse = templateId => {
+    return State.templatesUsed.hasOwnProperty(templateId)
+  }
 
   /**
    * Retrieve the global blocks from a template and prefix their IDs with the global block namespace
@@ -698,17 +704,12 @@
    * @returns {*[]|[]}
    */
   const getGlobalBlocksFromTemplate = ( templateId, idPrefix ) => {
-    let blocks = parseBlocksFromContent(EmailsStore.get(templateId).data.content)
-    __walkBlocks( block => {
-      block.id = `${idPrefix}__${block.id}`
-    }, blocks )
-
-    return blocks
+    return parseBlocksFromContent(EmailsStore.get(templateId).data.content)
   }
 
   /**
    * Updates global block content
-   * Surprisingly I think this will handle nested global blocks out of the box as well.
+   * Surprisingly, I think this will handle nested global blocks out of the box as well.
    */
   const saveGlobalBlocks = () => {
 
@@ -728,11 +729,6 @@
 
       // remove namespace
       let children = block.children
-
-      // remove the namespace
-      __walkBlocks(block => {
-        block.id = block.id.replace(/^[^_]+__/, '');
-      }, children )
 
       let css = renderBlocksCSS(children)
       let content = renderBlocksHTML(children)
@@ -2868,7 +2864,7 @@
                         let globalBlock = createBlock('global', {
                           templateId  : item.ID,
                           templateName: item.data.title,
-                          children    : getGlobalBlocksFromTemplate(item.ID, nextGlobalIdPrefix() ),
+                          children: getGlobalBlocksFromTemplate(item.ID),
                         })
 
                         replaceBlock(block, globalBlock)
@@ -3618,6 +3614,31 @@
   }
 
   /**
+   * Replace the IDs of any blocks that have the same ID as another block
+   *
+   * @param blocks
+   * @private
+   */
+  const __dealWithIdCollisions = (blocks) => {
+    // console.log('dealWithIdCollisions')
+
+    let ids = []
+    __walkBlocks(block => ids.push(block.id), blocks)
+    let collisions = ids.filter((id, i) => ids.indexOf(id) !== i)
+    if (collisions.length) {
+
+      console.warn('ID collisions detected:', collisions)
+
+      collisions.forEach(id => {
+        let block = __findBlock(id, blocks)
+        if (block) {
+          block.id = uuid()
+        }
+      })
+    }
+  }
+
+  /**
    * Replace the ID of a block when duplicating it
    *
    * @param block
@@ -3939,6 +3960,11 @@
    */
   const BlockEditorContent = () => {
 
+    let blocks = getBlocks()
+
+    __dealWithIdCollisions(blocks)
+    State.set({ templatesUsed: {} })
+
     return Div({
         id       : 'builder-content',
         className: 'sortable-blocks',
@@ -3946,7 +3972,7 @@
           makeSortable(el)
         },
       },
-      getBlocks().filter(b => b.type).map(block => EditBlockWrapper(block)))
+      blocks.filter(b => b.type).map(block => EditBlockWrapper(block)))
 
   }
 
@@ -4243,11 +4269,11 @@
             cells   : [
               props => Input({
                 ...props,
-                placeholder: 'Key',
+                placeholder: _x( 'Key', 'as in a metadata field key', 'groundhogg' ),
               }),
               props => Input({
                 ...props,
-                placeholder: 'Value',
+                placeholder: _x( 'Value', 'as in a field value', 'groundhogg' ),
               }),
 
             ],
@@ -4361,11 +4387,11 @@
             cells   : [
               props => Input({
                 ...props,
-                placeholder: 'Key',
+                placeholder: _x( 'Key', 'as in a metadata field key', 'groundhogg' ),
               }),
               props => Input({
                 ...props,
-                placeholder: 'Value',
+                placeholder: _x( 'Value', 'as in a field value', 'groundhogg' ),
               }),
 
             ],
@@ -5738,24 +5764,27 @@
               saveEmail().finally( morphHeader )
             },
           },
-          getState().savingDraft ? 'Saving draft' : 'Save draft') : Button({
+          getState().savingDraft ? 'Saving draft' : 'Save draft' ) : Button({
             id       : 'switch-to-draft',
-            className: 'gh-button danger text',
+            className: `gh-button danger text ${getState().savingDraft ? 'loading-dots' : ''}`,
             onClick  : e => {
               dangerConfirmationModal({
                 alert: `<p>Are you sure you want to switch this email to <b>draft</b>?</p><p>Doing so will prevent it from being sent in any funnels.</p>`,
 
                 onConfirm: () => {
+                  setState({
+                    savingDraft: true
+                  })
+                  morphHeader()
                   setEmailData({
                     status: 'draft',
                   })
-                  saveEmail()
-                  morphHeader()
+                  saveEmail().finally( morphHeader )
                 },
               })
             },
           },
-          'Move to draft'),
+          getState().savingDraft ? 'Moving to draft' : 'Move to draft'),
         isDraft() ? Button({
             id       : 'publish-email',
             className: 'gh-button action',
@@ -7868,7 +7897,9 @@
         textAlign     : alignment,
       },
     }, content ),
-    plainText: ({ content, tag }) => extractPlainText( makeEl( tag, {}, content )),
+    plainText: ({ content, tag }) => {
+      return extractPlainText(makeEl( tag, {}, content ).outerHTML)
+    },
     gutenberg: ({ content, tag }) => {
       content = convertToGutenbergBlocks(makeEl( tag, {}, content ))
 
@@ -9158,7 +9189,9 @@
   // Register the shortcode block
   registerDynamicBlock('shortcode', 'Shortcode', {
     attributes:{
-      content: el => el.firstElementChild.firstElementChild.innerHTML,
+      content: el => {
+        return el.innerHTML
+      },
     },
     svg       : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96.24 96.24">
   <path fill="currentColor" d="M48.122 0C21.587 0 .001 21.585.001 48.118c0 26.535 21.587 48.122 48.12 48.122 26.532 0 48.117-21.587 48.117-48.122C96.239 21.586 74.654 0 48.122 0zM4.857 48.118a43.085 43.085 0 0 1 3.746-17.606l20.638 56.544C14.81 80.042 4.857 65.243 4.857 48.118zm43.265 43.267c-4.247 0-8.346-.623-12.222-1.763l12.98-37.719 13.301 36.433c.086.215.191.411.308.596a43.204 43.204 0 0 1-14.367 2.453zm5.961-63.551c2.604-.137 4.953-.412 4.953-.412 2.33-.276 2.057-3.701-.277-3.564 0 0-7.007.549-11.532.549-4.25 0-11.396-.549-11.396-.549-2.332-.137-2.604 3.427-.273 3.564 0 0 2.208.275 4.537.412l6.74 18.469-9.468 28.395-15.752-46.863c2.608-.136 4.952-.412 4.952-.412 2.33-.275 2.055-3.702-.278-3.562 0 0-7.004.549-11.53.549a94.6 94.6 0 0 1-2.784-.052C19.709 12.611 33.008 4.856 48.122 4.856c11.265 0 21.519 4.306 29.215 11.357-.187-.01-.368-.035-.562-.035-4.248 0-7.264 3.702-7.264 7.679 0 3.564 2.055 6.582 4.248 10.146 1.647 2.882 3.567 6.585 3.567 11.932 0 3.704-1.422 8-3.293 13.986l-4.315 14.421zm15.788 57.682 13.215-38.208c2.471-6.171 3.29-11.106 3.29-15.497 0-1.591-.104-3.07-.292-4.449a43.011 43.011 0 0 1 5.301 20.758c-.001 15.96-8.653 29.896-21.514 37.396z"/>
@@ -9206,7 +9239,7 @@
     },
     parseContent: content => cleanHTML(content),
     defaults    : {
-      shortcode: '',
+      content: '',
     },
   })
 
@@ -10684,7 +10717,7 @@
     svg       : icons.global,
     attributes: {
       children    : (el, block) => {
-        return getGlobalBlocksFromTemplate(block.templateId, nextGlobalIdPrefix() )
+        return getGlobalBlocksFromTemplate(block.templateId)
       },
       templateName: (el, block) => {
         return EmailsStore.get(block.templateId).data.title
@@ -10715,6 +10748,7 @@
               clearable: false,
               fetchOptions: async (search) => EmailsStore.filter(email => email.data.message_type === 'global_block' && email.data.title.match(search)).
                 filter(email => !isGlobalBlockEditor() || email.ID !== getEmailId()).
+                filter(email => !isTemplateInUse(email.ID)).
                 map(({
                   ID,
                   data,
@@ -10725,7 +10759,7 @@
               onChange    : item => {
                 updateBlock({
                   templateId  : item.id,
-                  children    : getGlobalBlocksFromTemplate(item.id, nextGlobalIdPrefix() ),
+                  children: getGlobalBlocksFromTemplate(item.id),
                   templateName: EmailsStore.get(item.id).data.title,
                 })
               },
@@ -10768,6 +10802,19 @@
           }, '⚠️ The global block template that was selected is no longer available.'),
         ])
       }}
+
+      if (isTemplateInUse(templateId)) {
+        return Fragment([
+          Pg({
+            className: 'gh-text error red',
+            style    : {
+              textAlign: 'center',
+            },
+          }, '⚠️ The selected global block template is being used already.'),
+        ])
+      }
+
+      markTemplateUsed(templateId, id)
 
       // verify that this block has not been placed within itself
       // check the children, and if any of the children are global and the templateId is the same, prevent it
@@ -11412,10 +11459,15 @@
 
     for (let row of rows) {
 
-      let block = parseBlockFromRow(row)
+      try {
+        let block = parseBlockFromRow(row)
 
-      if (block) {
-        blocks.push(block)
+        if (block) {
+          blocks.push(block)
+        }
+      }
+      catch (e) {
+        // something went wrong
       }
     }
 

@@ -171,6 +171,39 @@ abstract class Base_Object_Api extends Base_Api {
 	}
 
 	/**
+	 * Read singular based on a specific object
+	 *
+	 * @param  Base_Object_With_Meta|Base_Object  $object
+	 *
+	 * @return bool
+	 */
+	protected function current_user_can_read( Base_Object_With_Meta|Base_Object $object ) {
+		return current_user_can( sprintf( 'view_%s', $this->get_object_type() ), $object );
+	}
+
+	/**
+	 * Update singular based on a specific object
+	 *
+	 * @param  Base_Object_With_Meta|Base_Object  $object
+	 *
+	 * @return bool
+	 */
+	protected function current_user_can_update( Base_Object_With_Meta|Base_Object $object ) {
+		return current_user_can( sprintf( 'edit_%s', $this->get_object_type() ), $object );
+	}
+
+	/**
+	 * Delete singular based on a specific object
+	 *
+	 * @param  Base_Object_With_Meta|Base_Object  $object
+	 *
+	 * @return bool
+	 */
+	protected function current_user_can_delete( Base_Object_With_Meta|Base_Object $object ) {
+		return current_user_can( sprintf( 'delete_%s', $this->get_object_type() ), $object );
+	}
+
+	/**
 	 * Returns the resource data table
 	 *
 	 * @return \Groundhogg\DB\DB|\Groundhogg\DB\Meta_DB|\Groundhogg\DB\Tags
@@ -203,7 +236,7 @@ abstract class Base_Object_Api extends Base_Api {
 	 * @return WP_Error
 	 */
 	protected function ERROR_RESOURCE_NOT_FOUND() {
-		return self::ERROR_404( 'error', sprintf( '%s not found.', $this->get_object_type() ) );
+		return self::ERROR_404( 'error', sprintf( '%s not found.', $this->get_db_table()->singular ) );
 	}
 
 	/**
@@ -507,6 +540,8 @@ abstract class Base_Object_Api extends Base_Api {
 
 		$items = array_map( [ $this, 'map_raw_object_to_class' ], $items );
 
+		$items = array_filter( $items, [ $this, 'current_user_can_read' ] );
+
 		return self::SUCCESS_RESPONSE( [
 			'total_items' => $total,
 			'items'       => $items
@@ -543,7 +578,7 @@ abstract class Base_Object_Api extends Base_Api {
 				$id     = get_array_var( $item, $this->get_primary_key() );
 				$object = $this->create_new_object( $id );
 
-				if ( ! $object->exists() ) {
+				if ( ! $object->exists() || ! $this->current_user_can_update( $object ) ) {
 					continue;
 				}
 
@@ -575,6 +610,10 @@ abstract class Base_Object_Api extends Base_Api {
 		 * @var $object Base_Object|Base_Object_With_Meta
 		 */
 		foreach ( $items as $object ) {
+
+			if ( ! $this->current_user_can_update( $object ) ){
+				continue;
+			}
 
 			$object->update( $data );
 
@@ -637,7 +676,13 @@ abstract class Base_Object_Api extends Base_Api {
 		 * @var $object Base_Object
 		 */
 		foreach ( $items as $object ) {
+
+			if ( ! $this->current_user_can_delete( $object ) ){
+				continue;
+			}
+
 			$deleted_item_ids[] = $object->get_id();
+
 			$object->delete();
 
 			$this->do_object_deleted_action( $object );
@@ -714,6 +759,10 @@ abstract class Base_Object_Api extends Base_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
+		if ( ! $this->current_user_can_read( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
+		}
+
 		return self::SUCCESS_RESPONSE( [ 'item' => $object ] );
 	}
 
@@ -731,6 +780,10 @@ abstract class Base_Object_Api extends Base_Api {
 
 		if ( ! $object->exists() ) {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
+		}
+
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
 		}
 
 		$data = $request->get_param( 'data' );
@@ -764,18 +817,19 @@ abstract class Base_Object_Api extends Base_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
-		if ( ! current_user_can( "" ) ) {
-			$others = $request->has_param( 'others' )
-				? wp_parse_list( $request->get_param( 'others' ) )
-				: $request->get_json_params();
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
 		}
+
+		$others = $request->has_param( 'others' )
+			? wp_parse_list( $request->get_param( 'others' ) )
+			: $request->get_json_params();
 
 		foreach ( $others as $other ) {
 
 			$other = $this->create_new_object( $other );
 
-			// unable to delete this one
-			if ( ! current_user_can( "delete_{$this->get_object_type()}", $object ) ) {
+			if ( ! $this->current_user_can_delete( $object ) ){
 				continue;
 			}
 
@@ -824,6 +878,10 @@ abstract class Base_Object_Api extends Base_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
+		if ( ! $this->current_user_can_read( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
+		}
+
 		$data = $request->get_param( 'data' ) ?: [];
 		$meta = $request->get_param( 'meta' ) ?: [];
 
@@ -865,6 +923,10 @@ abstract class Base_Object_Api extends Base_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
+		if ( ! $this->current_user_can_read( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
+		}
+
 		return self::SUCCESS_RESPONSE( [
 			'meta' => $object->get_meta()
 		] );
@@ -883,6 +945,10 @@ abstract class Base_Object_Api extends Base_Api {
 
 		if ( ! $object->exists() ) {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
+		}
+
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
 		}
 
 		$meta = $request->get_json_params();
@@ -911,6 +977,10 @@ abstract class Base_Object_Api extends Base_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
+		}
+
 		$meta = $request->get_json_params();
 
 		$object->delete_meta( $meta );
@@ -936,6 +1006,10 @@ abstract class Base_Object_Api extends Base_Api {
 
 		if ( ! $object->exists() ) {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
+		}
+
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
 		}
 
 		if ( $request->has_param( 'other_id' ) || $request->has_param( 'parent_id' ) || $request->has_param( 'child_id' ) ) {
@@ -989,6 +1063,10 @@ abstract class Base_Object_Api extends Base_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
+		}
+
 		$child_id   = $request->get_param( 'child_id' ) ?: $request->get_param( 'other_id' );
 		$child_type = $request->get_param( 'child_type' ) ?: $request->get_param( 'other_type' );
 
@@ -1028,6 +1106,10 @@ abstract class Base_Object_Api extends Base_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
+		if ( ! $this->current_user_can_read( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
+		}
+
 		$child_type  = $request->get_param( 'child_type' ) ?: $request->get_param( 'other_type' );
 		$parent_type = $request->get_param( 'parent_type' );
 
@@ -1057,6 +1139,10 @@ abstract class Base_Object_Api extends Base_Api {
 
 		if ( ! $object->exists() ) {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
+		}
+
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
 		}
 
 		if ( $request->has_param( 'other_id' ) || $request->has_param( 'parent_id' ) || $request->has_param( 'child_id' ) ) {
@@ -1107,6 +1193,10 @@ abstract class Base_Object_Api extends Base_Api {
 
 		if ( ! $object->exists() ) {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
+		}
+
+		if ( ! $this->current_user_can_update( $object ) ){
+			return self::ERROR_NO_ACCESS( $this->get_db_table()->singular );
 		}
 
 		$child_id   = $request->get_param( 'child_id' ) ?: $request->get_param( 'other_id' );

@@ -44,7 +44,7 @@ class Tag_Applied extends Benchmark {
 	 * @return string
 	 */
 	public function get_name() {
-		return _x( 'Tag Applied', 'step_name', 'groundhogg' );
+		return esc_html_x( 'Tag Applied', 'step_name', 'groundhogg' );
 	}
 
 	/**
@@ -144,7 +144,7 @@ class Tag_Applied extends Benchmark {
 		if ( empty( $tags ) ) {
 			$name = __( 'A tag is applied', 'groundhogg' );
 		} else if ( count( $tags ) === 1 ) {
-			/* translators: %s: name of a tag */
+			/* translators: %s: list of tags */
 			$name = sprintf( esc_html__( '%s is applied', 'groundhogg' ), orList( $tags ) );
 		} else if ( count( $tags ) >= 4 ) {
 			switch ( $condition ) {

@@ -217,6 +217,22 @@ abstract class Base_Api extends Supports_Errors {
 	}
 
 	/**
+	 * 401 Error for invalid permissions.
+	 *
+	 * @return WP_Error
+	 */
+	protected static function ERROR_NO_ACCESS( $resource = null ) {
+
+		if ( ! $resource ){
+			return self::ERROR_401( 'no_access', _x( 'You do not have access to this resource.', 'api', 'groundhogg' ) );
+		}
+
+		// translators: %s: singular label of resource-type like contacts
+		return self::ERROR_401( 'no_access', sprintf( _x( 'You do not have access to this %s.', 'api', 'groundhogg' ), $resource ) );
+
+	}
+
+	/**
 	 * 500 Error for unknown error.
 	 *
 	 * @return WP_Error
@@ -275,7 +291,7 @@ abstract class Base_Api extends Supports_Errors {
 				/* translators: %s: the contact's ID */
 				return self::ERROR_400( 'invalid_id', sprintf( _x( 'Contact with ID %s does not exist.', 'api', 'groundhogg' ), $id_or_email ) );
 			} else {
-				/* translators: %s: the contact's email */
+				/* translators: %s: the contact's email address */
 				return self::ERROR_400( 'invalid_email', sprintf( _x( 'Contact with email %s does not exist.', 'api', 'groundhogg' ), $id_or_email ) );
 			}
 		}

@@ -97,6 +97,7 @@
 
   const activityUpdated = () => {
     window.dispatchEvent(new Event('activityupdated'))
+    $('#refresh-timeline').click()
   }
 
   const getContact = () => {
@@ -123,7 +124,24 @@
       ]
     }
 
-    Groundhogg.components.emailModal(email)
+    Groundhogg.components.emailModal(email, activityUpdated )
+  }
+
+  const strings = {
+
+    /* translators: %s: a step name */
+    pending: __( 'Pending %s', 'groundhogg'),
+    /* translators: %s: a step name */
+    completed: __( 'Completed %s', 'groundhogg'),
+    /* translators: %s: the broadcast title */
+    will_receive_broadcast: __( 'Will receive broadcast: %s', 'groundhogg'),
+    /* translators: %s: the broadcast title */
+    received_broadcast: __( 'Received broadcast: %s', 'groundhogg'),
+    /* translators: %s: the email title */
+    will_receive_email: __( 'Will receive email: %s', 'groundhogg'),
+    /* translators: %s: the email title */
+    received_email: __( 'Received email: %s', 'groundhogg')
+
   }
 
   const ContactActions = [
@@ -151,7 +169,7 @@
                 sendEmail()
                 break
               case 'template':
-                Groundhogg.components.EmailTemplateModal(getContact().ID)
+                Groundhogg.components.EmailTemplateModal(getContact().ID, activityUpdated)
                 break
 
             }
@@ -193,6 +211,7 @@
           id       : 'add-to-funnel-dialog',
           className: 'display-flex gap-10 column',
         }, [
+          /* translators: %s: the name of a contact */
           `<h3 style="margin: 0">${ sprintf(__('Add %s to a flow', 'groundhogg'), getContact().data.full_name) }</h3>`,
           MakeEl.ItemPicker({
             id          : `select-a-funnel`,
@@ -272,9 +291,13 @@
               }).then(() => {
 
                 dialog({
-                  message: sprintf(__('%s added to flow!', 'groundhogg'),
+                  message: sprintf(
+                    /* translators: %s: the name of a contact */
+                    __('%s added to flow!', 'groundhogg'),
                     getContact().data.full_name),
                 })
+
+                activityUpdated()
 
                 close()
 
@@ -289,7 +312,10 @@
               })
 
             },
-          }, sprintf(__('Add to %s now!', 'groundhogg'), bold(FunnelsStore.get(State.funnel_id).data.title))) : null,
+          }, sprintf(
+            /* translators: %s: the name of a flow */
+            __('Add to %s now!', 'groundhogg'),
+            bold(FunnelsStore.get(State.funnel_id).data.title))) : null,
         ]))
       },
     },
@@ -365,8 +391,8 @@
                   // language=HTML
                   alert    : `<p>
                       ${ sprintf(
-                              __('Are you sure you want to merge %1$s with %2$s? This action cannot be undone.',
-                                      'groundhogg'),
+                              /* translators: 1: the name of a contact, 2: the name of another contact */
+                              __('Are you sure you want to merge %1$s with %2$s? This action cannot be undone.', 'groundhogg'),
                               bold(_contact.data.full_name),
                               bold(getContact().data.full_name)) }</p>
                   <p>
@@ -392,13 +418,15 @@
             break
           case 'delete':
             dangerConfirmationModal({
-              confirmText: __('Delete'),
+              confirmText: __('Delete', 'groundhogg' ),
               alert      : `<p>${ sprintf(
+                /* translators: %s: the name of an asset (contacts, flows, emails, etc...) */
                 __('Are you sure you want to delete %s?', 'groundhogg'),
                 bold(getContact().data.full_name)) }</p>`,
               onConfirm  : () => {
                 ContactsStore.delete(contact.ID).then(() => {
                   dialog({
+                    /* translators: %s: the name of an asset (contacts, flows, emails, etc...) */
                     message: sprintf(__('%s was deleted!', 'groundhogg'),
                       contact.data.full_name),
                   })
@@ -587,15 +615,18 @@
           i18n,
           ID,
         }) => {
-          return sprintf(__('%s sent an email with subject %s', 'groundhogg'),
-            bold(i18n.sent_by),
-            `<a href="#" class="view-composed-email-log-item" data-activity-id="${ ID }">${ bold(meta.subject) }</a>`)
+          /* translators: sentby: the name of a user, subject: the subject line of an email */
+          return sprintf(__('%(sentby)s sent an email with subject %(subject)s', 'groundhogg'), {
+            sentby: bold(i18n.sent_by),
+            subject: `<a href="#" class="view-composed-email-log-item" data-activity-id="${ ID }">${ bold(meta.subject) }</a>`
+          })
         },
         preload: () => {},
       },
       email_opened       : {
         icon  : icons.open_email,
         render: ({ data }) => {
+          /* translators: %s: the title of an email */
           return sprintf(__('Opened %s', 'groundhogg'), el('a', {
             href: parseInt(data.funnel_id) === 1
                   ? adminPageURL('gh_reporting', {
@@ -617,26 +648,30 @@
             return link.length > 50 ? `${ link.substring(0, 47) }...` : link
           }
 
-          return sprintf(__('Clicked %s in %s', 'groundhogg'), el('a', {
-            target: '_blank',
-            href  : data.referer,
-          }, bold(maybeTruncateLink(data.referer))), el('a', {
-            href: parseInt(data.funnel_id) === 1
-                  ? adminPageURL('gh_reporting', {
-                tab      : 'broadcasts',
-                broadcast: data.step_id,
-              })
-                  : adminPageURL('gh_reporting', {
-                tab : 'funnels',
-                step: data.step_id,
-              }),
-          }, bold(EmailsStore.get(data.email_id).data.title)))
+          /* translators: 1: the link clicked, 2: the title of an email */
+          return sprintf(__('Clicked %1$s in %2$s', 'groundhogg'), el('a', {
+              target: '_blank',
+              href  : data.referer,
+            }, bold(maybeTruncateLink(data.referer))),
+            el('a', {
+              href: parseInt(data.funnel_id) === 1
+                    ? adminPageURL('gh_reporting', {
+                  tab      : 'broadcasts',
+                  broadcast: data.step_id,
+                })
+                    : adminPageURL('gh_reporting', {
+                  tab : 'funnels',
+                  step: data.step_id,
+                }),
+            }, bold(EmailsStore.get(data.email_id).data.title))
+          )
         },
       },
       imported           : {
         icon  : '<span class="dashicons dashicons-upload"></span>',
         render: ({ i18n }) => {
-          return sprintf(__('Imported by %s from %s', 'groundhogg'), bold(i18n.by), bold(i18n.file))
+          /* translators: user: the name of a user, file: the name of a file */
+          return sprintf(__('Imported by %(user)s from %(file)s', 'groundhogg'), { user: bold(i18n.by), file: bold(i18n.file) } )
         },
       },
       funnel_conversion  : {
@@ -651,6 +686,7 @@
             }, data.step_id),
           }, funnelTitle)
 
+          /* translators: %s: the name of a flow */
           return sprintf(__('Converted in %s', 'groundhogg'), link)
         },
       },
@@ -721,7 +757,8 @@
             return SubmissionActivityItem({
               icon   : icons.form,
               heading: __('Submission', 'groundhogg'),
-              before : sprintf(__('Submitted form %s in flow %s', 'groundhogg'),
+              /* translators: 1: the form name, 2: the flow name */
+              before : sprintf(__('Submitted form %1$s in flow %2$s', 'groundhogg'),
                 bold(activity.form.data.step_title), el('a', {
                   href  : funnel.admin + `#${ activity.data.step_id }`,
                   target: '_blank',
@@ -733,7 +770,8 @@
             return SubmissionActivityItem({
               icon   : icons.webhook,
               heading: __('Request', 'groundhogg'),
-              before : sprintf(__('Received request to %s in flow %s', 'groundhogg'),
+              /* translators: 1: the step name, 2: the flow name */
+              before : sprintf(__('Received request to %1$s in flow %2$s', 'groundhogg'),
                 bold(activity.form.data.step_title), el('a', {
                   href  : funnel.admin + `#${ activity.data.step_id }`,
                   target: '_blank',
@@ -745,7 +783,8 @@
             return SubmissionActivityItem({
               icon   : icons.webhook,
               heading: __('Response', 'groundhogg'),
-              before : sprintf(__('Received response from %s in flow %s', 'groundhogg'),
+              /* translators: 1: the step name, 2: the flow name */
+              before : sprintf(__('Received response from %1$s in flow %2$s', 'groundhogg'),
                 bold(activity.form.data.step_title), el('a', {
                   href  : funnel.admin + `#${ activity.data.step_id }`,
                   target: '_blank',
@@ -765,6 +804,7 @@
             return SubmissionActivityItem({
               icon   : '<span class="dashicons dashicons-upload"></span>',
               heading: __('Data', 'groundhogg'),
+              /* translators: %s: the name of a file */
               before : sprintf(__('Contact imported from %s.', 'groundhogg'), bold(activity.data.name)),
             })
 
@@ -775,7 +815,8 @@
               return SubmissionActivityItem({
                 icon   : stepTypeIcon(activity.form.data.step_type),
                 heading: __('Submission', 'groundhogg'),
-                before : sprintf(__('Submitted %s in flow %s', 'groundhogg'),
+                /* translators: 1: the form name, 2: the flow name */
+                before : sprintf(__('Submitted %1$s in flow %2$s', 'groundhogg'),
                   bold(activity.data.name), el('a', {
                     href  : funnel.admin + `#${ activity.data.step_id }`,
                     target: '_blank',
@@ -786,6 +827,7 @@
             // language=HTML
             return SubmissionActivityItem({
               icon   : icons.contact,
+              /* translators: %s: a form name */
               before : sprintf(__('Contact updated by %s', 'groundhogg'), bold(activity.data.name)),
               heading: __('Data', 'groundhogg'),
             })
@@ -800,9 +842,11 @@
                 </div>
                 <div class="activity-rendered gh-panel">
                     <div class="activity-info">
-                        ${ sprintf(__('Visited %s', 'groundhogg'),
-                                `<a href="${ activity.data.path }" target="_blank">${ bold(
-                                        activity.data.path) }</a>`) }
+                        ${ sprintf(
+                          /* translators: %s: a url/path */
+                          __('Visited %s', 'groundhogg'),
+                                `<a href="${ escHTML( activity.data.path ) }" target="_blank">${ bold(
+                                        escHTML( activity.data.path) ) }</a>`) }
                     </div>
                     <div class="diff-time">
                         ${ activity.i18n.diff_time }
@@ -848,22 +892,17 @@
                     <div class="activity-rendered gh-panel space-between">
                         <div>
                             <div class="activity-info">
-                                <span>${ sprintf(pending ? __(
-                                                'Pending %s',
-                                                'groundhogg') : __(
-                                                'Completed %s',
-                                                'groundhogg'),
-                                        stepTitleDisplay) }</span>
+                                <span>${ sprintf(pending ? strings.pending : strings.completed, stepTitleDisplay) }</span>
                             </div>
                             <div class="event-extra">
-                                ${ sprintf(__('%s in flow %s', 'groundhogg'),
+                                ${ sprintf(
+                                    /* translators: 1: the step name, 2: the flow name */
+                                    __('%1$s in flow %2$s', 'groundhogg'),
                                         el('span', {
-                                                    className: [
-                                                        'step-type',
-                                                        step.data.step_group,
-                                                    ].join(' '),
-                                                },
-                                                Groundhogg.rawStepTypes[step.data.step_type].name),
+                                          className: [
+                                            'step-type',
+                                            step.data.step_group,
+                                          ].join(' '), }, Groundhogg.rawStepTypes[step.data.step_type].name),
                                         el('a', {
                                             href: funnel.admin + '#' + activity.data.step_id,
                                         }, funnel.data.title)) }
@@ -902,20 +941,14 @@
                     <div class="activity-rendered gh-panel space-between">
                         <div>
                             <div class="activity-info">
-                                <span>${ sprintf(pending ? __(
-                                                'Will receive broadcast: %s',
-                                                'groundhogg') : __(
-                                                'Received broadcast: %s', 'groundhogg'),
-                                        objectTitleDisplay) }</span>
+                                <span>${ sprintf(pending ? strings.will_receive_broadcast : strings.received_broadcast, objectTitleDisplay) }</span>
                             </div>
                             <div class="diff-time">
                                 ${ activity.i18n.diff_time }
                             </div>
                         </div>
                         <button
-                                class="gh-button secondary icon text event-${ pending
-                                                                              ? 'queue-'
-                                                                              : '' }more"
+                                class="gh-button secondary icon text event-${ pending ? 'queue-' : '' }more"
                                 data-event="${ activity.ID }">
                             ${ icons.verticalDots }
                         </button>
@@ -941,11 +974,7 @@
                     <div class="activity-rendered gh-panel space-between">
                         <div>
                             <div class="activity-info">
-                                <span>${ sprintf(pending ? __(
-                                                'Will receive email: %s',
-                                                'groundhogg') : __(
-                                                'Received email: %s', 'groundhogg'),
-                                        emailTitleDisplay) }</span>
+                                <span>${ sprintf(pending ? strings.will_receive_email : strings.received_email, emailTitleDisplay) }</span>
                             </div>
                             <div class="diff-time">
                                 ${ activity.i18n.diff_time }
@@ -1026,7 +1055,7 @@
             },
             {
               key : 'cancel',
-              text: `<span class="gh-text danger">${ __('Cancel') }</span>`,
+              text: `<span class="gh-text danger">${ __('Cancel', 'groundhogg') }</span>`,
             },
           ],
           onSelect: (key) => {
@@ -1068,7 +1097,7 @@
           items   : [
             {
               key : 'execute',
-              text: __('Run Again'),
+              text: __('Run again', 'groundhogg'),
             },
           ],
           onSelect: (key) => {
@@ -1161,12 +1190,10 @@
 
   const otherContactStuff = () => {
 
-    let activeTab = editor.default_tab ?? 'activity'
-
     const tabs = [
       {
         id     : 'activity',
-        name   : __('Activity'),
+        name   : __('Activity', 'groundhogg'),
         render : () => {
           // language=HTML
           return `
@@ -1175,18 +1202,17 @@
                       <div class="display-flex gap-10 align-bottom">
                           <div class="order-by">
                               <label for="activity-order"><b>${ __(
-                                      'Order by') }</b></label><br/>
+                                      'Order by', 'groundhogg') }</b></label><br/>
                               ${ select({
                                   id  : 'activity-order',
                                   name: 'order',
                               }, {
-                                  desc: __('Newest first'),
-                                  asc : __('Oldest first'),
+                                  desc: __('Newest first', 'groundhogg'),
+                                  asc : __('Oldest first', 'groundhogg'),
                               }, 'desc') }
                           </div>
                           <div class="filter-by">
-                              <label for="filter-by"><b>${ __(
-                                      'Filter by') }</b></label><br/>
+                              <label for="filter-by"><b>${ __('Filter by', 'groundhogg') }</b></label><br/>
                               ${ select({
                                   id  : 'filter-by',
                                   name: 'filter',
@@ -1239,7 +1265,7 @@
           })
 
           tooltip('#refresh-timeline', {
-            content : __('Refresh'),
+            content : __('Refresh', 'groundhogg'),
             position: 'right',
           })
 
@@ -1255,42 +1281,17 @@
           })
 
           const fetchActivity = () => {
-            return Promise.all([
-              SubmissionsStore.fetchItems({
-                contact_id: contact.ID,
-                limit     : 50,
-                order,
-                orderby   : 'date_created',
-              }),
-              ActivityStore.fetchItems({
-                contact_id: contact.ID,
-                limit     : 50,
-                order,
-                orderby   : 'timestamp',
-              }),
-              EventsStore.fetchItems({
-                contact_id: contact.ID,
-                status    : 'complete',
-                limit     : 50,
-                orderby   : 'time',
-                order,
-              }),
-              EventQueue.fetchItems({
-                contact_id: contact.ID,
-                status    : 'waiting',
-                limit     : 50,
-                orderby   : 'time',
-                order,
-              }),
-              PageVisitsStore.fetchItems({
-                contact_id: contact.ID,
-                limit     : 50,
-                orderby   : 'timestamp',
-                order,
-              }),
-            ]).then(() => {
-              loadTimeline()
-            }).catch(e => {
+
+            return get(`${ ContactsStore.route }/${contact.ID}/timeline`, {
+              order
+            }).then(response => {
+
+              SubmissionsStore.itemsFetched( response.submissions )
+              ActivityStore.itemsFetched(response.activity)
+              EventsStore.itemsFetched(response.events)
+              EventQueue.itemsFetched(response.event_queue)
+              PageVisitsStore.itemsFetched(response.page_visits)
+
               loadTimeline()
             })
           }
@@ -1385,7 +1386,7 @@
       },
       {
         id     : 'notes',
-        name   : __('Notes'),
+        name   : __('Notes', 'groundhogg'),
         render : () => {
           // language=HTML
           return `
@@ -1403,7 +1404,7 @@
       },
       {
         id     : 'tasks',
-        name   : __('Tasks'),
+        name   : __('Tasks', 'groundhogg'),
         render : () => {
           // language=HTML
           return `
@@ -1422,20 +1423,20 @@
       },
       {
         id     : 'files',
-        name   : __('Files'),
+        name   : __('Files', 'groundhogg'),
         render : () => {
           // language=HTML
           return `
               <div class="gh-panel top-left-square">
                   <div id="file-actions" class="inside display-flex gap-10">
                       ${ input({
-                          placeholder: __('Search files...'),
+                          placeholder: __('Search files...', 'groundhogg'),
                           type       : 'search',
                           id         : 'search-files',
                           className  : 'full-width',
                       }) }
                       <button id="upload-file" class="gh-button secondary">
-                          ${ __('Upload Files') }
+                          ${ __('Upload Files', 'groundhogg') }
                       </button>
                   </div>
                   <div id="bulk-actions" class="hidden inside"
@@ -1460,11 +1461,10 @@
 
           $('#bulk-delete-files').on('click', () => {
             dangerConfirmationModal({
-              confirmText: __('Delete'),
+              confirmText: __('Delete', 'groundhogg'),
               alert      : `<p>${ sprintf(
-                _n('Are you sure you want to delete %d file?',
-                  'Are you sure you want to delete %d files?',
-                  selectedFiles.length, 'groundhogg'),
+                /* translators: %d: the number of files */
+                _n('Are you sure you want to delete %d file?', 'Are you sure you want to delete %d files?', selectedFiles.length, 'groundhogg'),
                 selectedFiles.length) }</p>`,
               onConfirm  : () => {
                 _delete(`${ routes.v4.contacts }/${ contact.ID }/files`,
@@ -1483,7 +1483,7 @@
           })
 
           tooltip('#bulk-delete-files', {
-            content : __('Bulk delete files'),
+            content : __('Bulk delete files', 'groundhogg'),
             position: 'right',
           })
 
@@ -1543,12 +1543,11 @@
                 items   : [
                   {
                     key : 'download',
-                    text: __('Download'),
+                    text: __('Download', 'groundhogg'),
                   },
                   userHasCap('delete_files') ? {
                     key : 'delete',
-                    text: `<span class="gh-text danger">${ __(
-                      'Delete') }</span>`,
+                    text: `<span class="gh-text danger">${ __( 'Delete', 'groundhogg') }</span>`,
                   } : false,
                 ],
                 onSelect: k => {
@@ -1562,8 +1561,8 @@
                       dangerConfirmationModal({
                         confirmText: __('Delete'),
                         alert      : `<p>${ sprintf(
-                          __('Are you sure you want to delete %s?',
-                            'groundhogg'), _file) }</p>`,
+                          /* translators: %s: the name of an asset (contacts, flows, emails, etc...) */
+                          __('Are you sure you want to delete %s?', 'groundhogg'), _file) }</p>`,
                         onConfirm  : () => {
                           _delete(
                             `${ routes.v4.contacts }/${ contact.ID }/files`, [
@@ -1660,7 +1659,7 @@
               ${ tabs.map(({
                   id,
                   name,
-              }) => `<a href="#" data-tab="${ id }" class="nav-tab ${ activeTab ===
+              }) => `<a href="#${ id }" data-tab="${ id }" class="nav-tab ${ activeTab ===
                                                                       id ? 'nav-tab-active' : '' }">${ name }</a>`).join('') }
           </h2>
               ${ tabs.find(t => t.id === activeTab).render() }
@@ -1671,6 +1670,15 @@
 
       $('#other-contact-stuff').html(template())
       onMount()
+    }
+
+    let hash = window.location.hash.replace('#', '')
+    let activeTab
+
+    if ( tabs.find(t => t.id === hash) ) {
+      activeTab = hash
+    } else {
+      activeTab = editor.default_tab ?? 'activity'
     }
 
     const onMount = () => {
@@ -1720,7 +1728,7 @@
         stop()
 
         dialog({
-          message: __('Changes saved!'),
+          message: __('Changes saved!', 'groundhogg'),
         })
 
       })
@@ -1766,7 +1774,7 @@
         stop()
         mount()
         dialog({
-          message: __('Changes saved!'),
+          message: __('Changes saved!', 'groundhogg'),
         })
       })
     }
@@ -1834,7 +1842,7 @@
       $('#primary-contact-stuff .tab-more').remove()
 
       $(`<a href="#" id="edit-meta" class="nav-tab edit-meta ${ 'edit-meta' ===
-                                                                activeTab ? ' nav-tab-active' : '' }">${ __('More', 'groundhogg') }</a>`).
+                                                                activeTab ? ' nav-tab-active' : '' }">${ _x('More', 'as in additional contact fields', 'groundhogg') }</a>`).
         insertAfter('#general')
 
       if (customTabState.tabs.length <= 3) {
@@ -1857,7 +1865,7 @@
                                                                       activeTab ? ' nav-tab-active' : '' } custom-tabs-menu">${ name }</a>`).
           join('')).insertAfter('#edit-meta')
         tooltip('#custom-tabs-menu', {
-          content : __('Custom tabs'),
+          content : __('Custom tabs', 'groundhogg'),
           position: 'top',
         })
       }
@@ -1887,7 +1895,7 @@
                                 class="gh-button danger text">${ __('Cancel') }
                         </button>
                         <button id="save-meta" class="gh-button primary">
-                            ${ __('Save Changes') }
+                            ${ __('Save Changes', 'groundhogg') }
                         </button>
                     </div>
                 </div>
@@ -1913,12 +1921,12 @@
               {
                 key : 'rename',
                 cap : 'manage_options',
-                text: __('Rename'),
+                text: __('Rename', 'groundhogg'),
               },
               {
                 key : 'delete',
                 cap : 'manage_options',
-                text: `<span class="gh-text danger">${ __('Delete') }</span>`,
+                text: `<span class="gh-text danger">${ __('Delete', 'groundhogg') }</span>`,
               },
             ],
             onSelect: k => {
@@ -1930,6 +1938,7 @@
                   dangerConfirmationModal({
                     confirmText: __('Delete'),
                     alert      : `<p>${ sprintf(
+                      /* translators: %s: the name of an asset (contacts, flows, emails, etc...) */
                       __('Are you sure you want to delete %s?', 'groundhogg'),
                       bold(customTabState.tabs.find(
                         t => t.id === activeTab).name)) }</p>`,
@@ -1967,7 +1976,7 @@
                                 }) }
                                 <button id="update-tab"
                                         class="gh-button primary">
-                                    ${ __('Save') }
+                                    ${ __('Save', 'groundhogg') }
                                 </button>
                             </div>
                         </div>`,
@@ -2069,15 +2078,15 @@
                     <div id="contact-emails-here"></div>
                     <p><b>${ __('Phone Numbers', 'groundhogg') }</b></p>
                     <div id="contact-phones-here"></div>
-                    <h2>${ __('Meta') }</h2>
+                    <h2>${ _x('Meta', 'as in additional contact metadata', 'groundhogg') }</h2>
                     <div id="meta-here">
                     </div>
                     <div class="sticky-submit has-box-shadow">
                         <button id="cancel-meta-changes"
-                                class="gh-button danger text">${ __('Cancel') }
+                                class="gh-button danger text">${ __('Cancel', 'groundhogg') }
                         </button>
                         <button id="save-meta" class="gh-button primary">
-                            ${ __('Save Changes') }
+                            ${ __('Save Changes', 'groundhogg') }
                         </button>
                     </div>
                 </div>
@@ -2099,16 +2108,16 @@
               ...props
             }) => select({
               options : {
-                mobile: __('Mobile'),
-                home  : __('Home'),
-                work  : __('Work'),
+                mobile: __('Mobile', 'groundhogg'),
+                home  : __('Home', 'groundhogg'),
+                work  : __('Work', 'groundhogg'),
               },
               selected: value,
               ...props,
             }),
             props => input({
               type       : 'tel',
-              placeholder: __('(123) 456-7890'),
+              placeholder: __('(123) 456-7890', 'groundhogg'),
               ...props,
             }),
           ],
@@ -2216,7 +2225,7 @@
                           placeholder: __('Tab name', 'groundhogg'),
                       }) }
                       <button id="create-tab" class="gh-button primary">
-                          ${ __('Create') }
+                          ${ __('Create', 'groundhogg') }
                       </button>
                   </div>
               </div>`,
@@ -2276,10 +2285,10 @@
           </div>
           <div class="tag-change-actions" style="margin-top: 10px">
               <button id="cancel-tag-changes" class="gh-button danger text">
-                  ${ __('Cancel') }
+                  ${ __('Cancel', 'groundhogg') }
               </button>
               <button id="save-tag-changes" class="gh-button primary">
-                  ${ __('Save') }
+                  ${ __('Save', 'groundhogg') }
               </button>
           </div>`
     }
@@ -2319,7 +2328,7 @@
           add_tags   : addTags,
         }).then(() => {
           dialog({
-            message: __('Changes saved!'),
+            message: __('Changes saved!', 'groundhogg'),
           })
           addTags = []
           removeTags = []
@@ -2555,11 +2564,11 @@
         },
       }, [
         ContactRelationships({
-          title: __('Parents'),
+          title: __('Parents', 'groundhogg'),
           rel  : 'parent',
         }),
         ContactRelationships({
-          title: __('Children'),
+          title: __('Children', 'groundhogg'),
           rel  : 'child',
         }),
       ]))
@@ -2573,7 +2582,7 @@
 
     data['groundhogg-refresh-local-time'] = getContact().ID
 
-  }).on('heartbeat-tick.groundhogg-refresh-local -time', function (e, data) {
+  }).on('heartbeat-tick.groundhogg-refresh-local-time', function (e, data) {
 
     // Post locks: update the lock string or show the dialog if somebody has taken over editing.
     let received

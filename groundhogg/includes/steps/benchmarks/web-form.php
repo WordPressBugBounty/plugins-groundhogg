@@ -44,7 +44,7 @@ class Web_Form extends Benchmark {
 	 * @return string
 	 */
 	public function get_name() {
-		return _x( 'Web Form', 'step_name', 'groundhogg' );
+		return esc_html_x( 'Web Form', 'step_name', 'groundhogg' );
 	}
 
 	/**
@@ -288,6 +288,11 @@ class Web_Form extends Benchmark {
 				'sanitize' => 'boolval',
 				'initial'  => true
 			],
+            'after_submit'    => [
+                'default'  => '',
+                'sanitize' => fn( $value ) => one_of( $value, [ '', 'success_message', 'success_page', 'reload_page' ] ),
+                'initial'  => 'success_message'
+            ],
 			'accent_color'    => [
 				'default'  => '',
 				'sanitize' => 'sanitize_hex_color',
