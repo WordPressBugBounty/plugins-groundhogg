@@ -80,7 +80,7 @@ class Manager {
 		$this->register_sub_group( 'other', __( 'Other', 'groundhogg' ) );
 		$this->register_sub_group( 'developer', __( 'Developer', 'groundhogg' ) );
 		$this->register_sub_group( 'branching', __( 'Branching', 'groundhogg' ) );
-		$this->register_sub_group( 'logic', __( 'Logic', 'groundhogg' ) );
+		$this->register_sub_group( 'logic', __( 'Routing', 'groundhogg' ) );
 		$this->register_sub_group( 'special', __( 'Special', 'groundhogg' ) );
 
 		/* actions */
@@ -144,6 +144,7 @@ class Manager {
 			$this->add_step( new Premium\Logic\Logic_Loop() );
 			$this->add_step( new Premium\Logic\Logic_Skip() );
 			$this->add_step( new Premium\Logic\Logic_Stop() );
+			$this->add_step( new Premium\Logic\Logic_Jump() );
 //			$this->add_step( new Premium\Logic\Timer_Skip() );
 
 		}

@@ -484,22 +484,28 @@ class Email extends Base_Object_With_Meta {
 	 */
 	public function get_css() {
 
-		$parts = [
-			$this->get_meta( 'css' ),
-			$this->get_meta( 'template_css' ),
-		];
+		$css = $this->get_meta( 'css' );
 
-		$css = implode( PHP_EOL, $parts );
+		if ( ! $this->is_global_block() ){
+			$css .= PHP_EOL . $this->get_meta( 'template_css' );
+		}
+
 		// quickly handle global block css inserts
-		$css = preg_replace_callback(
-			'@\.global-block\.t-(\d+)\{[^}]*\}@',
-			function ($matches) {
-				$block_id = (int) $matches[1];
 
-				return db()->emailmeta->get_meta( $block_id, 'css', true );
-			},
-			$css
-		);
+		preg_match_all( '/\.global-block\.t-(\d+)/', $css, $matches );
+
+		$ids = array_map( 'intval', $matches[1] );
+
+		foreach ( $ids as $id ) {
+
+			$block = new Email($id);
+
+			if (!$block->exists()){
+				continue;
+			}
+
+			$css .= PHP_EOL . $block->get_css();
+		}
 
 		return apply_filters( 'groundhogg/email/css', $css, $this );
 	}
@@ -583,6 +589,10 @@ class Email extends Base_Object_With_Meta {
 		return $this->is_block_editor() && str_contains( $this->parsed_content ?: $this->content, '<div id="footer"' );
 	}
 
+	public function is_global_block() {
+		return $this->get_message_type() === 'global_block';
+	}
+
 	/**
 	 * Returns the editor type based on the format of the content
 	 *
@@ -596,7 +606,7 @@ class Email extends Base_Object_With_Meta {
 		}
 
 		// New blocks && support for global blocks as well
-		if ( $this->get_meta( 'blocks' ) || $this->get_message_type() === 'global_block' ) {
+		if ( $this->get_meta( 'blocks' ) || $this->is_global_block() ) {
 			return 'blocks';
 		}
 

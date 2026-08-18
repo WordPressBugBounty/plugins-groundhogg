@@ -6,7 +6,7 @@ Donate link: https://groundhogg.io/pricing/
 Requires at least: 5.9
 Tested up to: 7.0
 Requires PHP: 7.1
-Stable tag: 4.5.15
+Stable tag: 4.6.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -377,6 +377,15 @@ You can purchase a premium plan for access to support and our premium extensions
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team helps validate, triage and handle any security vulnerabilities. [Report a security vulnerability.]( https://patchstack.com/database/vdp/9e5fb9d9-417e-4ba2-a0bf-8b7529b7122b )
 
 == Changelog ==
+
+= 4.6.1 (2026-08-18) =
+* FIXED Nested global blocks not loading CSS.
+
+= 4.6 (2026-8-15) =
+* ADDED New "Reroute" logic step, allowing contacts to be routed to any other action node in a flow, from anywhere in a flow.
+* TWEAKED The "Logic" flow step subgroup has be renamed "Routing"
+* TWEAKED The "Smart Date Sequence" logic step has been renamed "Date Sync"
+* TWEAKED The "Skip" and "Loop" logic steps have been deprecated (available as legacy steps) since the Reroute step does the same thing but better.
 
 = 4.5.15 (2026-07-27) =
 * ADDED "Reload page" after form submit setting.
