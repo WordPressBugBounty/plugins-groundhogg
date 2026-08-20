@@ -1130,8 +1130,8 @@
     const State = Groundhogg.createState({
       to        : [],
       from_user : currentUser.ID,
-      from_name : currentUser.data.display_name,
-      from_email: currentUser.data.user_email,
+      from_name : currentUser.from_name,
+      from_email: currentUser.from_email,
       cc        : [],
       showCC    : false,
       bcc       : [],
@@ -1283,12 +1283,12 @@
             selected   : [State.from_user],
             multiple   : false,
             allow0     : false,
-            itemDisplay: u => `${ u.data.display_name } &lt;${ u.data.user_email }&gt;`,
+            itemDisplay: u => `${ u.from_name } &lt;${ u.from_email }&gt;`,
             onChange   : item => {
               State.set({
                 form_user : item.id,
-                from_email: getOwner(item.id).data.user_email,
-                from_name : getOwner(item.id).data.display_name,
+                from_email: getOwner(item.id).from_email,
+                from_name : getOwner(item.id).from_name,
               })
             },
           }),
@@ -2908,6 +2908,32 @@
   window.addEventListener('hashchange', handleReviewNagHashChange)
   window.addEventListener('load', handleReviewNagHashChange)
 
+  const copyText = url => {
+    navigator.clipboard.writeText(url)
+    dialog({
+      message: __('Copied to clipboard!', 'groundhogg'),
+    })
+  }
+
+  const CopyInput = text => Div({ className: 'gh-input-group' }, [
+    Input({
+      value    : text,
+      readonly : true,
+      className: 'code full-width',
+      onClick  : e => {
+        e.target.select()
+        copyText(text)
+      },
+    }),
+    Button({
+      className: 'gh-button icon secondary',
+      onClick  : e => {
+        copyText(text)
+      },
+    }, icons.duplicate),
+  ])
+
+
   Groundhogg.components = {
     QuickSearch,
     addContactModal,
@@ -2933,6 +2959,7 @@
     OwnerPicker,
     Tour,
     ReviewBeg,
+    CopyInput,
   }
 
 } )(jQuery)
