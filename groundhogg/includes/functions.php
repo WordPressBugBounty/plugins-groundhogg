@@ -73,7 +73,6 @@ function maybe_get_option_from_constant( $value, $option_name ) {
 
 add_constant_support( 'gh_secret_key' );
 add_constant_support( 'gh_secret_iv' );
-add_constant_support( 'gh_master_license' );
 add_constant_support( 'gh_recaptcha_secret_key' );
 add_constant_support( 'gh_recaptcha_site_key' );
 add_constant_support( 'gh_click_tracking_delay' );
@@ -3690,9 +3689,11 @@ function is_main_blog() {
  * @return array|bool|WP_Error|object
  */
 function remote_post_json( $url = '', $body = [], $method = 'POST', $headers = [], bool $as_array = false, int $cache_ttl = 0 ) {
+
 	$method = strtoupper( $method );
 
-	if ( $method !== 'GET' && ! isset_not_empty( $headers, 'Content-type' ) ) {
+	// if using FORM, maps to POST but no json encoding
+	if ( ! in_array( $method, [ 'GET', 'FORM' ] ) && ! isset_not_empty( $headers, 'Content-type' ) ) {
 		$headers['Content-type'] = sprintf( 'application/json; charset=%s', get_bloginfo( 'charset' ) );
 	}
 
@@ -3701,24 +3702,29 @@ function remote_post_json( $url = '', $body = [], $method = 'POST', $headers = [
         $body = [];
     }
 
+	$args = [
+		'method'     => $method,
+		'headers'    => $headers,
+		'body'       => $body,
+		'sslverify'  => true,
+		'user-agent' => 'Groundhogg/' . GROUNDHOGG_VERSION . '; ' . home_url()
+	];
+
 	switch ( $method ) {
 		case 'POST':
 		case 'PUT':
 		case 'PATCH':
 		case 'DELETE':
-			$body = is_array( $body ) ? wp_json_encode( $body ) : $body;
+		    $args['body']        = wp_json_encode( $body );
+		    $args['data_format'] = 'body';
 			break;
 	}
 
-	$args = [
-		'method'      => $method,
-		'headers'     => $headers,
-		'body'        => $body,
-		'data_format' => 'body',
-		'sslverify'   => true,
-		'user-agent'  => 'Groundhogg/' . GROUNDHOGG_VERSION . '; ' . home_url()
-
-	];
+	// map FORM to POST
+	if ( $method === 'FORM' ) {
+		$method         = 'POST';
+		$args['method'] = $method;
+	}
 
 	$cache_key = md5serialize( $url, $args );
 
@@ -4371,7 +4377,7 @@ function is_pro_features_active() {
  * @return string
  */
 function get_master_license() {
-	return get_option( 'gh_master_license' );
+	return License_Manager::get_master_license();
 }
 
 /**
@@ -4392,7 +4398,7 @@ function is_helper_plugin_installed() {
  * @return bool
  */
 function has_premium_features() {
-	return defined( 'GROUNDHOGG_HELPER_VERSION' ) || defined( 'GROUNDHOGG_PRO_VERSION' ) || get_option( 'gh_master_license' ) !== false || is_white_labeled();
+	return defined( 'GROUNDHOGG_HELPER_VERSION' ) || defined( 'GROUNDHOGG_PRO_VERSION' ) || get_master_license() !== false || is_white_labeled();
 }
 
 add_action( 'admin_menu', function () {
@@ -8352,6 +8358,24 @@ function is_browser_view() {
 }
 
 /**
+ * Flagger
+ *
+ * @param  string  $flag
+ * @param $set
+ *
+ * @return false|mixed
+ */
+function flagged( string $flag, $set = null ) {
+	static $flags = [];
+
+	if ( $set !== null ) {
+		$flags[ $flag ] = (bool) $set;
+	}
+
+	return $flags[ $flag ] ?? false;
+}
+
+/**
  * If an email is actually sending to the contact
  * This is used as a flag for generating replacements which may contain sensitive information
  *
@@ -9698,7 +9722,7 @@ function check_signature( string $data, string $signature, int $length = 0 ) {
 	$secrets = [
 		Utils::get_secret_key(),
         @hex2bin( Utils::get_secret_key() ), // whoops
-		wp_salt( 'auth' ),
+		wp_salt( 'auth' ), // backwards compatability
 	];
 
 	foreach ( $secrets as $secret ) {

@@ -848,7 +848,7 @@
                                 `<a href="${ escHTML( activity.data.path ) }" target="_blank">${ bold(
                                         escHTML( activity.data.path) ) }</a>`) }
                     </div>
-                    <div class="diff-time">
+                    <div class="diff-time" title="${ activity.i18n.ymdhis }">
                         ${ activity.i18n.diff_time }
                     </div>
                 </div>
@@ -907,7 +907,7 @@
                                             href: funnel.admin + '#' + activity.data.step_id,
                                         }, funnel.data.title)) }
                             </div>
-                            <div class="diff-time">
+                            <div class="diff-time" title="${ activity.i18n.ymdhis }">
                                 ${ activity.i18n.diff_time }
                             </div>
                         </div>
@@ -943,7 +943,7 @@
                             <div class="activity-info">
                                 <span>${ sprintf(pending ? strings.will_receive_broadcast : strings.received_broadcast, objectTitleDisplay) }</span>
                             </div>
-                            <div class="diff-time">
+                            <div class="diff-time" title="${ activity.i18n.ymdhis }">
                                 ${ activity.i18n.diff_time }
                             </div>
                         </div>
@@ -976,7 +976,7 @@
                             <div class="activity-info">
                                 <span>${ sprintf(pending ? strings.will_receive_email : strings.received_email, emailTitleDisplay) }</span>
                             </div>
-                            <div class="diff-time">
+                            <div class="diff-time" title="${ activity.i18n.ymdhis }">
                                 ${ activity.i18n.diff_time }
                             </div>
                         </div>
@@ -1017,7 +1017,7 @@
                   <div class="activity-info">
                       ${ type.render(activity) }
                   </div>
-                  <div class="diff-time">
+                  <div class="diff-time" title="${ activity.i18n.ymdhis }">
                       ${ activity.i18n.diff_time }
                   </div>
               </div>
@@ -2594,6 +2594,38 @@
         $('#contact-localtime abbr').replaceWith(received.local_time)
       }
     }
+  })
+
+  $(document).on('click', '.contact-picture', e => {
+
+    let file_frame = wp.media.frames.file_frame = wp.media({
+      title: __('Select a profile picture', 'groundhogg'),
+      button: {
+        text: __('Select', 'groundhogg'),
+      },
+      library: {
+        type: 'image',
+      },
+      multiple: false,
+      frame: 'select',
+    })
+    // When an image is selected, run a callback.
+    file_frame.on('select', function () {
+      // We set multiple to false so only get one image from the uploader
+      let attachment = file_frame.state().get('selection').first().toJSON()
+
+      $('.profile-picture')[0].style.backgroundImage = `url(${ attachment.url })`
+
+      ContactsStore.patch(getContact().ID, {
+        meta: {
+          profile_picture: attachment.url,
+        }
+      })
+
+    })
+    // Finally, open the modal
+    file_frame.open()
+
   })
 
 } )(jQuery, ContactEditor)
