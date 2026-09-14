@@ -212,11 +212,13 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 	}
 
 	public function is_conversion() {
-		return (bool) $this->is_conversion && $this->is_benchmark();
+		// read the column directly - $this->is_conversion would resolve to this method via __get and recurse
+		return (bool) ( $this->data['is_conversion'] ?? false ) && $this->is_benchmark();
 	}
 
 	public function is_entry() {
-		return (bool) $this->is_entry && $this->is_benchmark();
+		// read the column directly - $this->is_entry would resolve to this method via __get and recurse
+		return (bool) ( $this->data['is_entry'] ?? false ) && $this->is_benchmark();
 	}
 
 	public function is_last() {
@@ -288,8 +290,11 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 	}
 
 	public function set_slug() {
+
+		$title_no_html = sanitize_text_field( $this->get_step_title() );
+
 		$this->update( [
-			'step_slug' => $this->get_id() . '-' . sanitize_title( $this->get_step_title() )
+			'step_slug' => $this->get_id() . '-' . sanitize_title( $title_no_html )
 		] );
 	}
 
@@ -1775,7 +1780,14 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 
 		return array_apply_callbacks( $data, [
 			'funnel_id'     => 'absint',
-			'step_title'    => 'sanitize_text_field',
+			'step_title'    => fn( $val ) => kses( $val, [
+				'b' => [],
+				'strong' => [],
+				'u' => [],
+				'i' => [],
+				'em'   => [],
+				'code' => []
+			] ),
 			'step_status'   => function ( $value ) {
 				return one_of( $value, [ 'active', 'inactive', 'archived', 'deleted' ] );
 			},
@@ -2264,15 +2276,13 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 		}
 
 		$data = $this->data;
-		// remove HTML formatting
-		$data['step_title'] = sanitize_text_field( $this->step_title );
-
 		return apply_filters( "groundhogg/{$this->get_object_type()}/get_as_array", [
 			'ID'     => $this->get_id(),
 			'data'   => $data,
 			'meta'   => $this->meta,
 			'export' => $this->export(),
 			'is_starting' => $this->is_starting(),
+			'is_entry'    => $this->is_entry(),
 
 		] );
 	}

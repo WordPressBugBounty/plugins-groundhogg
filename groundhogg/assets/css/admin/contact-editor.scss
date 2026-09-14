@@ -267,6 +267,7 @@ code.meta-replacement-code {
 
 .note-actions .dashicons {
   font-size: 12px;
+
 }
 
 .gh-note p {
@@ -323,6 +324,20 @@ code.meta-replacement-code {
   //max-height: 800px;
 }
 
+#timeline-load-earlier {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+
+  &:empty {
+    display: none;
+  }
+}
+
+#timeline-filter {
+  min-width: 240px;
+}
+
 .property-field {
 
   > .property-label{
@@ -336,8 +351,16 @@ code.meta-replacement-code {
 
 #activity-timeline {
 
-  margin-left: 15px;
-  border-left: 2px solid var(--gh-dark-10);
+  // left margin leaves room for the date + time gutter that sits left of the icons
+  margin-left: 110px;
+  border-left: 1px solid var(--gh-dark-10);
+  font-size: 14px;
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
 
   code {
     border-radius: var(--gh-border-radius);
@@ -345,43 +368,151 @@ code.meta-replacement-code {
 
   li.activity-item {
 
-    table{
-      td:first-child {
-        word-break:normal;
+    position: relative;
+    margin-left: 24px;
+    padding: 1px 0;
+
+    &:not(:last-child) {
+      margin-bottom: 18px;
+    }
+
+    .activity-details table td:first-child {
+      word-break: normal;
+    }
+
+    // error details card - make it read as "something went wrong here"
+    .activity-details--error {
+      border-color: $error-red-50;
+      box-shadow: 0 0 0 1px $error-red-10;
+
+      .gh-panel-header {
+        background-color: $error-red-10;
+        border-bottom-color: $error-red-50;
+
+        h2 {
+          color: $error-red;
+        }
       }
     }
 
-    &:not(:hover,:active,:focus){
-      .event-more,.event-queue-more{
+    &:not(:hover, :active, :focus, :focus-within) {
+      .activity-actions {
         display: none;
       }
     }
 
-    position: relative;
-    margin-left: 20px;
+    // the date/time is shown in the left gutter, not inline
+    .activity-info .diff-time {
+      display: none;
+    }
 
-    &:not(:last-child) {
-      margin-bottom: 25px;
+    // left gutter: time of day on every row, with the date to its left on the boundary row of each day
+    .activity-gutter {
+      position: absolute;
+      left: -129px;
+      top: 0;
+      width: 88px; // right edge lands ~8px left of the icon
+      display: flex;
+      justify-content: flex-end;
+      align-items: baseline;
+      gap: 6px;
+      line-height: 20px; // aligns with the icon / first line of content
+      white-space: nowrap;
+
+      // never compress - if it doesn't fit, overflow left rather than clip the date
+      > * {
+        flex-shrink: 0;
+      }
+
+      .activity-date {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: var(--gh-dark-50);
+      }
+
+      .activity-time {
+        font-size: 11px;
+        color: var(--gh-dark-30);
+      }
     }
 
     .activity-info {
-      font-size: 15px;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
       word-break: break-word;
     }
 
+    // clicked / visited URLs: shown truncated to a single line, expand to the full
+    // link (wrapping) while hovered or focused
+    .clicked-link {
+      display: inline-block;
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: bottom;
+
+      &:hover,
+      &:focus {
+        max-width: 100%;
+        overflow: visible;
+        white-space: normal;
+        word-break: break-all;
+      }
+    }
+
+    // inline actions (run again, cancel, open in editor…), revealed on hover after the timestamp
+    .activity-actions {
+      margin-left: 8px;
+      white-space: nowrap;
+
+      a {
+        color: var(--gh-dark-50);
+        text-decoration: none;
+        font-size: 12px;
+
+        &:hover {
+          color: var(--gh-primary);
+        }
+      }
+
+      .activity-action {
+        &.danger:hover {
+          color: $error-red;
+        }
+
+        & + .activity-action {
+          margin-left: 6px;
+        }
+      }
+
+      .open-in-editor {
+        margin-left: 6px;
+        vertical-align: middle;
+
+        .dashicons {
+          font-size: 15px;
+          width: 15px;
+          height: 15px;
+          line-height: 1;
+        }
+      }
+    }
+
+    // quoted feedback (unsub reason, etc.)
     .contact-input {
-      padding: 5px 10px;
-      background-color: var(--gh-dark-5);
-      font-size: 14px;
-      border-radius: var(--gh-border-radius);
-      margin-top: 5px;
+      margin-top: 4px;
+      padding-left: 10px;
+      border-left: 2px solid var(--gh-dark-15);
+      font-size: 13px;
       width: fit-content;
     }
 
     .event-extra,
     .diff-time {
       color: var(--gh-dark-50);
+      font-size: 12px;
 
       .step-type {
         &.action {
@@ -393,20 +524,35 @@ code.meta-replacement-code {
       }
     }
 
+    // shown inline, trailing the main content, separated by a dot (like the group meta)
+    .activity-info .diff-time {
+      margin-left: 4px;
+      white-space: nowrap;
+      text-decoration: none; // abbr[title] gets a dotted underline by default
+      cursor: default;
+
+      &::before {
+        content: "·";
+        margin-right: 4px;
+        color: var(--gh-dark-30);
+      }
+    }
+
     .diff-time:first-letter {
       text-transform: capitalize;
     }
 
-    .activity-rendered.gh-panel {
-      padding: 5px 10px;
+    .activity-icon {
+      position: absolute;
+      left: -25px;
+      top: 0;
+      transform: translateX(-50%);
     }
 
+    // icons: small, flat, sitting on the rail
     .activity-icon.no-frame {
-      position: absolute;
-      left: -22px;
-      transform: translateX(-50%);
-      height: 30px;
-      width: 30px;
+      height: 24px;
+      width: 24px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -414,90 +560,194 @@ code.meta-replacement-code {
 
     .activity-icon:not(.no-frame) {
 
-      position: absolute;
-      left: -34px;
       box-sizing: border-box;
-
-      height: 25px;
-      width: 25px;
+      height: 20px;
+      width: 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: var(--gh-border-radius);
-      background: var(--gh-primary);
-      color: #FFFFFF;
+      border-radius: 50%;
+      background: white;
+      color: var(--gh-dark-50);
 
       img {
         max-width: 100%;
       }
 
-      &.unsubscribed,
-      &.bounce,
-      &.complaint{
-        background-color: $error-red;
+      svg {
+        width: 13px;
+        height: 13px;
+        fill: currentColor;
+
+        path {
+          fill: currentColor;
+        }
       }
 
-      &.page-visit{
-        background: $primary-dark;
-      }
-
-      &.soft_bounce{
-        background-color: $alert-yellow;
-        color: $primary-dark;
-      }
-
+      // flow steps - matched to how they look in the funnel editor:
+      // actions are green rounded squares, benchmarks/triggers are orange circles
+      &.action,
       &.benchmark {
-        --color: #{$benchmark-orange};
-        --color-5: #{$benchmark-orange-5};
-        --color-10: #{$benchmark-orange-10};
-
-        border: 2px solid var(--color);
         background-color: #fff;
-        background-image: linear-gradient(var(--color-5),var(--color-10));
-        border-radius: 50px;
-
-        &.pending{
-          border: none;
-          background-color: var(--color);
-        }
-
-        &:not(.pending){
-          svg {
-            fill: var(--color) !important;
-          }
-        }
+        background-image: linear-gradient(var(--icon-tint-5), var(--icon-tint-10));
+        border: 1.5px solid currentColor;
       }
 
       &.action {
-        --color: #{$action-green};
-        --color-5: #{$action-green-5};
-        --color-10: #{$action-green-10};
+        color: $action-green;
+        border-radius: var(--gh-border-radius);
+        --icon-tint-5: #{$action-green-5};
+        --icon-tint-10: #{$action-green-10};
+      }
 
-        border: 2px solid var(--color);
-        background-color: #fff;
-        background-image: linear-gradient(var(--color-5),var(--color-10));
+      &.benchmark {
+        color: $benchmark-orange;
+        border-radius: 50%;
+        --icon-tint-5: #{$benchmark-orange-5};
+        --icon-tint-10: #{$benchmark-orange-10};
+      }
 
-        &.pending{
-          border: none;
-          background-color: var(--color);
+      &.broadcast {
+        color: $action-green;
+      }
+
+      &.page-visit {
+        color: $primary-dark;
+      }
+
+      &.funnel {
+        color: var(--gh-primary);
+      }
+
+      &.pending {
+        opacity: 0.6;
+      }
+
+      &.unsubscribed,
+      &.bounce,
+      &.complaint {
+        color: $error-red;
+      }
+
+      &.soft_bounce {
+        color: $alert-yellow;
+      }
+
+      // a failed event - wins over the step-group colour
+      &.failed {
+        color: $error-red;
+      }
+    }
+
+    // engagement (opens / clicks) nested under a send event
+    .activity-children {
+      margin: 8px 0 0;
+      padding: 0;
+
+      .engagement-summary {
+        color: var(--gh-dark-50);
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+
+      // these rows have no gutter - the time (+ date if a different day) shows inline
+      .activity-info .diff-time {
+        display: inline;
+        font-size: 11px;
+      }
+
+      li.activity-item {
+        margin-left: 24px;
+        font-size: 13px;
+
+        &:not(:last-child) {
+          margin-bottom: 10px;
         }
 
-        &:not(.pending){
+        .activity-icon:not(.no-frame) {
+          height: 16px;
+          width: 16px;
+          left: -21px;
+          transform: none;
+
           svg {
-            width: 100%;
-            height: 100%;
-            fill: var(--color) !important;
+            width: 11px;
+            height: 11px;
           }
         }
       }
+    }
+  }
 
-      &.broadcast{
-        background-color: $action-green;
+  // relative-time section headers ("Today", "Previous 7 days", "March"…)
+  li.timeline-date-header {
+    margin: 0 0 14px -105px; // pull left so it spans the date gutter too
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gh-dark-30);
+
+    &:not(:first-child) {
+      margin-top: 20px;
+      padding-top: 12px;
+      border-top: 1px solid var(--gh-dark-10);
+    }
+  }
+
+  // collapsible groups: flow runs & browsing sessions
+  li.activity-item.group {
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .group-title b {
+      font-weight: 600;
+    }
+
+    .group-meta {
+      color: var(--gh-dark-50);
+      margin-left: 8px;
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .group-header .dashicons {
+      color: var(--gh-dark-50);
+      flex-shrink: 0;
+      transition: transform 0.15s ease;
+    }
+
+    &:not(.closed) .group-header .dashicons {
+      transform: rotate(180deg);
+    }
+
+    &.closed .group-items {
+      display: none;
+    }
+
+    .group-items {
+      margin: 12px 0 2px 44px;
+      padding: 0;
+      border-left: 1px solid var(--gh-dark-10);
+
+      &:has(.activity-date){
+        margin-left: 88px;
       }
 
-      svg {
-        width: 16px;
-        height: 16px;
+      li.activity-item {
+        margin-left: 25px;
+      }
+
+      // per-row time (+ date on multi-day boundaries), hugging the left of each row's icon
+      .activity-gutter {
+        left: -115px;
+        width: 74px;
       }
     }
   }

@@ -26,13 +26,24 @@
     confirmationModal,
     adminPageURL,
     moreMenu,
-    setFrameContent,
-    loadingDots,
-    spinner,
     escHTML,
+    sanitizeHTML,
+    safeURL,
     dialog,
     skeleton,
   } = Groundhogg.element
+
+  // titles from the flow editor / emails may carry basic inline formatting - allow only that.
+  // Cached because the same handful of titles render across many timeline rows.
+  const INLINE_TITLE_TAGS = { b: [], strong: [], u: [], i: [], em: [], code: [] }
+  const titleHTMLCache = new Map()
+  const titleHTML = str => {
+    str = String(str ?? '')
+    if (!titleHTMLCache.has(str)) {
+      titleHTMLCache.set(str, sanitizeHTML(str, INLINE_TITLE_TAGS))
+    }
+    return titleHTMLCache.get(str)
+  }
 
   const {
     currentUser,
@@ -80,9 +91,19 @@
     _n,
   } = wp.i18n
 
+  const { dateI18n, isInTheFuture } = wp.date
+  const wpDateFormats = ( wp.date.getSettings ?? wp.date.__experimentalGetSettings )().formats
+  // site time format, but tighten "10:58 am" -> "10:58am" to save gutter space (24h formats unaffected)
+  const compactTimeFormat = wpDateFormats.time.replace(/\s+(\\?[aA])/g, '$1')
+
   ContactsStore.itemsFetched([contact])
 
   let files = []
+
+  // whether the single /timeline request has run this session (it also hydrates the funnel/email stores)
+  let timelineHydrated = false
+  // steps referenced by timeline events, hydrated separately from the events (kept across tab switches)
+  const timelineStepsById = {}
 
   const maybeCall = (maybeFunc, ...args) => {
     if (typeof maybeFunc === 'string') {
@@ -130,17 +151,21 @@
   const strings = {
 
     /* translators: %s: a step name */
-    pending: __( 'Pending %s', 'groundhogg'),
+    pending: __( 'Pending — %s', 'groundhogg'),
     /* translators: %s: a step name */
-    completed: __( 'Completed %s', 'groundhogg'),
+    failed: __( 'Failed — %s', 'groundhogg'),
     /* translators: %s: the broadcast title */
     will_receive_broadcast: __( 'Will receive broadcast: %s', 'groundhogg'),
     /* translators: %s: the broadcast title */
     received_broadcast: __( 'Received broadcast: %s', 'groundhogg'),
+    /* translators: %s: the broadcast title */
+    failed_broadcast: __( 'Failed to send broadcast: %s', 'groundhogg'),
     /* translators: %s: the email title */
     will_receive_email: __( 'Will receive email: %s', 'groundhogg'),
     /* translators: %s: the email title */
-    received_email: __( 'Received email: %s', 'groundhogg')
+    received_email: __( 'Received email: %s', 'groundhogg'),
+    /* translators: %s: the email title */
+    failed_email: __( 'Failed to send email: %s', 'groundhogg'),
 
   }
 
@@ -439,10 +464,45 @@
     }))
   }
 
+  const {
+    Div,
+    Span,
+    An,
+    Ul,
+    Li,
+    Button,
+    Fragment,
+    H2,
+    Table,
+    TBody,
+    Tr,
+    Td,
+    Dashicon,
+    makeEl,
+  } = MakeEl
+
+  /**
+   * A collapsible panel of key => value details, rendered with MakeEl.
+   *
+   * @param details object or array of { label, value }
+   * @param opts
+   * @return {HTMLElement|null}
+   */
+  // coerce an arbitrary detail value to a safe, displayable string
+  const stringifyDetail = v => escHTML(
+    v === null || v === undefined
+    ? ''
+    : typeof v === 'object' ? JSON.stringify(v) : String(v),
+  )
+
   const ActivityDetails = (details, {
-    key = k => k,
-    value = v => v,
+    // labels may legitimately arrive wrapped in <code> (server-side code_it()) or other basic
+    // inline formatting - keep that, strip anything hostile
+    key = k => titleHTML(String(k ?? '')),
+    value = stringifyDetail,
     heading = __('Details'),
+    open = false,
+    className = '',
   } = {}) => {
 
     // object provided, parse to label => value
@@ -460,29 +520,44 @@
     }
 
     if (details.length === 0) {
-      return ''
+      return null
     }
 
-    // language=HTML
-    return `
-        <div class="gh-panel outlined closed activity-details overflow-hidden" style="margin-top: 5px">
-            <div class="gh-panel-header">
-                <h2>${ heading }</h2>
-                <button type="button" class="toggle-indicator" aria-expanded="false"></button>
-            </div>
-            <div class="inside" style="padding: 0">
-                <table class="wp-list-table widefat striped" style="border: none">
-                    <tbody>
-                    ${ details.map(({
-                        label,
-                        value: val,
-                    }) => {
-                        return `<tr><td>${ key(label) }</td><td>${ value(val) }</td></tr>`
-                    }).join('') }
-                    </tbody>
-                </table>
-            </div>
-        </div>`
+    return Div({
+      className: `gh-panel outlined ${ open ? '' : 'closed' } activity-details overflow-hidden ${ className }`.trim(),
+      style    : { marginTop: '5px' },
+    }, [
+      Div({
+        className: 'gh-panel-header',
+      }, [
+        H2({}, heading),
+        Button({
+          type        : 'button',
+          className   : 'toggle-indicator',
+          ariaExpanded: 'false',
+          onClick     : e => {
+            e.currentTarget.closest('.gh-panel').classList.toggle('closed')
+          },
+        }),
+      ]),
+      Div({
+        className: 'inside',
+        style    : { padding: 0 },
+      }, [
+        Table({
+          className: 'wp-list-table widefat striped',
+          style    : { border: 'none' },
+        }, [
+          TBody({}, details.map(({
+            label,
+            value: val,
+          }) => Tr({}, [
+            Td({}, `${ key(label) }`),
+            Td({}, `${ value(val) }`),
+          ]))),
+        ]),
+      ]),
+    ])
   }
 
   const stepTypeIcon = (type) => {
@@ -499,6 +574,54 @@
 
     return `<img class="step-icon" src="${ icon }" alt="${ name }"/>`
 
+  }
+
+  /**
+   * Open the email log (or a preview fallback) for a completed event.
+   *
+   * @param eventId
+   */
+  const openEventEmailLog = async (eventId) => {
+
+    const event = EventsStore.get(eventId)
+    const { email_log: LogsStore } = Groundhogg.stores
+
+    let { close } = loadingModal()
+
+    try {
+
+      if (!parseInt(event.data.queued_id)) {
+        throw new Error('Invalid queued event ID')
+      }
+
+      let logItems = await LogsStore.fetchItems({
+        queued_event_id: event.data.queued_id,
+        limit          : 1,
+      })
+
+      EmailLogModal(logItems[0])
+      close()
+    }
+    catch (err) {
+
+      close()
+
+      if (event.data.email_id) {
+        try {
+          await EmailPreviewModal(event.data.email_id, {})
+          return
+        }
+        catch (err2) {
+          // Silence
+        }
+      }
+
+      dialog({
+        message: err.message,
+        type   : 'error',
+        ttl    : 5000,
+      })
+    }
   }
 
   const ActivityTimeline = {
@@ -546,12 +669,10 @@
           meta,
         }) => {
 
-          let html = [
+          return Fragment([
             __('Email <b>bounced</b>', 'groundhogg'),
             ActivityDetails(meta),
-          ]
-
-          return html.join('')
+          ])
         },
       },
       soft_bounce        : {
@@ -560,12 +681,10 @@
           meta,
         }) => {
 
-          let html = [
+          return Fragment([
             __('Email <b>soft bounced</b>', 'groundhogg'),
             ActivityDetails(meta),
-          ]
-
-          return html.join('')
+          ])
         },
       },
       complaint          : {
@@ -574,12 +693,10 @@
           meta,
         }) => {
 
-          let html = [
+          return Fragment([
             __('Marked email as <b>spam</b>', 'groundhogg'),
             ActivityDetails(meta),
-          ]
-
-          return html.join('')
+          ])
         },
       },
       wp_fusion          : {
@@ -590,7 +707,7 @@
             event_name,
             event_value,
           } = meta
-          return `${ event_name }: <code>${ event_value }</code>`
+          return `${ escHTML(event_name) }: <code>${ escHTML(event_value) }</code>`
         },
         preload   : () => {},
       },
@@ -617,8 +734,8 @@
         }) => {
           /* translators: sentby: the name of a user, subject: the subject line of an email */
           return sprintf(__('%(sentby)s sent an email with subject %(subject)s', 'groundhogg'), {
-            sentby: bold(i18n.sent_by),
-            subject: `<a href="#" class="view-composed-email-log-item" data-activity-id="${ ID }">${ bold(meta.subject) }</a>`
+            sentby: bold(escHTML(i18n.sent_by)),
+            subject: `<a href="#" class="view-composed-email-log-item" data-activity-id="${ escHTML(String(ID)) }">${ bold(escHTML(meta.subject)) }</a>`
           })
         },
         preload: () => {},
@@ -637,22 +754,21 @@
                 tab : 'funnels',
                 step: data.step_id,
               }),
-          }, bold(EmailsStore.get(data.email_id).data.title)))
+          }, bold(titleHTML(EmailsStore.get(data.email_id).data.title))))
         },
       },
       email_link_click   : {
         icon  : icons.link_click,
         render: ({ data }) => {
 
-          const maybeTruncateLink = (link) => {
-            return link.length > 50 ? `${ link.substring(0, 47) }...` : link
-          }
+          const link = data.referer || ''
 
           /* translators: 1: the link clicked, 2: the title of an email */
           return sprintf(__('Clicked %1$s in %2$s', 'groundhogg'), el('a', {
-              target: '_blank',
-              href  : data.referer,
-            }, bold(maybeTruncateLink(data.referer))),
+              target   : '_blank',
+              href     : safeURL(link),
+              className: 'clicked-link',
+            }, bold(escHTML(link))),
             el('a', {
               href: parseInt(data.funnel_id) === 1
                     ? adminPageURL('gh_reporting', {
@@ -663,7 +779,7 @@
                   tab : 'funnels',
                   step: data.step_id,
                 }),
-            }, bold(EmailsStore.get(data.email_id).data.title))
+            }, bold(titleHTML(EmailsStore.get(data.email_id).data.title)))
           )
         },
       },
@@ -671,14 +787,14 @@
         icon  : '<span class="dashicons dashicons-upload"></span>',
         render: ({ i18n }) => {
           /* translators: user: the name of a user, file: the name of a file */
-          return sprintf(__('Imported by %(user)s from %(file)s', 'groundhogg'), { user: bold(i18n.by), file: bold(i18n.file) } )
+          return sprintf(__('Imported by %(user)s from %(file)s', 'groundhogg'), { user: bold(escHTML(i18n.by)), file: bold(escHTML(i18n.file)) } )
         },
       },
       funnel_conversion  : {
         icon  : '<span class="dashicons dashicons-flag"></span>',
         render: ({ data }) => {
 
-          let funnelTitle = bold(FunnelsStore.get(data.funnel_id).data.title)
+          let funnelTitle = bold(titleHTML(FunnelsStore.get(data.funnel_id).data.title))
           let link = el('a', {
             href: adminPageURL('gh_funnels', {
               action: 'edit',
@@ -698,19 +814,19 @@
         }) => {
 
           let html = [
-            `Tracked <code>${ data.activity_type }</code>`,
+            `Tracked <code>${ escHTML(data.activity_type) }</code>`,
           ]
 
           if (data.value) {
-            html.push(` for <b>${ data.value }</b>`)
+            html.push(` for <b>${ escHTML(data.value) }</b>`)
           }
 
           html.push(ActivityDetails(meta, {
-            key  : k => `<code>${ k }</code>`,
-            value: v => JSON.stringify(v),
+            key  : k => `<code>${ escHTML(String(k ?? '')) }</code>`,
+            value: v => escHTML(JSON.stringify(v)),
           }))
 
-          return html.join('')
+          return Fragment(html)
         },
       },
     },
@@ -719,468 +835,887 @@
 
       if (activity.type === 'submission') {
 
-        const SubmissionActivityItem = ({
-          icon = '',
-          before = '',
-          heading = __('Data'),
-        }) => {
+        let heading = {
+          form            : __('Submission', 'groundhogg'),
+          webhook         : __('Request', 'groundhogg'),
+          webhook_response: __('Response', 'groundhogg'),
+          api             : __('Request', 'groundhogg'),
+          import          : __('Data', 'groundhogg'),
+        }[activity.data.type] ?? __('Data', 'groundhogg')
 
-          // language=HTML
-          return `
-              <li class="activity-item">
-                  <div class="activity-icon submission">${ icon }</div>
-                  <div class="activity-rendered gh-panel">
-                      <div class="activity-info">
-                          ${ before }
-                          ${ ActivityDetails(activity.i18n.answers, {
-                              heading,
-                          }) }
-                      </div>
-                      <div class="diff-time">
-                          ${ activity.i18n.diff_time }
-                      </div>
-                  </div>
-              </li>`
+        let funnel = activity.form
+                     ? FunnelsStore.get(activity.form.data.funnel_id)
+                     : null
 
-        }
+        const flowLink = () => el('a', {
+          href  : funnel.admin + `#${ activity.data.step_id }`,
+          target: '_blank',
+        }, bold(titleHTML(funnel.data.title)))
 
-        let funnel
-
-        if (activity.form) {
-          funnel = FunnelsStore.get(activity.form.data.funnel_id)
-        }
+        let icon = icons.contact
+        let before
 
         switch (activity.data.type) {
-
           case 'form':
-
-            return SubmissionActivityItem({
-              icon   : icons.form,
-              heading: __('Submission', 'groundhogg'),
-              /* translators: 1: the form name, 2: the flow name */
-              before : sprintf(__('Submitted form %1$s in flow %2$s', 'groundhogg'),
-                bold(activity.form.data.step_title), el('a', {
-                  href  : funnel.admin + `#${ activity.data.step_id }`,
-                  target: '_blank',
-                }, bold(funnel.data.title))),
-            })
-
+            icon = icons.form
+            /* translators: 1: the form name, 2: the flow name */
+            before = sprintf(__('Submitted form %1$s in flow %2$s', 'groundhogg'),
+              bold(titleHTML(activity.form.data.step_title)), flowLink())
+            break
           case 'webhook':
-
-            return SubmissionActivityItem({
-              icon   : icons.webhook,
-              heading: __('Request', 'groundhogg'),
-              /* translators: 1: the step name, 2: the flow name */
-              before : sprintf(__('Received request to %1$s in flow %2$s', 'groundhogg'),
-                bold(activity.form.data.step_title), el('a', {
-                  href  : funnel.admin + `#${ activity.data.step_id }`,
-                  target: '_blank',
-                }, bold(funnel.data.title))),
-            })
-
+            icon = icons.webhook
+            /* translators: 1: the step name, 2: the flow name */
+            before = sprintf(__('Received request to %1$s in flow %2$s', 'groundhogg'),
+              bold(titleHTML(activity.form.data.step_title)), flowLink())
+            break
           case 'webhook_response':
-
-            return SubmissionActivityItem({
-              icon   : icons.webhook,
-              heading: __('Response', 'groundhogg'),
-              /* translators: 1: the step name, 2: the flow name */
-              before : sprintf(__('Received response from %1$s in flow %2$s', 'groundhogg'),
-                bold(activity.form.data.step_title), el('a', {
-                  href  : funnel.admin + `#${ activity.data.step_id }`,
-                  target: '_blank',
-                }, bold(funnel.data.title))),
-            })
-
+            icon = icons.webhook
+            /* translators: 1: the step name, 2: the flow name */
+            before = sprintf(__('Received response from %1$s in flow %2$s', 'groundhogg'),
+              bold(titleHTML(activity.form.data.step_title)), flowLink())
+            break
           case 'api':
-
-            return SubmissionActivityItem({
-              icon   : icons.api,
-              heading: __('Request', 'groundhogg'),
-              before : __('Contact updated via REST API.', 'groundhogg'),
-            })
-
+            icon = icons.api
+            before = __('Contact updated via REST API.', 'groundhogg')
+            break
           case 'import':
-
-            return SubmissionActivityItem({
-              icon   : '<span class="dashicons dashicons-upload"></span>',
-              heading: __('Data', 'groundhogg'),
-              /* translators: %s: the name of a file */
-              before : sprintf(__('Contact imported from %s.', 'groundhogg'), bold(activity.data.name)),
-            })
-
+            icon = '<span class="dashicons dashicons-upload"></span>'
+            /* translators: %s: the name of a file */
+            before = sprintf(__('Contact imported from %s.', 'groundhogg'), bold(escHTML(activity.data.name)))
+            break
           default:
-
-            // support for form integrations
             if (activity.form) {
-              return SubmissionActivityItem({
-                icon   : stepTypeIcon(activity.form.data.step_type),
-                heading: __('Submission', 'groundhogg'),
-                /* translators: 1: the form name, 2: the flow name */
-                before : sprintf(__('Submitted %1$s in flow %2$s', 'groundhogg'),
-                  bold(activity.data.name), el('a', {
-                    href  : funnel.admin + `#${ activity.data.step_id }`,
-                    target: '_blank',
-                  }, bold(funnel.data.title))),
-              })
+              icon = stepTypeIcon(activity.form.data.step_type)
+              heading = __('Submission', 'groundhogg')
+              /* translators: 1: the form name, 2: the flow name */
+              before = sprintf(__('Submitted %1$s in flow %2$s', 'groundhogg'),
+                bold(escHTML(activity.data.name)), flowLink())
             }
-
-            // language=HTML
-            return SubmissionActivityItem({
-              icon   : icons.contact,
+            else {
               /* translators: %s: a form name */
-              before : sprintf(__('Contact updated by %s', 'groundhogg'), bold(activity.data.name)),
-              heading: __('Data', 'groundhogg'),
-            })
+              before = sprintf(__('Contact updated by %s', 'groundhogg'), bold(escHTML(activity.data.name)))
+            }
         }
+
+        return this.ActivityItem({
+          id       : `ti-sub-${ activity.ID }`,
+          iconClass: 'submission',
+          icon,
+          body     : before,
+          details  : ActivityDetails(activity.i18n.answers, { heading }),
+          diffTime : activity.i18n.diff_time,
+        })
       }
 
       if (activity.type === 'page_visit') {
-        // language=HTML
-        return `
-            <li class="activity-item">
-                <div class="activity-icon page-visit">${ icons.link_click }
-                </div>
-                <div class="activity-rendered gh-panel">
-                    <div class="activity-info">
-                        ${ sprintf(
-                          /* translators: %s: a url/path */
-                          __('Visited %s', 'groundhogg'),
-                                `<a href="${ escHTML( activity.data.path ) }" target="_blank">${ bold(
-                                        escHTML( activity.data.path) ) }</a>`) }
-                    </div>
-                    <div class="diff-time" title="${ activity.i18n.ymdhis }">
-                        ${ activity.i18n.diff_time }
-                    </div>
-                </div>
-            </li>`
+        return this.ActivityItem({
+          id       : `ti-pv-${ activity.ID }`,
+          iconClass: 'page-visit',
+          icon     : icons.link_click,
+          body     : sprintf(
+            /* translators: %s: a url/path */
+            __('Visited %s', 'groundhogg'),
+            `<a href="${ escHTML(safeURL(activity.data.path)) }" class="clicked-link" target="_blank">${ escHTML(activity.data.path) }</a>`),
+          diffTime : activity.i18n.diff_time,
+          ymdhis   : activity.i18n.ymdhis,
+        })
       }
 
       if (activity.type === 'event') {
-
-        let {
-          step,
-          pending = false,
-        } = activity
-
-        switch (parseInt(activity.data.event_type)) {
-          case 1:
-
-            let funnel = FunnelsStore.get(step.data.funnel_id)
-
-            let stepTitleDisplay = bold(step.data.step_title)
-
-            // Support for email log items
-            if (!pending && [
-              'admin_notification',
-              'send_email',
-            ].includes(step.data.step_type)) {
-              stepTitleDisplay = el('a', {
-                href       : '#',
-                className  : 'view-event-email-log-item',
-                dataEventId: activity.ID,
-              }, stepTitleDisplay)
-            }
-
-            // language=HTML
-            return `
-                <li class="activity-item">
-                    <div class="activity-icon ${ step.data.step_group } ${ pending ? 'pending' : '' }">
-                        ${ pending
-                           ? icons.hourglass
-                           : stepTypeIcon(step.data.step_type) }
-                    </div>
-                    <div class="activity-rendered gh-panel space-between">
-                        <div>
-                            <div class="activity-info">
-                                <span>${ sprintf(pending ? strings.pending : strings.completed, stepTitleDisplay) }</span>
-                            </div>
-                            <div class="event-extra">
-                                ${ sprintf(
-                                    /* translators: 1: the step name, 2: the flow name */
-                                    __('%1$s in flow %2$s', 'groundhogg'),
-                                        el('span', {
-                                          className: [
-                                            'step-type',
-                                            step.data.step_group,
-                                          ].join(' '), }, Groundhogg.rawStepTypes[step.data.step_type].name),
-                                        el('a', {
-                                            href: funnel.admin + '#' + activity.data.step_id,
-                                        }, funnel.data.title)) }
-                            </div>
-                            <div class="diff-time" title="${ activity.i18n.ymdhis }">
-                                ${ activity.i18n.diff_time }
-                            </div>
-                        </div>
-                        <button
-                                class="gh-button secondary icon text event-${ pending
-                                                                              ? 'queue-'
-                                                                              : '' }more"
-                                data-event="${ activity.ID }">
-                            ${ icons.verticalDots }
-                        </button>
-                    </div>
-                </li>`
-          case 2:
-
-            let objectTitleDisplay = bold(activity.broadcast.object.data.title)
-
-            // Support for email log items
-            if (!pending && activity.broadcast.data.object_type === 'email') {
-              objectTitleDisplay = el('a', {
-                href       : '#',
-                className  : 'view-event-email-log-item',
-                dataEventId: activity.ID,
-              }, objectTitleDisplay)
-            }
-
-            // language=HTML
-            return `
-                <li class="activity-item">
-                    <div class="activity-icon broadcast">${ icons.megaphone }
-                    </div>
-                    <div class="activity-rendered gh-panel space-between">
-                        <div>
-                            <div class="activity-info">
-                                <span>${ sprintf(pending ? strings.will_receive_broadcast : strings.received_broadcast, objectTitleDisplay) }</span>
-                            </div>
-                            <div class="diff-time" title="${ activity.i18n.ymdhis }">
-                                ${ activity.i18n.diff_time }
-                            </div>
-                        </div>
-                        <button
-                                class="gh-button secondary icon text event-${ pending ? 'queue-' : '' }more"
-                                data-event="${ activity.ID }">
-                            ${ icons.verticalDots }
-                        </button>
-                    </div>
-                </li>`
-          case 3:
-
-            let emailTitleDisplay = bold(activity.email.email.data.title)
-
-            if (!pending) {
-              emailTitleDisplay = el('a', {
-                href       : '#',
-                className  : 'view-event-email-log-item',
-                dataEventId: activity.ID,
-              }, emailTitleDisplay)
-            }
-
-            // language=HTML
-            return `
-                <li class="activity-item">
-                    <div class="activity-icon broadcast">${ icons.email }
-                    </div>
-                    <div class="activity-rendered gh-panel space-between">
-                        <div>
-                            <div class="activity-info">
-                                <span>${ sprintf(pending ? strings.will_receive_email : strings.received_email, emailTitleDisplay) }</span>
-                            </div>
-                            <div class="diff-time" title="${ activity.i18n.ymdhis }">
-                                ${ activity.i18n.diff_time }
-                            </div>
-                        </div>
-                        <button
-                                class="gh-button secondary icon text event-${ pending
-                                                                              ? 'queue-'
-                                                                              : '' }more"
-                                data-event="${ activity.ID }">
-                            ${ icons.verticalDots }
-                        </button>
-                    </div>
-                </li>`
-        }
-
-        return ''
+        return this.renderEvent(activity)
       }
 
       if (this.hiddenActivity.includes(activity.data.activity_type)) {
-        return ''
+        return null
       }
 
       const type = this.types.hasOwnProperty(activity.data.activity_type)
                    ? this.types[activity.data.activity_type]
                    : this.types.fallback
 
-      // language=HTML
-      return `
-          <li class="activity-item ${ activity.data.activity_type } activity"
-              tabindex="0">
-              <div
-                      class="activity-icon ${ activity.data.activity_type } ${ type.iconFramed ===
-                                                                               false
-                                                                               ? 'no-frame'
-                                                                               : '' }">
-                  ${ maybeCall(type.icon, activity) }
-              </div>
-              <div class="activity-rendered gh-panel">
-                  <div class="activity-info">
-                      ${ type.render(activity) }
-                  </div>
-                  <div class="diff-time" title="${ activity.i18n.ymdhis }">
-                      ${ activity.i18n.diff_time }
-                  </div>
-              </div>
-          </li>`
-    },
-
-    render (activities) {
-
-      // language=HTML
-      return `
-          <ul id="activity-timeline">
-              ${ activities.map(a => {
-                  try {
-                      return this.renderActivity(a)
-                  }
-                  catch (e) {
-                      return ''
-                  }
-              }).join('') }
-          </ul>`
-
-    },
-
-    onMount () {
-      $('.event-queue-more').on('click', (e) => {
-
-        let eventId = e.currentTarget.dataset.event
-        const event = EventQueue.get(eventId)
-
-        moreMenu(e.currentTarget, {
-          items   : [
-            {
-              key : 'execute',
-              text: __('Run Now'),
-            },
-            {
-              key : 'cancel',
-              text: `<span class="gh-text danger">${ __('Cancel', 'groundhogg') }</span>`,
-            },
-          ],
-          onSelect: (key) => {
-            switch (key) {
-              case 'cancel':
-
-                patch(`${ EventQueue.route }/${ event.ID }/cancel`).then(() => {
-                  EventQueue.items.splice(
-                    EventQueue.items.findIndex(e => e.ID === event.ID), 1)
-                  dialog({
-                    message: __('Event cancelled', 'groundhogg'),
-                  })
-                  this.needsRefresh()
-                })
-
-                break
-
-              case 'execute':
-
-                patch(`${ EventQueue.route }/${ event.ID }/execute`).then(() => {
-                  dialog({
-                    message: __('Event rescheduled', 'groundhogg'),
-                  })
-                  this.needsRefresh()
-                })
-
-                break
-            }
-          },
-        })
-      })
-
-      $('.event-more').on('click', (e) => {
-
-        let eventId = e.currentTarget.dataset.event
-        const event = EventsStore.get(eventId)
-
-        moreMenu(e.currentTarget, {
-          items   : [
-            {
-              key : 'execute',
-              text: __('Run again', 'groundhogg'),
-            },
-          ],
-          onSelect: (key) => {
-            switch (key) {
-              case 'execute':
-
-                patch(`${ EventsStore.route }/${ event.ID }/execute`).then(() => {
-                  dialog({
-                    message: __('Event rescheduled', 'groundhogg'),
-                  })
-                  this.needsRefresh()
-                })
-
-                break
-            }
-          },
-        })
+      return this.ActivityItem({
+        id        : `ti-act-${ activity.ID }`,
+        className : `${ activity.data.activity_type } activity`,
+        tabindex  : 0,
+        iconClass : activity.data.activity_type,
+        iconFramed: type.iconFramed,
+        icon      : maybeCall(type.icon, activity),
+        body      : type.render(activity),
+        diffTime  : activity.i18n.diff_time,
+        ymdhis    : activity.i18n.ymdhis,
+        children  : activity.children,
       })
     },
+
+    renderEvent (activity) {
+
+      let {
+        step,
+        pending = false,
+      } = activity
+
+      let failed = !pending && activity.data.status === 'failed'
+
+      const emailLogLink = (display) => el('a', {
+        href       : '#',
+        className  : 'view-event-email-log-item',
+        dataEventId: activity.ID,
+      }, display)
+
+      // the failure reason, shown in a details card
+      const errorCard = () => {
+
+        if (!failed) {
+          return null
+        }
+
+        let rows = {}
+
+        if (activity.data.error_code) {
+          rows[__('Code', 'groundhogg')] = `<code>${ escHTML(activity.data.error_code) }</code>`
+        }
+        if (activity.data.error_message) {
+          rows[__('Message', 'groundhogg')] = escHTML(activity.data.error_message)
+        }
+
+        if (!Object.keys(rows).length) {
+          return null
+        }
+
+        // rows are already escaped / intentionally wrapped in <code>
+        return ActivityDetails(rows, {
+          heading  : __('Error', 'groundhogg'),
+          open     : true,
+          value    : v => v,
+          className: 'activity-details--error',
+        })
+      }
+
+      const rowId = `ti-${ pending ? 'qe' : 'ev' }-${ activity.ID }`
+
+      switch (parseInt(activity.data.event_type)) {
+        case 1: {
+
+          if (!step) {
+            return null
+          }
+
+          let grouped = !!activity.grouped
+          let funnel = FunnelsStore.get(step.data.funnel_id)
+
+          if (!funnel && !grouped) {
+            return null
+          }
+
+          // the flow editor's generated title, kses'd server-side to basic inline formatting
+          let title = titleHTML(step.data.step_title)
+
+          // completed -> just the step title; pending / failed -> "Pending — title" (not bold)
+          let label = pending
+                      ? sprintf(strings.pending, title)
+                      : failed
+                        ? sprintf(strings.failed, title)
+                        : title
+
+          // link into the flow editor at this step, revealed on hover
+          let editorLink = funnel
+                           ? el('a', {
+                             href     : funnel.admin + '#' + activity.data.step_id,
+                             className: 'open-in-editor',
+                             target   : '_blank',
+                             title    : __('Open in flow editor', 'groundhogg'),
+                           }, '<span class="dashicons dashicons-external"></span>')
+                           : ''
+
+          let stepTypeName = el('span', {
+            className: [ 'step-type', step.data.step_group ].join(' '),
+          }, Groundhogg.rawStepTypes[step.data.step_type].name)
+
+          return this.ActivityItem({
+            id       : rowId,
+            iconClass: `${ step.data.step_group } ${ pending ? 'pending' : '' } ${ failed ? 'failed' : '' }`,
+            icon     : pending ? icons.hourglass : stepTypeIcon(step.data.step_type),
+            body     : `<span>${ label }</span>`,
+            details  : errorCard(),
+            // inside a flow group the flow is already named by the group header
+            extra    : grouped
+                       ? null
+                       : sprintf(
+                         /* translators: 1: the step type, 2: the flow name */
+                         __('%1$s in flow %2$s', 'groundhogg'),
+                         stepTypeName,
+                         el('a', {
+                           href: funnel.admin + '#' + activity.data.step_id,
+                         }, titleHTML(funnel.data.title))),
+            diffTime : activity.i18n.diff_time,
+            ymdhis   : activity.i18n.ymdhis,
+            actions  : [ ...this.eventActions(activity), editorLink ].filter(Boolean),
+            children : activity.children,
+            childDay : this.dayKey(activity.time),
+          })
+        }
+        case 2: {
+
+          if (!activity.broadcast) {
+            return null
+          }
+
+          let objectTitleDisplay = bold(titleHTML(activity.broadcast.object?.data?.title || __('Broadcast', 'groundhogg')))
+
+          if (!pending && activity.broadcast.data.object_type === 'email') {
+            objectTitleDisplay = emailLogLink(objectTitleDisplay)
+          }
+
+          let verb = pending
+                     ? strings.will_receive_broadcast
+                     : failed ? strings.failed_broadcast : strings.received_broadcast
+
+          return this.ActivityItem({
+            id       : rowId,
+            iconClass: `broadcast ${ failed ? 'failed' : '' }`,
+            icon     : icons.megaphone,
+            body     : `<span>${ sprintf(verb, objectTitleDisplay) }</span>`,
+            details  : errorCard(),
+            diffTime : activity.i18n.diff_time,
+            ymdhis   : activity.i18n.ymdhis,
+            actions  : this.eventActions(activity),
+            children : activity.children,
+            childDay : this.dayKey(activity.time),
+          })
+        }
+        case 3: {
+
+          let email = activity.email?.email || EmailsStore.get(activity.data.email_id)
+          let emailTitleDisplay = bold(titleHTML(email ? email.data.title : __('Email', 'groundhogg')))
+
+          if (!pending) {
+            emailTitleDisplay = emailLogLink(emailTitleDisplay)
+          }
+
+          let verb = pending
+                     ? strings.will_receive_email
+                     : failed ? strings.failed_email : strings.received_email
+
+          return this.ActivityItem({
+            id       : rowId,
+            iconClass: `broadcast ${ failed ? 'failed' : '' }`,
+            icon     : icons.email,
+            body     : `<span>${ sprintf(verb, emailTitleDisplay) }</span>`,
+            details  : errorCard(),
+            diffTime : activity.i18n.diff_time,
+            ymdhis   : activity.i18n.ymdhis,
+            actions  : this.eventActions(activity),
+            children : activity.children,
+            childDay : this.dayKey(activity.time),
+          })
+        }
+      }
+
+      return null
+    },
+
+    /**
+     * Inline event actions, shown on hover after the timestamp.
+     *
+     * @return {Array}
+     */
+    eventActions (activity) {
+
+      const action = (props, text) => An({
+        className: 'activity-action',
+        ...props,
+      }, text)
+
+      if (activity.pending) {
+
+        const queueItem = () => EventQueue.get(activity.ID)
+
+        return [
+          action({
+            onClick: e => {
+              patch(`${ EventQueue.route }/${ queueItem().ID }/execute`).then(() => {
+                dialog({ message: __('Event rescheduled', 'groundhogg') })
+                this.needsRefresh()
+              })
+            },
+          }, __('Run now', 'groundhogg')),
+          action({
+            className: 'activity-action danger',
+            onClick  : e => {
+              let event = queueItem()
+              patch(`${ EventQueue.route }/${ event.ID }/cancel`).then(() => {
+                EventQueue.items.splice(EventQueue.items.findIndex(i => i.ID === event.ID), 1)
+                dialog({ message: __('Event cancelled', 'groundhogg') })
+                this.needsRefresh()
+              })
+            },
+          }, __('Cancel', 'groundhogg')),
+        ]
+      }
+
+      let actions = []
+
+      if (activity.step && [
+        'admin_notification',
+        'send_email',
+      ].includes(activity.step.data.step_type)) {
+        actions.push(action({
+          onClick: e => openEventEmailLog(activity.ID),
+        }, __('Email log', 'groundhogg')))
+      }
+
+      actions.push(action({
+        onClick: e => {
+          patch(`${ EventsStore.route }/${ activity.ID }/execute`).then(() => {
+            dialog({ message: __('Event rescheduled', 'groundhogg') })
+            this.needsRefresh()
+          })
+        },
+      }, __('Run again', 'groundhogg')))
+
+      return actions
+    },
+
+    ActivityItem ({
+      id = false, // stable id so morphdom can match the row across re-renders
+      icon = '',
+      iconClass = '',
+      iconFramed = true,
+      body = '',
+      extra = null,
+      details = null,
+      diffTime = '',
+      ymdhis = '',
+      actions = null,
+      className = '',
+      tabindex = false,
+      children = [],
+      childDay = null, // the day the parent event happened - engagement rows omit the date when it matches
+    }) {
+
+      return Li({
+        id,
+        className: `activity-item ${ className }`.trim(),
+        tabindex : tabindex === false ? false : tabindex,
+      }, [
+        Div({
+          className: `activity-icon ${ iconClass } ${ iconFramed === false ? 'no-frame' : '' }`.replace(/\s+/g, ' ').trim(),
+        }, icon),
+        Div({ className: 'activity-rendered' }, [
+          Div({ className: 'activity-info' }, [
+            body,
+            // timestamp inline with the main content, like the group meta
+            diffTime ? makeEl('abbr', { className: 'diff-time', title: ymdhis || false }, diffTime) : null,
+            // inline actions, revealed on hover, after the timestamp
+            actions && actions.length ? Span({ className: 'activity-actions' }, actions) : null,
+          ]),
+          extra ? Div({ className: 'event-extra' }, extra) : null,
+          details,
+        ]),
+        children && children.length ? this.Engagement(children, childDay) : null,
+      ])
+    },
+
+    Engagement (children, sendDay) {
+
+      let rendered = children.map(c => {
+        try {
+          return this.engagementItem(c, sendDay)
+        }
+        catch (e) {
+          return null
+        }
+      }).filter(Boolean)
+
+      if (!rendered.length) {
+        return null
+      }
+
+      // summarise engagement by type
+      let counts = children.reduce((acc, c) => {
+        let t = c.data.activity_type
+        acc[t] = ( acc[t] || 0 ) + 1
+        return acc
+      }, {})
+
+      let summaryParts = []
+
+      if (counts.email_opened) {
+        /* translators: %d: a number of email opens */
+        summaryParts.push(sprintf(_n('%d open', '%d opens', counts.email_opened, 'groundhogg'), counts.email_opened))
+      }
+      if (counts.email_link_click) {
+        /* translators: %d: a number of link clicks */
+        summaryParts.push(sprintf(_n('%d click', '%d clicks', counts.email_link_click, 'groundhogg'), counts.email_link_click))
+      }
+
+      return Ul({ className: 'activity-children' }, [
+        summaryParts.length ? Li({ className: 'engagement-summary' }, summaryParts.join(' · ')) : null,
+        ...rendered,
+      ])
+    },
+
+    /**
+     * A single engagement row nested under a send event. The parent already names
+     * the email/broadcast, so opens/clicks only show the action + when it happened
+     * (time only, plus the date when it's a different day than the send).
+     */
+    engagementItem (activity, sendDay) {
+
+      const d = new Date(activity.time * 1000)
+      const sameDay = sendDay && this.dayKey(activity.time) === sendDay
+      const when = sameDay
+                   ? dateI18n(compactTimeFormat, d)
+                   : `${ dateI18n('M j', d) }, ${ dateI18n(compactTimeFormat, d) }`
+      const whenTitle = dateI18n(wpDateFormats.datetimeAbbreviated || wpDateFormats.datetime, d)
+
+      switch (activity.data.activity_type) {
+
+        case 'email_opened':
+          return this.ActivityItem({
+            id       : `ti-act-${ activity.ID }`,
+            iconClass: 'email_opened',
+            icon     : icons.open_email,
+            body     : __('Opened', 'groundhogg'),
+            diffTime : when,
+            ymdhis   : whenTitle,
+          })
+
+        case 'email_link_click': {
+          let link = activity.data.referer || ''
+          return this.ActivityItem({
+            id       : `ti-act-${ activity.ID }`,
+            iconClass: 'email_link_click',
+            icon     : icons.link_click,
+            /* translators: %s: the link that was clicked */
+            body     : sprintf(__('Clicked %s', 'groundhogg'), el('a', {
+              target   : '_blank',
+              href     : safeURL(link),
+              className: 'clicked-link',
+            }, escHTML(link))),
+            diffTime : when,
+            ymdhis   : whenTitle,
+          })
+        }
+      }
+
+      // anything else keeps its normal rendering
+      return this.renderActivity(activity)
+    },
+
+    /**
+     * A collapsible timeline group (flow run, browsing session, ...).
+     */
+    CollapsibleGroup ({
+      id = false,
+      className,
+      iconClass,
+      icon,
+      title,
+      meta = '',
+      items = [],
+      dataAttrs = {},
+    }) {
+
+      return Li({
+        id,
+        className: `activity-item group ${ className } closed`,
+        ...dataAttrs,
+      }, [
+        Div({ className: `activity-icon ${ iconClass }` }, icon),
+        Div({ className: 'group-body' }, [
+          Div({
+            className: 'group-header',
+            onClick  : e => {
+              e.currentTarget.closest('li.activity-item').classList.toggle('closed')
+            },
+          }, [
+            Div({ className: 'group-title' }, [
+              bold(title),
+              meta ? Span({ className: 'group-meta' }, meta) : null,
+            ]),
+            Dashicon('arrow-down-alt2'),
+          ]),
+          Ul({ className: 'group-items' }, ( () => {
+            // each row gets its own time gutter, with a date on multi-day boundaries
+            let entries = items.map(i => ( { el: this.renderNode(i), time: i.time } ))
+            this.gutterizeRun(entries)
+            return entries.map(e => e.el)
+          } )()),
+        ]),
+      ])
+    },
+
+    renderFlowGroup (group) {
+
+      let funnel = FunnelsStore.get(group.funnel_id)
+      let title = funnel ? titleHTML(funnel.data.title) : __('Flow', 'groundhogg')
+      // keyed by the run's entry event so morphdom keeps the open/closed state across re-renders
+      let entryId = group.items.reduce((a, b) => a.time <= b.time ? a : b, group.items[0]).ID
+
+      return this.CollapsibleGroup({
+        id       : `ti-fg-${ group.funnel_id }-${ entryId }`,
+        className: 'flow-group',
+        iconClass: 'funnel',
+        icon     : icons.funnel,
+        title,
+        /* translators: %d: a number of events */
+        meta     : sprintf(_n('%d event', '%d events', group.items.length, 'groundhogg'), group.items.length),
+        items    : group.items,
+        dataAttrs: { dataFunnel: group.funnel_id },
+      })
+    },
+
+    renderVisitSession (session) {
+
+      // a lone visit doesn't need grouping
+      if (session.items.length === 1) {
+        return this.renderActivity(session.items[0])
+      }
+
+      let entryId = session.items.reduce((a, b) => a.time <= b.time ? a : b, session.items[0]).ID
+
+      return this.CollapsibleGroup({
+        id       : `ti-vs-${ entryId }`,
+        className: 'visit-session',
+        iconClass: 'page-visit',
+        icon     : icons.link_click,
+        /* translators: %d: a number of pages */
+        title    : sprintf(_n('%d page visited', '%d pages visited', session.items.length, 'groundhogg'), session.items.length),
+        items    : session.items,
+      })
+    },
+
+    renderNode (node) {
+
+      if (node && node.type === 'flow_group') {
+        try {
+          return this.renderFlowGroup(node)
+        }
+        catch (e) {
+          return null
+        }
+      }
+
+      if (node && node.type === 'visit_session') {
+        try {
+          return this.renderVisitSession(node)
+        }
+        catch (e) {
+          return null
+        }
+      }
+
+      try {
+        return this.renderActivity(node)
+      }
+      catch (e) {
+        return null
+      }
+    },
+
+    /**
+     * Turn the flat, time-sorted activity list into a tree:
+     *  - opens / clicks / other engagement activities that carry an `event_id`
+     *    nest beneath the send event they belong to
+     *  - funnel events are grouped into "flow runs", a new run starting each time
+     *    the contact enters the flow through an entry-point step
+     *  - consecutive page visits are grouped into browsing sessions
+     *  - broadcasts, email notifications, submissions and standalone activities
+     *    stay at the root
+     *
+     * @param activities the flat list (already filtered)
+     * @param order      'asc' | 'desc'
+     * @return {Array} root nodes
+     */
+    buildTree (activities, order = 'desc') {
+
+      order = order === 'asc' ? 'asc' : 'desc'
+
+      // index completed events so engagement activities can nest beneath them
+      let eventById = new Map()
+      activities.forEach(a => {
+        if (a.type === 'event' && !a.pending) {
+          a.children = []
+          eventById.set(String(a.ID), a)
+        }
+      })
+
+      // pass 1: nest opens/clicks/etc. under their originating event
+      let flat = []
+      activities.forEach(a => {
+        if (a.type === 'activity') {
+          let eventId = a.data.event_id
+          if (eventId && eventById.has(String(eventId))) {
+            eventById.get(String(eventId)).children.push(a)
+            return
+          }
+        }
+        flat.push(a)
+      })
+
+      eventById.forEach(ev => ev.children.sort((x, y) => x.time - y.time))
+
+      // group consecutive page visits into browsing sessions (30 min inactivity gap)
+      const SESSION_GAP = 30 * 60
+      let sessions = []
+      flat.filter(a => a.type === 'page_visit').
+        sort((a, b) => a.time - b.time).
+        forEach(visit => {
+          let current = sessions[sessions.length - 1]
+          if (current && ( visit.time - current.maxTime ) <= SESSION_GAP) {
+            current.items.push(visit)
+            current.maxTime = visit.time
+          }
+          else {
+            sessions.push({
+              type   : 'visit_session',
+              items  : [ visit ],
+              minTime: visit.time,
+              maxTime: visit.time,
+            })
+          }
+        })
+
+      // pass 2: walk the rest ascending, grouping funnel events into flow runs
+      let ascending = flat.filter(a => a.type !== 'page_visit').sort((a, b) => a.time - b.time)
+      let openGroups = new Map()
+      let roots = [ ...sessions ]
+
+      ascending.forEach(item => {
+
+        let isFunnelEvent = item.type === 'event' && parseInt(item.data.event_type) === 1
+        let funnelId = parseInt(item.data.funnel_id)
+
+        if (!isFunnelEvent || !( funnelId > 1 )) {
+          roots.push(item)
+          return
+        }
+
+        let step = item.step
+        let isEntry = !!( step && step.data && ( step.is_starting || step.is_entry ) )
+
+        if (isEntry || !openGroups.has(funnelId)) {
+          let group = {
+            type     : 'flow_group',
+            funnel_id: funnelId,
+            items    : [],
+            minTime  : item.time,
+            maxTime  : item.time,
+          }
+          openGroups.set(funnelId, group)
+          roots.push(group)
+        }
+
+        let group = openGroups.get(funnelId)
+        item.grouped = true // rendered inside a flow group - no need to restate the flow
+        group.items.push(item)
+        group.minTime = Math.min(group.minTime, item.time)
+        group.maxTime = Math.max(group.maxTime, item.time)
+      })
+
+      // order group items + compute a sort key for each root
+      let nowSeconds = Math.floor(Date.now() / 1000)
+
+      roots.forEach(node => {
+        if (node.type === 'flow_group' || node.type === 'visit_session') {
+          node.items.sort((a, b) => order === 'desc' ? b.time - a.time : a.time - b.time)
+          // a group's "when" is its last *actual* activity, not a pending future step
+          let happened = node.items.filter(i => i.time <= nowSeconds).map(i => i.time)
+          let latest = happened.length ? Math.max(...happened) : node.minTime
+          node.sortTime = order === 'desc' ? latest : node.minTime
+        }
+        else {
+          node.sortTime = node.time
+        }
+      })
+
+      roots.sort((a, b) => order === 'desc' ? b.sortTime - a.sortTime : a.sortTime - b.sortTime)
+
+      return roots
+    },
+
+    // the calendar day a unix timestamp falls on, in the site timezone (e.g. "2024-03-14")
+    dayKey (time) {
+      return dateI18n('Y-m-d', new Date(time * 1000))
+    },
+
+    /**
+     * The relative-time bucket a timestamp falls into, used for the section headers.
+     */
+    dateBucket (time) {
+
+      if (isInTheFuture(new Date(time * 1000))) {
+        return { key: 'upcoming', label: __('Upcoming', 'groundhogg') }
+      }
+
+      const dayKey = this.dayKey(time)
+      const todayKey = this.dayKey(Date.now() / 1000)
+
+      if (dayKey === todayKey) {
+        return { key: 'today', label: __('Today', 'groundhogg') }
+      }
+
+      // whole calendar days between the two dates (parsed as UTC midnight so DST/TZ don't skew it)
+      const days = Math.round(( Date.parse(todayKey) - Date.parse(dayKey) ) / 86400000)
+
+      if (days === 1) {
+        return { key: 'yesterday', label: __('Yesterday', 'groundhogg') }
+      }
+      if (days <= 7) {
+        return { key: 'last-7', label: __('Previous 7 days', 'groundhogg') }
+      }
+      if (days <= 30) {
+        return { key: 'last-30', label: __('Previous 30 days', 'groundhogg') }
+      }
+
+      const d = new Date(time * 1000)
+      const sameYear = dateI18n('Y', d) === dateI18n('Y', new Date())
+
+      return {
+        key  : dateI18n('Y-m', d),
+        label: dateI18n(sameYear ? 'F' : 'F Y', d),
+      }
+    },
+
+    // the left-gutter cell: time of day, optionally prefixed with the date
+    gutterEl (ms, withDate = false) {
+      const d = new Date(ms)
+      return makeEl('span', {
+        className: 'activity-gutter',
+        title    : dateI18n(wpDateFormats.datetimeAbbreviated || wpDateFormats.datetime, d),
+      }, [
+        withDate ? makeEl('span', { className: 'activity-date' }, dateI18n('M j', d)) : null,
+        makeEl('span', { className: 'activity-time' }, dateI18n(compactTimeFormat, d)),
+      ])
+    },
+
+    /**
+     * Prepend a time gutter to a contiguous run of rendered rows. The date is shown on the
+     * oldest row of each day - the last row when reading desc (bottom-up), the first when asc.
+     *
+     * @param entries [{ el, time }] - rendered <li> + its unix timestamp (el may be null)
+     */
+    gutterizeRun (entries) {
+
+      const labelLast = this.order !== 'asc'
+
+      const addGutter = (el, time, withDate) => {
+        el.insertBefore(this.gutterEl(time * 1000, withDate), el.firstChild)
+      }
+
+      let prev = null // { el, time, day }
+
+      entries.forEach(({ el, time }) => {
+
+        if (!el || !time) {
+          return
+        }
+
+        let day = this.dayKey(time)
+
+        if (labelLast) {
+          if (prev) {
+            addGutter(prev.el, prev.time, prev.day !== day)
+          }
+          prev = { el, time, day }
+        }
+        else {
+          addGutter(el, time, !prev || prev.day !== day)
+          prev = { el, time, day }
+        }
+      })
+
+      if (prev && labelLast) {
+        addGutter(prev.el, prev.time, true)
+      }
+    },
+
+    render (nodes) {
+
+      let items = []
+      let currentBucket = null
+      let run = [] // { el, time } for the current section
+
+      const flushRun = () => {
+        this.gutterizeRun(run)
+        run = []
+      }
+
+      nodes.forEach(node => {
+
+        let bucket = this.dateBucket(node.sortTime)
+
+        if (bucket.key !== currentBucket) {
+          flushRun()
+          currentBucket = bucket.key
+          items.push(Li({ id: `ti-th-${ bucket.key }`, className: 'timeline-date-header' }, bucket.label))
+        }
+
+        let el = this.renderNode(node)
+        if (!el) {
+          return
+        }
+
+        run.push({ el, time: node.sortTime })
+        items.push(el)
+      })
+
+      flushRun()
+
+      return Ul({ id: 'activity-timeline' }, items)
+    },
+
+    onMount () {},
 
     mount (selector, activities, {
       needsRefresh = () => {},
-    }) {
+      order = 'desc',
+    } = {}) {
 
       this.needsRefresh = needsRefresh
+      this.order = order
 
-      const $el = $(selector)
+      const el = document.querySelector(selector)
 
-      if (!activities.length) {
-        $el.html(
-          `<div class="align-center-space-between" style="margin: 20px"><span class="pill orange">${ __(
-            'No activity found.', 'groundhogg') }</span></div>`)
+      if (!el) {
         return
       }
 
-      let funnelIds = activities.reduce((arr, e) => {
+      if (!activities.length) {
+        el.innerHTML = `<div class="align-center-space-between" style="margin: 20px"><span class="pill orange">${ __(
+          'No activity found.', 'groundhogg') }</span></div>`
+        return
+      }
 
-        let funnelId = parseInt(e.data?.funnel_id || e.form?.data?.funnel_id)
+      // preload hook for externally-registered activity types
+      let promises = activities.
+        filter(a => a.type === 'activity' && this.types[a.data.activity_type]?.hasOwnProperty('preload')).
+        map(a => this.types[a.data.activity_type].preload(a))
 
-        if (funnelId > 1) {
-          if (!arr.includes(funnelId)) {
-            arr.push(funnelId)
-          }
+      Promise.all(promises).catch(() => {}).finally(() => {
+
+        let next = this.render(this.buildTree(activities, order))
+        let current = el.querySelector('#activity-timeline')
+
+        if (current) {
+          // morph in place so a refresh only touches what changed, and scroll position,
+          // hover, and expanded groups / detail panels survive
+          morphdom(current, next, {
+            onBeforeElUpdated: (fromEl, toEl) => {
+              // keep the user's expand/collapse choice through a re-render
+              if (fromEl.classList.contains('group') || fromEl.classList.contains('activity-details')) {
+                toEl.classList.toggle('closed', fromEl.classList.contains('closed'))
+              }
+              return !fromEl.isEqualNode(toEl)
+            },
+          })
+        }
+        else {
+          el.innerHTML = ''
+          el.append(next)
         }
 
-        return arr
-      }, [])
-
-      let emailIds = activities.reduce((arr, e) => {
-
-        let emailId = parseInt(e.data?.email_id)
-
-        if (emailId > 1) {
-          if (!arr.includes(emailId)) {
-            arr.push(emailId)
-          }
-        }
-
-        return arr
-      }, [])
-
-      // Broadcast Events
-      activities.filter(a => a.type === 'event' && a.data.event_type == 2).
-        forEach(a => BroadcastsStore.itemsFetched([a.broadcast]))
-
-      let promises = [
-        // Preload activities
-        ...activities.filter(a => a.type === 'activity' && this.types[a.data.activity_type]?.hasOwnProperty('preload')).
-          map(a => this.types[a.data.activity_type]?.preload(a)),
-
-        // events with funnel IDs
-        funnelIds.length && !FunnelsStore.hasItems(funnelIds)
-        ? FunnelsStore.maybeFetchItems(funnelIds)
-        : null,
-
-        // events with funnel IDs
-        emailIds.length && !EmailsStore.hasItems(emailIds)
-        ? EmailsStore.maybeFetchItems(emailIds)
-        : null,
-      ]
-
-      Promise.all(promises).catch(err => {}).finally(() => {
-        $el.html(this.render(activities))
         this.onMount()
       })
 
@@ -1212,21 +1747,9 @@
                               }, 'desc') }
                           </div>
                           <div class="filter-by">
-                              <label for="filter-by"><b>${ __('Filter by', 'groundhogg') }</b></label><br/>
-                              ${ select({
-                                  id  : 'filter-by',
-                                  name: 'filter',
-                              }, {
-                                  all   : __('All Activity', 'groundhogg'),
-                                  funnel: __('Flow Activity', 'groundhogg'),
-                                  email : __('Email Activity', 'groundhogg'),
-                                  web   : __('Web Activity', 'groundhogg'),
-                                  form  : __('Form Submissions', 'groundhogg'),
-                                  ...isWPFusionActive ? {
-                                      wp_fusion: __('WPFusion Activity',
-                                              'groundhogg'),
-                                  } : {},
-                              }, '') }
+                              <label for="timeline-filter-picker-search-input"><b>${ __(
+                                      'Filter by', 'groundhogg') }</b></label><br/>
+                              <div id="timeline-filter"></div>
                           </div>
                           <button id="refresh-timeline"
                                   class="gh-button secondary text icon"><span
@@ -1237,29 +1760,40 @@
               </div>
               <div id="activity-here">
                   ${ skeleton() }
-              </div>`
+              </div>
+              <div id="timeline-load-earlier"></div>`
         },
         onMount: () => {
 
-          const clearFeedCache = () => {
-            EventQueue.clearItems()
-            EventQueue.clearResultsCache()
-            EventsStore.clearResultsCache()
-            SubmissionsStore.clearResultsCache()
-            ActivityStore.clearResultsCache()
-            PageVisitsStore.clearResultsCache()
-          }
+          const nowUnix = () => Math.floor(Date.now() / 1000)
 
           let order = 'desc'
-          let filter = 'all'
+          let filter = null
+          let filterOptions = []
+          let stepsById = timelineStepsById // module-scoped so it survives tab switches
+
+          // The timeline holds everything from `windowAfter` up to now. "Load earlier" slides
+          // `windowAfter` back in fixed slices; "refresh" fetches only what's new since `newestLoaded`.
+          const DEFAULT_LOOKBACK_DAYS = 90
+          const LOAD_EARLIER_DAYS = 90
+          let windowAfter = nowUnix() - ( DEFAULT_LOOKBACK_DAYS * 86400 )
+          let newestLoaded = null
+          let loadEarlierStep = LOAD_EARLIER_DAYS
+          let emptyStreak = 0
+          let atStartOfHistory = false
+
+          // nothing predates the contact - a hard floor for "load earlier"
+          const contactCreatedUnix = ( () => {
+            let parsed = Date.parse(String(contact?.data?.date_created || '').replace(/-/g, '/'))
+            return isNaN(parsed) ? 0 : Math.floor(parsed / 1000)
+          } )()
 
           $('#refresh-timeline').on('click', e => {
 
             $(e.currentTarget).find('.dashicons').addClass('spinning')
 
-            clearFeedCache()
-
-            fetchActivity().then(() => {
+            // incremental: only what's newer than what we already hold (+ the full pending queue)
+            fetchActivity({ after: newestLoaded ?? windowAfter }).then(() => {
               $(e.currentTarget).find('.dashicons').removeClass('spinning')
             })
           })
@@ -1270,30 +1804,264 @@
           })
 
           $('#activity-order').on('change', (e) => {
+            // order only affects the client-side sort / grouping - no refetch needed
             order = e.target.value
-            clearFeedCache()
-            fetchActivity()
-          })
-
-          $('#filter-by').on('change', (e) => {
-            filter = e.target.value
             loadTimeline()
           })
 
-          const fetchActivity = () => {
+          // Build the "filter by" options from what's actually in the timeline:
+          // activity types, plus specific flows / emails / broadcasts that appear.
+          const buildFilterOptions = (activities) => {
 
-            return get(`${ ContactsStore.route }/${contact.ID}/timeline`, {
-              order
-            }).then(response => {
+            let typeOpts = [
+              { id: 'flows', text: __('All flow activity', 'groundhogg') },
+              { id: 'broadcasts', text: __('All broadcasts', 'groundhogg') },
+              { id: 'submissions', text: __('Form submissions', 'groundhogg') },
+              { id: 'web', text: __('Web activity', 'groundhogg') },
+            ]
 
-              SubmissionsStore.itemsFetched( response.submissions )
+            if (isWPFusionActive) {
+              typeOpts.push({ id: 'wp_fusion', text: __('WPFusion activity', 'groundhogg') })
+            }
+
+            let specificOpts = []
+            let seenFunnels = new Set()
+            let seenEmails = new Set()
+            let seenBroadcasts = new Set()
+
+            activities.forEach(a => {
+
+              let funnelId = parseInt(a.data?.funnel_id || a.form?.data?.funnel_id)
+              if (funnelId > 1 && !seenFunnels.has(funnelId)) {
+                seenFunnels.add(funnelId)
+                let funnel = FunnelsStore.get(funnelId)
+                specificOpts.push({
+                  id  : `flow:${ funnelId }`,
+                  /* translators: %s: a flow name */
+                  text: sprintf(__('Flow: %s', 'groundhogg'), funnel ? titleHTML(funnel.data.title) : `#${ funnelId }`),
+                })
+              }
+
+              let emailId = parseInt(a.data?.email_id)
+              if (emailId > 0 && !seenEmails.has(emailId)) {
+                seenEmails.add(emailId)
+                let email = EmailsStore.get(emailId)
+                if (email) {
+                  specificOpts.push({
+                    id  : `email:${ emailId }`,
+                    /* translators: %s: an email subject */
+                    text: sprintf(__('Email: %s', 'groundhogg'), titleHTML(email.data.title)),
+                  })
+                }
+              }
+
+              if (a.type === 'event' && parseInt(a.data.event_type) === 2 && a.broadcast && !seenBroadcasts.has(a.broadcast.ID)) {
+                seenBroadcasts.add(a.broadcast.ID)
+                specificOpts.push({
+                  id  : `broadcast:${ a.broadcast.ID }`,
+                  /* translators: %s: a broadcast name */
+                  text: sprintf(__('Broadcast: %s', 'groundhogg'), titleHTML(a.broadcast.object?.data?.title) || `#${ a.broadcast.ID }`),
+                })
+              }
+            })
+
+            specificOpts.sort((a, b) => a.text.localeCompare(b.text))
+
+            return [ ...typeOpts, ...specificOpts ]
+          }
+
+          const applyFilter = (activities) => {
+
+            if (!filter || filter === 'all') {
+              return activities
+            }
+
+            switch (filter) {
+              case 'flows': {
+                // funnel events plus engagement (opens / clicks / conversions) tied to a flow
+                let eventIds = new Set(activities.
+                  filter(a => a.type === 'event' && parseInt(a.data.event_type) === 1).
+                  map(a => String(a.ID)))
+                return activities.filter(a =>
+                  ( a.type === 'event' && parseInt(a.data.event_type) === 1 ) ||
+                  ( a.type === 'activity' && ( parseInt(a.data.funnel_id) > 1 || eventIds.has(String(a.data.event_id)) ) ),
+                )
+              }
+              case 'broadcasts': {
+                // keep broadcast events plus any engagement activity tied to them
+                let eventIds = new Set(activities.
+                  filter(a => a.type === 'event' && parseInt(a.data.event_type) === 2).
+                  map(a => String(a.ID)))
+                return activities.filter(a =>
+                  ( a.type === 'event' && parseInt(a.data.event_type) === 2 ) ||
+                  ( a.type === 'activity' && eventIds.has(String(a.data.event_id)) ),
+                )
+              }
+              case 'submissions':
+                return activities.filter(a => a.type === 'submission')
+              case 'web':
+                return activities.filter(a => a.type === 'page_visit')
+              case 'wp_fusion':
+                return activities.filter(a => a.type === 'activity' && a.data.activity_type === 'wp_fusion')
+            }
+
+            let [ kind, rawId ] = filter.split(':')
+            let id = parseInt(rawId)
+
+            switch (kind) {
+              case 'flow': {
+                let eventIds = new Set(activities.
+                  filter(a => a.type === 'event' && parseInt(a.data.funnel_id) === id).
+                  map(a => String(a.ID)))
+                return activities.filter(a =>
+                  parseInt(a.data?.funnel_id) === id ||
+                  parseInt(a.form?.data?.funnel_id) === id ||
+                  ( a.type === 'activity' && eventIds.has(String(a.data.event_id)) ),
+                )
+              }
+              case 'email':
+                return activities.filter(a => parseInt(a.data?.email_id) === id)
+              case 'broadcast': {
+                // keep the broadcast event(s) plus any engagement activity tied to them
+                let eventIds = new Set(activities.
+                  filter(a => a.type === 'event' && parseInt(a.data.event_type) === 2 && a.broadcast && a.broadcast.ID === id).
+                  map(a => String(a.ID)))
+                return activities.filter(a =>
+                  ( a.type === 'event' && a.broadcast && a.broadcast.ID === id ) ||
+                  ( a.type === 'activity' && eventIds.has(String(a.data.event_id)) ),
+                )
+              }
+            }
+
+            return activities
+          }
+
+          document.getElementById('timeline-filter').append(MakeEl.ItemPicker({
+            id          : 'timeline-filter-picker',
+            multiple    : false,
+            clearable   : true,
+            noneSelected: __('All activity', 'groundhogg'),
+            selected    : [],
+            fetchOptions: (search) => {
+              search = ( search || '' ).toLowerCase()
+              return Promise.resolve(filterOptions.filter(o => o.text.toLowerCase().includes(search)))
+            },
+            onChange    : (item) => {
+              filter = item ? item.id : null
+              loadTimeline()
+            },
+          }))
+
+          // The four time-bounded stores. The queue is handled separately (always fetched whole).
+          const rangedStores = [ SubmissionsStore, ActivityStore, EventsStore, PageVisitsStore ]
+
+          /**
+           * @param before  upper bound (unix) - omit for "everything since `after`"
+           * @param after   lower bound (unix)
+           * @param replace  clear the ranged stores first (initial load / order reset)
+           */
+          const fetchActivity = ({ before = null, after = windowAfter, replace = false } = {}) => {
+
+            let params = { order, after }
+            if (before !== null) {
+              params.before = before
+            }
+
+            return get(`${ ContactsStore.route }/${contact.ID}/timeline`, params).then(response => {
+
+              // Hydration data - events reference these by id rather than embedding them
+              FunnelsStore.itemsFetched(response.funnels || [])
+              EmailsStore.itemsFetched(response.emails || [])
+              BroadcastsStore.itemsFetched(response.broadcasts || [])
+
+              ;( response.steps || [] ).forEach(step => { stepsById[step.ID] = step })
+
+              if (replace) {
+                rangedStores.forEach(s => {
+                  s.clearItems()
+                  s.clearResultsCache()
+                })
+              }
+
+              SubmissionsStore.itemsFetched(response.submissions)
               ActivityStore.itemsFetched(response.activity)
               EventsStore.itemsFetched(response.events)
-              EventQueue.itemsFetched(response.event_queue)
               PageVisitsStore.itemsFetched(response.page_visits)
 
+              // the pending queue is always returned whole - rebuild it so fired events drop off
+              EventQueue.clearItems()
+              EventQueue.itemsFetched(response.event_queue)
+
+              // fallback for an unhydrated response (step still embedded on the event)
+              ;( response.events || [] ).
+                filter(e => parseInt(e.data.event_type) === 2 && e.broadcast).
+                forEach(e => BroadcastsStore.itemsFetched([e.broadcast]))
+
+              timelineHydrated = true
+
               loadTimeline()
+
+              return response
             })
+          }
+
+          const loadEarlier = () => {
+
+            let sliceBefore = windowAfter
+            let sliceAfter = windowAfter - ( loadEarlierStep * 86400 )
+            windowAfter = sliceAfter
+
+            fetchActivity({ before: sliceBefore, after: sliceAfter }).then(response => {
+
+              let got = [ 'submissions', 'activity', 'events', 'page_visits' ].
+                reduce((n, k) => n + ( Array.isArray(response[k]) ? response[k].length : 0 ), 0)
+
+              if (got) {
+                emptyStreak = 0
+                loadEarlierStep = LOAD_EARLIER_DAYS
+              }
+              else {
+                // skip dormant stretches faster; give up after a few empty slices in a row
+                emptyStreak++
+                loadEarlierStep = Math.min(loadEarlierStep * 2, 730)
+              }
+
+              if (windowAfter <= contactCreatedUnix || emptyStreak >= 3) {
+                atStartOfHistory = true
+              }
+
+              renderLoadEarlier()
+            })
+          }
+
+          const renderLoadEarlier = () => {
+
+            const $container = $('#timeline-load-earlier')
+
+            if (atStartOfHistory) {
+              $container.empty()
+              return
+            }
+
+            $container.html(
+              `<button id="load-earlier-activity" class="gh-button secondary text">${ __('Load earlier activity', 'groundhogg') }</button>`)
+
+            $('#load-earlier-activity').on('click', e => {
+              $(e.currentTarget).prop('disabled', true).addClass('loading-dots').text(__('Loading', 'groundhogg'))
+              loadEarlier()
+            })
+          }
+
+          // re-attach the step / broadcast an event references (unless it's still embedded)
+          const hydrateEvent = (e) => {
+            switch (parseInt(e.data.event_type)) {
+              case 1:
+                return e.step ? {} : { step: stepsById[e.data.step_id] }
+              case 2:
+                return e.broadcast ? {} : { broadcast: BroadcastsStore.get(e.data.step_id) }
+              default:
+                return {}
+            }
           }
 
           const loadTimeline = () => {
@@ -1310,11 +2078,13 @@
               } )),
               ...EventsStore.getItems().map(e => ( {
                 ...e,
+                ...hydrateEvent(e),
                 type: 'event',
                 time: parseInt(e.data.time) + parseFloat(e.data.micro_time),
               } )),
               ...EventQueue.getItems().map(e => ( {
                 ...e,
+                ...hydrateEvent(e),
                 type   : 'event',
                 pending: true,
                 time   : parseInt(e.data.time) + parseFloat(e.data.micro_time),
@@ -1338,50 +2108,49 @@
 
               })
 
-            switch (filter) {
-              case 'form':
-              case 'submissions':
-                allActivities = allActivities.filter(a => a.type === 'submission')
-                break
-              case 'funnel':
-                allActivities = allActivities.filter(
-                  a => a.type === 'event' && a.data.event_type == 1)
-                break
-              case 'email':
-                allActivities = allActivities.filter(a => a.data.email_id > 0)
-                break
-              case 'web':
-                allActivities = allActivities.filter(
-                  a => a.type === 'page_visit')
-                break
-              case 'wp_fusion':
-                allActivities = allActivities.filter(
-                  a => a.type === 'activity' && a.data.activity_type ===
-                    'wp_fusion')
-                break
+            // track the bounds of what we hold (ignore pending/future queue items)
+            allActivities.forEach(a => {
+              if (a.pending) {
+                return
+              }
+              if (newestLoaded === null || a.time > newestLoaded) {
+                newestLoaded = a.time
+              }
+              if (a.time < windowAfter) {
+                windowAfter = a.time
+              }
+            })
+
+            if (windowAfter <= contactCreatedUnix) {
+              atStartOfHistory = true
             }
 
+            filterOptions = buildFilterOptions(allActivities)
+            allActivities = applyFilter(allActivities)
+
             ActivityTimeline.mount('#activity-here', allActivities, {
-              needsRefresh: () => {
-                fetchActivity()
-              },
+              order,
+              needsRefresh: () => fetchActivity({ after: newestLoaded ?? windowAfter }),
             })
 
             $('#activity-here').
               css({ maxHeight: $('#primary-contact-stuff').height() })
+
+            renderLoadEarlier()
           }
 
-          if (ActivityStore.hasItems()
+          if (timelineHydrated && (
+            ActivityStore.hasItems()
             || EventsStore.hasItems()
             || EventQueue.hasItems()
             || PageVisitsStore.hasItems()
             || SubmissionsStore.hasItems()
-          ) {
+          )) {
             loadTimeline()
             return
           }
 
-          fetchActivity()
+          fetchActivity({ after: windowAfter, replace: true })
         },
       },
       {
@@ -1709,8 +2478,7 @@
 
       const $btn = $('#save-primary')
 
-      let { stop } = loadingDots('#save-primary')
-      $btn.prop('disabled', true)
+      $btn.prop('disabled', true).addClass( 'loading-dots' )
 
       let data = new FormData(e.currentTarget)
 
@@ -1724,8 +2492,7 @@
 
         ContactsStore.itemsFetched([r.data.contact])
 
-        $btn.prop('disabled', false)
-        stop()
+        $btn.prop('disabled', false).removeClass('loading-dots')
 
         dialog({
           message: __('Changes saved!', 'groundhogg'),
@@ -1759,8 +2526,7 @@
 
     const commitMetaChanges = () => {
 
-      let { stop } = loadingDots('#save-meta')
-      $('#save-meta').prop('disabled', true)
+      $('#save-meta').prop('disabled', true).addClass( 'loading-dots' )
 
       Promise.all([
         ContactsStore.patchMeta(getContact().ID, metaChanges),
@@ -1771,7 +2537,6 @@
         metaChanges = {}
         deleteKeys = []
 
-        stop()
         mount()
         dialog({
           message: __('Changes saved!', 'groundhogg'),
@@ -1894,9 +2659,7 @@
                         <button id="cancel-meta-changes"
                                 class="gh-button danger text">${ __('Cancel') }
                         </button>
-                        <button id="save-meta" class="gh-button primary">
-                            ${ __('Save Changes', 'groundhogg') }
-                        </button>
+                        <button id="save-meta" class="gh-button primary">${ __('Save Changes', 'groundhogg') }</button>
                     </div>
                 </div>
             </div>`
@@ -2085,9 +2848,7 @@
                         <button id="cancel-meta-changes"
                                 class="gh-button danger text">${ __('Cancel', 'groundhogg') }
                         </button>
-                        <button id="save-meta" class="gh-button primary">
-                            ${ __('Save Changes', 'groundhogg') }
-                        </button>
+                        <button id="save-meta" class="gh-button primary">${ __('Save Changes', 'groundhogg') }</button>
                     </div>
                 </div>
             </div>`
@@ -2389,54 +3150,9 @@
   const { email_log: LogsStore } = Groundhogg.stores
 
   // Handle log items
-  $(document).on('click', 'a.view-event-email-log-item', async e => {
-
+  $(document).on('click', 'a.view-event-email-log-item', e => {
     e.preventDefault()
-
-    let eventId = parseInt($(e.currentTarget).data('event-id'))
-
-    let event = EventsStore.get(eventId)
-
-    let { close } = loadingModal()
-
-    try {
-
-      if (!parseInt(event.data.queued_id)) {
-        throw new Error('Invalid queued event ID')
-      }
-
-      let logItems = await LogsStore.fetchItems({
-        queued_event_id: event.data.queued_id,
-        limit          : 1,
-      })
-
-      EmailLogModal(logItems[0])
-
-      close()
-
-    }
-    catch (err) {
-
-      close()
-
-      if (event.data.email_id) {
-        try {
-          await EmailPreviewModal(event.data.email_id, {})
-          return
-        }
-        catch (err2) {
-          // Silence
-        }
-      }
-
-      dialog({
-        message: err.message,
-        type   : 'error',
-        ttl    : 5000,
-      })
-
-    }
-
+    openEventEmailLog(parseInt($(e.currentTarget).data('event-id')))
   })
 
   // Handle log items
@@ -2505,15 +3221,6 @@
     close()
 
   })
-
-  const {
-    Div,
-    An,
-    Span,
-    Fragment,
-    Bold,
-    Pg,
-  } = MakeEl
 
   $(function () {
     editor.init()
@@ -2614,13 +3321,13 @@
       // We set multiple to false so only get one image from the uploader
       let attachment = file_frame.state().get('selection').first().toJSON()
 
-      $('.profile-picture')[0].style.backgroundImage = `url(${ attachment.url })`
-
       ContactsStore.patch(getContact().ID, {
         meta: {
           profile_picture: attachment.url,
         }
       })
+
+      $('.contact-picture > .gh-square-image')[0].style.backgroundImage = `url(${ attachment.url })`
 
     })
     // Finally, open the modal

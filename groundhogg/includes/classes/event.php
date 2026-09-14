@@ -677,13 +677,20 @@ class Event extends Base_Object {
 			$diff_time = __( 'Running now...', 'groundhogg' );
 		} else {
 			/* translators: %s: when the event will/was run */
-			$diff_time = sprintf( $this->is_waiting() ? __( 'Runs %s', 'groundhogg' ) : __( 'Ran %s', 'groundhogg' ), $date->wi18n() );
+			$diff_time = $date->wi18n();
 		}
 
 		$array['i18n'] = [
 			'diff_time' => $diff_time,
 			'ymdhis'    => $date->ymdhis(),
 		];
+
+		// The related step/broadcast/email is often repeated across many events (e.g. every
+		// newsletter send). Consumers that hydrate it separately can set the `gh_timeline_omit_step`
+		// flag to skip embedding it here.
+		if ( flagged( 'gh_timeline_omit_step' ) ) {
+			return $array;
+		}
 
 		switch ( $this->get_event_type() ) {
 			case Event::FUNNEL:

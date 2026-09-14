@@ -537,6 +537,130 @@
 
   const escHTML = string => specialChars(string)
 
+  /**
+   * Return a URL only if it uses a safe scheme, otherwise return a fallback.
+   *
+   * Guards against `javascript:`, `data:`, `vbscript:` and similar when a URL comes from
+   * untrusted data (tracking referers, page paths, ...). Protocol-relative (`//host`),
+   * root-relative (`/path`), anchor (`#x`) and query (`?x`) values are allowed through;
+   * anything with an explicit scheme must be http(s) or mailto/tel.
+   *
+   * @param url      {*}      the candidate URL
+   * @param fallback {string} returned when `url` is unsafe (default '#')
+   * @returns {string}
+   */
+  const safeURL = (url, fallback = '#') => {
+    if (!isString(url)) {
+      return fallback
+    }
+
+    let trimmed = url.trim()
+
+    // browsers strip tabs / newlines before resolving the scheme, so strip them here too
+    // (e.g. "java\tscript:...") before deciding whether the scheme is safe
+    let bare = trimmed.replace(/[\t\r\n]/g, '')
+
+    // relative / same-document references carry no scheme
+    if (/^(?:[/?#]|$)/.test(bare)) {
+      return trimmed
+    }
+
+    // has an explicit scheme? only allow known-safe ones
+    let scheme = bare.match(/^([a-z][a-z0-9+.-]*):/i)
+
+    if (!scheme) {
+      // no scheme and not clearly relative (e.g. "example.com/x") - leave as-is, it's inert
+      return trimmed
+    }
+
+    return [ 'http', 'https', 'mailto', 'tel' ].includes(scheme[1].toLowerCase())
+           ? trimmed
+           : fallback
+  }
+
+  /**
+   * Strip unwanted HTML, kses-style.
+   *
+   * Elements not present in `allowed` are unwrapped (their text content is kept); attributes
+   * not listed for an allowed element are removed. Comments and other non-element/text nodes
+   * are dropped. Parsing happens in an inert <template> so nothing loads or executes.
+   *
+   * Note: attribute *values* are not inspected. Don't allow url-bearing attributes
+   * (`href`, `src`, `style`, ...) on untrusted input - keep the list to formatting tags.
+   *
+   * @param html    {Node|string}  arbitrary HTML - a DOM node or an HTML string
+   * @param allowed {Object}       { tagName: [ ...allowedAttributes ] } (case-insensitive)
+   * @returns {Node|string}        a string when given a string, a node when given a node
+   */
+  const sanitizeHTML = (html, allowed = {}) => {
+
+    // normalise: { Tag: [Attr] } -> { tag: Set(attr) }, all lowercase
+    const allow = Object.create(null)
+    Object.keys(allowed || {}).forEach(tag => {
+      allow[tag.toLowerCase()] = new Set((allowed[tag] || []).map(a => String(a).toLowerCase()))
+    })
+
+    const clean = (parent) => {
+      Array.from(parent.childNodes).forEach(node => {
+
+        // text stays
+        if (node.nodeType === Node.TEXT_NODE) {
+          return
+        }
+
+        // comments, processing instructions, etc. go
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          node.remove()
+          return
+        }
+
+        clean(node)
+
+        const tag = node.tagName.toLowerCase()
+
+        // not on the allow-list -> unwrap, keeping the (already cleaned) contents
+        if (!( tag in allow )) {
+          node.replaceWith(...node.childNodes)
+          return
+        }
+
+        // drop attributes that aren't explicitly allowed for this tag
+        Array.from(node.attributes).forEach(attr => {
+          if (!allow[tag].has(attr.name.toLowerCase())) {
+            node.removeAttribute(attr.name)
+          }
+        })
+      })
+    }
+
+    const template = document.createElement('template')
+
+    // string in -> string out
+    if (isString(html)) {
+      template.innerHTML = html
+      clean(template.content)
+      return template.innerHTML
+    }
+
+    // a text node has nothing to strip
+    if (html && html.nodeType === Node.TEXT_NODE) {
+      return html.cloneNode()
+    }
+
+    // node in -> sanitized clone out (the input is left untouched)
+    template.innerHTML = html && html.nodeType === Node.ELEMENT_NODE
+      ? html.outerHTML
+      : Array.from(( html && html.childNodes ) || []).
+        map(n => n.nodeType === Node.ELEMENT_NODE ? n.outerHTML : specialChars(n.textContent || '')).
+        join('')
+
+    clean(template.content)
+
+    return template.content.childNodes.length === 1
+           ? template.content.firstChild
+           : template.content
+  }
+
   const kebabize = str => {
     return str.split('').map((letter, idx) => {
       return letter.toUpperCase() === letter
@@ -1526,22 +1650,11 @@ ${ afterProgress() }`,
 
   const loadingDots = (selector) => {
 
-    const $el = $('<span class="loading-dots"></span>')
-    $(selector).append($el)
+    $(selector).addClass( 'loading-dots' )
 
     const stop = () => {
-      clearInterval(interval)
-      $el.remove()
+      $(selector).removeClass( 'loading-dots' )
     }
-
-    const interval = setInterval(() => {
-      if ($el.html().length >= 3) {
-        $el.html('.')
-      }
-      else {
-        $el.html($el.html() + '.')
-      }
-    }, 500)
 
     return {
       stop,
@@ -3250,6 +3363,8 @@ ${ afterProgress() }`,
     isString,
     replacementsWidget,
     escHTML,
+    sanitizeHTML,
+    safeURL,
     skeleton,
   }
 
