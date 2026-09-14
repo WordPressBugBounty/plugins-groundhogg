@@ -33,13 +33,13 @@ class Create_Contact extends Ability {
 	use Has_Optin_Status;
 	use Has_Owner_Validation;
 
-	protected const string NAME       = 'groundhogg/create-contact';
-	protected const string CATEGORY   = 'groundhogg-contacts';
-	protected const string CAPABILITY = 'add_contacts';
+	protected const NAME       = 'groundhogg/create-contact';
+	protected const CATEGORY   = 'groundhogg-contacts';
+	protected const CAPABILITY = 'add_contacts';
 
-	protected const bool READONLY    = false;
-	protected const bool DESTRUCTIVE = false;
-	protected const bool IDEMPOTENT  = true;
+	protected const READONLY    = false;
+	protected const DESTRUCTIVE = false;
+	protected const IDEMPOTENT  = true;
 
 	protected function get_args(): array {
 
@@ -87,10 +87,10 @@ class Create_Contact extends Ability {
 						'type'        => 'array',
 						'items'       => [
 							'type' => 'string',
-							'enum' => [ 'tags', 'meta' ],
+							'enum' => Contact_Schema::expand_options(),
 						],
 						'default'     => [ 'tags' ],
-						'description' => __( 'Optional extra sections to expand on the returned contact. Available: tags, meta.', 'groundhogg' ),
+						'description' => __( 'Optional extra sections to expand on the returned contact. Available: tags, meta, plus any sections an installed add-on has registered.', 'groundhogg' ),
 					],
 				],
 			],

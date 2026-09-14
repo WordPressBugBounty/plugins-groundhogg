@@ -9,12 +9,12 @@ use function Groundhogg\get_contactdata;
 
 class Get_Contact extends Ability {
 
-	protected const string NAME       = 'groundhogg/get-contact';
-	protected const string CATEGORY   = 'groundhogg-contacts';
-	protected const string CAPABILITY = 'view_contacts';
+	protected const NAME       = 'groundhogg/get-contact';
+	protected const CATEGORY   = 'groundhogg-contacts';
+	protected const CAPABILITY = 'view_contacts';
 
-	protected const bool READONLY   = true;
-	protected const bool IDEMPOTENT = true;
+	protected const READONLY   = true;
+	protected const IDEMPOTENT = true;
 
 	protected function get_args(): array {
 
@@ -45,10 +45,10 @@ class Get_Contact extends Ability {
 						'type'        => 'array',
 						'items'       => [
 							'type' => 'string',
-							'enum' => [ 'tags', 'meta' ],
+							'enum' => Contact_Schema::expand_options(),
 						],
 						'default'     => [ 'tags' ],
-						'description' => __( 'Optional extra sections to expand beyond the standard contact fields. Available: tags, meta (raw custom field/meta values - see groundhogg/list-custom-fields to interpret them).', 'groundhogg' ),
+						'description' => __( 'Optional extra sections to expand beyond the standard contact fields. Available: tags, meta (raw custom field/meta values - see groundhogg/list-custom-fields to interpret them), plus any sections an installed add-on has registered.', 'groundhogg' ),
 					],
 				],
 				'anyOf' => [

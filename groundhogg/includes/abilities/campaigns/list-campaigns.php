@@ -8,23 +8,23 @@ use function Groundhogg\get_db;
 
 /**
  * Lists the campaigns defined in Groundhogg (Contacts > Campaigns in the admin), so a caller
- * can discover valid campaign ids/names to pass as create-email's/update-email's campaigns param,
- * or to filter flows/broadcasts by campaign, without guessing.
+ * can discover valid campaign ids/names to pass as create-email-template's/update-email-template's
+ * campaigns param, or to filter flows/broadcasts/emails by campaign, without guessing.
  */
 class List_Campaigns extends Ability {
 
-	protected const string NAME       = 'groundhogg/list-campaigns';
-	protected const string CATEGORY   = 'groundhogg-campaigns';
-	protected const string CAPABILITY = 'manage_campaigns';
+	protected const NAME       = 'groundhogg/list-campaigns';
+	protected const CATEGORY   = 'groundhogg-campaigns';
+	protected const CAPABILITY = 'manage_campaigns';
 
-	protected const bool READONLY   = true;
-	protected const bool IDEMPOTENT = true;
+	protected const READONLY   = true;
+	protected const IDEMPOTENT = true;
 
 	protected function get_args(): array {
 
 		return [
 			'label'       => __( 'List Campaigns', 'groundhogg' ),
-			'description' => __( 'List the campaigns defined in Groundhogg. Use the returned id or name with groundhogg/create-email\'s or groundhogg/update-email\'s campaigns param.', 'groundhogg' ),
+			'description' => __( 'List the campaigns defined in Groundhogg. Use the returned id or name with groundhogg/create-email-template\'s or groundhogg/update-email-template\'s campaigns param.', 'groundhogg' ),
 
 			'input_schema' => [
 				'type'                 => 'object',

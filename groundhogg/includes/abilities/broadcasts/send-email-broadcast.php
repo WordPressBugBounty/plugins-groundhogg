@@ -40,13 +40,13 @@ use WP_Error;
  */
 class Send_Email_Broadcast extends Ability {
 
-	protected const string NAME       = 'groundhogg/send-email-broadcast';
-	protected const string CATEGORY   = 'groundhogg-broadcasts';
-	protected const string CAPABILITY = 'schedule_broadcasts';
+	protected const NAME       = 'groundhogg/send-email-broadcast';
+	protected const CATEGORY   = 'groundhogg-broadcasts';
+	protected const CAPABILITY = 'schedule_broadcasts';
 
-	protected const bool READONLY    = false;
-	protected const bool DESTRUCTIVE = true;
-	protected const bool IDEMPOTENT  = false;
+	protected const READONLY    = false;
+	protected const DESTRUCTIVE = true;
+	protected const IDEMPOTENT  = false;
 
 	protected function get_args(): array {
 
@@ -194,6 +194,11 @@ class Send_Email_Broadcast extends Ability {
 			);
 		}
 
+		// The plain array form, not to_contact_query()'s live query object -
+		// this gets stored (Broadcast::schedule()'s 'query' arg below) and, for
+		// a "dynamic" segment_type, re-run later against whatever then matches;
+		// a live query object (and anything a filter attached to it) can't
+		// survive that round trip.
 		$query = Segment_Schema::to_query( $input );
 
 		if ( is_wp_error( $query ) ) {

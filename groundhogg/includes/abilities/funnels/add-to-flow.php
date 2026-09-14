@@ -33,13 +33,13 @@ use function Groundhogg\is_a_contact;
  */
 class Add_To_Flow extends Ability {
 
-	protected const string NAME       = 'groundhogg/add-to-flow';
-	protected const string CATEGORY   = 'groundhogg-funnels';
-	protected const string CAPABILITY = 'start_flows';
+	protected const NAME       = 'groundhogg/add-to-flow';
+	protected const CATEGORY   = 'groundhogg-funnels';
+	protected const CAPABILITY = 'start_flows';
 
-	protected const bool READONLY    = false;
-	protected const bool DESTRUCTIVE = true;
-	protected const bool IDEMPOTENT  = false;
+	protected const READONLY    = false;
+	protected const DESTRUCTIVE = true;
+	protected const IDEMPOTENT  = false;
 
 	protected function get_args(): array {
 
@@ -172,6 +172,10 @@ class Add_To_Flow extends Ability {
 			);
 		}
 
+		// The plain array form, not to_contact_query()'s live query object -
+		// this gets stored and re-run in background batches (Background_Tasks::
+		// add_contacts_to_funnel() below); a live query object (and anything a
+		// filter attached to it) can't survive that round trip.
 		$query = Segment_Schema::to_query( $input );
 
 		if ( is_wp_error( $query ) ) {
