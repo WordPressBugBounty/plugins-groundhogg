@@ -6,8 +6,11 @@ use Groundhogg\Abilities\Broadcasts\Cancel_Broadcast;
 use Groundhogg\Abilities\Broadcasts\Get_Broadcast;
 use Groundhogg\Abilities\Broadcasts\List_Broadcasts;
 use Groundhogg\Abilities\Broadcasts\Send_Email_Broadcast;
+use Groundhogg\Abilities\Campaigns\Associate_Campaign;
+use Groundhogg\Abilities\Campaigns\Create_Campaign;
 use Groundhogg\Abilities\Campaigns\List_Campaigns;
 use Groundhogg\Abilities\Contacts\Add_Contact_Note;
+use Groundhogg\Abilities\Contacts\Add_Custom_Field;
 use Groundhogg\Abilities\Contacts\Create_Contact;
 use Groundhogg\Abilities\Contacts\Get_Contact;
 use Groundhogg\Abilities\Contacts\List_Contact_Notes;
@@ -16,14 +19,21 @@ use Groundhogg\Abilities\Contacts\List_Owners;
 use Groundhogg\Abilities\Contacts\List_Saved_Searches;
 use Groundhogg\Abilities\Contacts\Search_Contacts;
 use Groundhogg\Abilities\Contacts\Update_Contact;
+use Groundhogg\Abilities\Contacts\Update_Custom_Field;
 use Groundhogg\Abilities\Db\Describe_Table;
 use Groundhogg\Abilities\Db\Query_Table;
+use Groundhogg\Abilities\Extensions\Activate_License;
+use Groundhogg\Abilities\Extensions\Check_License;
+use Groundhogg\Abilities\Extensions\Install_Extension;
+use Groundhogg\Abilities\Extensions\List_Extensions;
 use Groundhogg\Abilities\Funnels\Activate_Flow;
 use Groundhogg\Abilities\Funnels\Add_To_Flow;
 use Groundhogg\Abilities\Funnels\Create_Flow;
 use Groundhogg\Abilities\Funnels\Deactivate_Flow;
 use Groundhogg\Abilities\Funnels\List_Flows;
 use Groundhogg\Abilities\Funnels\List_Step_Types;
+use Groundhogg\Abilities\Funnels\Live_Simulate_Flow;
+use Groundhogg\Abilities\Funnels\Simulate_Flow;
 use Groundhogg\Abilities\Emails\Create_Email_Template;
 use Groundhogg\Abilities\Emails\Get_Email_Template;
 use Groundhogg\Abilities\Emails\List_Email_Templates;
@@ -34,6 +44,9 @@ use Groundhogg\Abilities\Emails\Send_Email_Template;
 use Groundhogg\Abilities\Emails\Update_Email_Template;
 use Groundhogg\Abilities\Reports\Get_Reports;
 use Groundhogg\Abilities\Reports\List_Report_Types;
+use Groundhogg\Abilities\Settings\List_Settings;
+use Groundhogg\Abilities\Settings\Update_Settings;
+use Groundhogg\Abilities\Tags\Create_Tag;
 use Groundhogg\Abilities\Tags\List_Tags;
 use Groundhogg\Abilities\Utils\Upload_Media;
 
@@ -185,6 +198,16 @@ class Abilities {
 			'description' => __( 'General-purpose utilities that support the other categories but aren\'t specific to any one of them.', 'groundhogg' ),
 		] );
 
+		wp_register_ability_category( 'groundhogg-extensions', [
+			'label'       => __( 'Groundhogg Extensions', 'groundhogg' ),
+			'description' => __( 'Manage Groundhogg add-on extensions and their licenses.', 'groundhogg' ),
+		] );
+
+		wp_register_ability_category( 'groundhogg-settings', [
+			'label'       => __( 'Groundhogg Settings', 'groundhogg' ),
+			'description' => __( 'List and update Groundhogg settings that have been registered for ability access.', 'groundhogg' ),
+		] );
+
 		foreach ( self::$extra_categories as $slug => $args ) {
 			wp_register_ability_category( $slug, $args );
 		}
@@ -198,10 +221,15 @@ class Abilities {
 			Update_Contact::class,
 			Search_Contacts::class,
 			List_Custom_Fields::class,
+			Add_Custom_Field::class,
+			Update_Custom_Field::class,
 			List_Saved_Searches::class,
 			List_Owners::class,
 			List_Tags::class,
+			Create_Tag::class,
 			List_Campaigns::class,
+			Create_Campaign::class,
+			Associate_Campaign::class,
 			Add_Contact_Note::class,
 			List_Contact_Notes::class,
 			List_Email_Templates::class,
@@ -222,11 +250,19 @@ class Abilities {
 			Activate_Flow::class,
 			Deactivate_Flow::class,
 			Add_To_Flow::class,
+			Simulate_Flow::class,
+			Live_Simulate_Flow::class,
 			List_Report_Types::class,
 			Get_Reports::class,
 			Describe_Table::class,
 			Query_Table::class,
 			Upload_Media::class,
+			Activate_License::class,
+			Check_License::class,
+			List_Extensions::class,
+			Install_Extension::class,
+			List_Settings::class,
+			Update_Settings::class,
 		], self::$extra_abilities );
 
 		foreach ( $abilities as $ability ) {
