@@ -465,6 +465,7 @@ class Scripts {
 			'moment',
 			'groundhogg-admin',
 			'groundhogg-admin-element',
+			'groundhogg-make-el',
 			'groundhogg-admin-data'
 		], GROUNDHOGG_VERSION, true );
 
@@ -660,6 +661,7 @@ class Scripts {
 			],
 			'rawStepTypes'     => Plugin::instance()->step_manager->get_elements(),
 			'currentUser'      => new Safe_WP_User( wp_get_current_user() ),
+			'isGroundhoggPage' => is_admin_groundhogg_page(),
 			'isMultisite'      => is_multisite(),
 			'isWhiteLabeled'   => is_white_labeled(),
 			'whiteLabelName'   => white_labeled_name(),

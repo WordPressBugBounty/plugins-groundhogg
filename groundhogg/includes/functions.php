@@ -1826,9 +1826,15 @@ function sanitize_from_name( $name ) {
 /**
  * This function is for use by any form or eccom extensions which is essentially a copy of the PROCESS method in the submission handler.
  *
- * @param $contact Contact
+ * @param $contact        Contact
+ * @param $submission_id  int|false the Submission record created for this fill, if the caller
+ *                        has one — passed through to Tracking::form_filled() so an unverified
+ *                        session (an existing contact matched by unverified email) can be scoped
+ *                        to just its own submitted data. Callers with no Submission on hand (e.g.
+ *                        3rd-party form integrations) can omit it; the session then defaults to
+ *                        the safe/blocked state for the same code paths.
  */
-function after_form_submit_handler( &$contact ) {
+function after_form_submit_handler( &$contact, $submission_id = false ) {
 
 	if ( ! is_a_contact( $contact ) ) {
 		return;
@@ -1849,9 +1855,10 @@ function after_form_submit_handler( &$contact ) {
 	/**
 	 * Helper function.
 	 *
-	 * @param $contact Contact
+	 * @param $contact       Contact
+	 * @param $submission_id int|false
 	 */
-	do_action( 'groundhogg/after_form_submit', $contact );
+	do_action( 'groundhogg/after_form_submit', $contact, $submission_id );
 }
 
 add_action( 'groundhogg/after_form_submit', __NAMESPACE__ . '\extrapolate_location_after_signup', 9 );
@@ -6103,6 +6110,11 @@ function map_func_to_attr( &$arr, $key, $func ) {
  * reflects raw, un-sanitized $_POST back into the page and then runs do_shortcode() on the
  * rendered field — see includes/form/fields/input.php and field.php).
  *
+ * Loops to a fixed point rather than a single pass, the same way and for the same reason as
+ * Replacements::scrub_merge_tags(): a single pass only touches the innermost match, and can leave
+ * an outer bracket pair — with nothing live left inside it — that becomes a brand new match on
+ * the very next scan.
+ *
  * @param mixed $value
  * @param bool  $html
  *
@@ -6126,13 +6138,19 @@ function escape_shortcodes( $value, $html = true ) {
 		return $value;
 	}
 
-	if ( ! $html ) {
-		return preg_replace( $pattern, '', $value );
-	}
+	do {
+		$previous = $value;
 
-	return preg_replace_callback( $pattern, function ( $matches ) {
-		return str_replace( [ '[', ']' ], [ '&#91;', '&#93;' ], $matches[0] );
-	}, $value );
+		if ( ! $html ) {
+			$value = preg_replace( $pattern, '', $value );
+		} else {
+			$value = preg_replace_callback( $pattern, function ( $matches ) {
+				return str_replace( [ '[', ']' ], [ '&#91;', '&#93;' ], $matches[0] );
+			}, $value );
+		}
+	} while ( $value !== $previous );
+
+	return $value;
 }
 
 /**

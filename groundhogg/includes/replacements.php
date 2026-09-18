@@ -3,6 +3,7 @@
 namespace Groundhogg;
 
 use Groundhogg\DB\Query\Table_Query;
+use Groundhogg\Queue\Event_Queue;
 use Groundhogg\Utils\DateTimeHelper;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -48,6 +49,17 @@ class Replacements implements \JsonSerializable {
 	 * @var Contact
 	 */
 	protected $current_contact;
+
+	/**
+	 * True when the current process() call is rendering content synchronously for the current
+	 * request's own browser (no explicit contact/ID was passed, and no automation send is in
+	 * progress), using an ambient tracked contact that has never been independently verified.
+	 * do_replacement() consults this to restrict contact-derived codes to only the data this
+	 * same browser has itself submitted — see Tracking::is_current_contact_verified().
+	 *
+	 * @var bool
+	 */
+	protected $unverified_ambient_context = false;
 
 	/**
 	 * Replacements constructor.
@@ -829,11 +841,23 @@ class Replacements implements \JsonSerializable {
 
 		$this->context = $context;
 
+		// Ambient resolution — no explicit contact/ID passed, and no queued automation send in
+		// progress — means this is being rendered synchronously for the current request's own
+		// browser, using whatever contact the tracking cookie currently claims. An explicit
+		// contact/ID (a broadcast, a funnel email step, anything targeting a specific contact by
+		// business logic) is never gated: that content is always going out a different channel
+		// (SMTP) to that contact's own inbox, not back to whoever triggered this render.
+		$is_ambient = empty( $contact_id_or_email ) && ! Event_Queue::is_processing();
+
 		if ( is_a_contact( $contact_id_or_email ) ) {
 			$contact = $contact_id_or_email;
 		} else {
 			$contact = get_contactdata( $contact_id_or_email );
 		}
+
+		$this->unverified_ambient_context = $is_ambient
+			&& $contact && $contact->exists()
+			&& ! tracking()->is_current_contact_verified();
 
 		if ( $contact && $contact->exists() ) {
 			$this->contact_id      = $contact->get_id();
@@ -855,6 +879,11 @@ class Replacements implements \JsonSerializable {
 	 * never later be re-expanded by tackle_replacements() when the value is displayed
 	 * back to a contact via a merge tag of its own (2nd-order injection).
 	 *
+	 * Loops to a fixed point rather than a single preg_replace pass: PATTERN can't match across
+	 * embedded braces, so a single pass on "{user{user.data}.data}" removes only the inner
+	 * "{user.data}" and leaves the surrounding "{user" + ".data}" concatenated back into a brand
+	 * new, complete "{user.data}" tag. Repeating until nothing changes closes that reconstruction.
+	 *
 	 * @param mixed $value
 	 *
 	 * @return mixed
@@ -869,7 +898,12 @@ class Replacements implements \JsonSerializable {
 			return $value;
 		}
 
-		return preg_replace( self::PATTERN, '', $value );
+		do {
+			$previous = $value;
+			$value    = preg_replace( self::PATTERN, '', $value );
+		} while ( $value !== $previous );
+
+		return $value;
 	}
 
 	/**
@@ -914,9 +948,18 @@ class Replacements implements \JsonSerializable {
 			return self::scrub_merge_tags( $value );
 		}
 
-		return preg_replace_callback( self::PATTERN, function ( $matches ) {
-			return '&#123;' . $matches[1] . '&#125;';
-		}, $value );
+		// Loop to a fixed point for the same reason scrub_merge_tags() does: a single pass on
+		// e.g. "{user{user.data}.data}" only encodes the inner "{user.data}" match, leaving an
+		// outer "{user&#123;user.data&#125;.data}" shell whose braces are, once again, a brand
+		// new complete tag with nothing embedded in it — repeat until there's nothing left to encode.
+		do {
+			$previous = $value;
+			$value    = preg_replace_callback( self::PATTERN, function ( $matches ) {
+				return '&#123;' . $matches[1] . '&#125;';
+			}, $value );
+		} while ( $value !== $previous );
+
+		return $value;
 	}
 
 	/**
@@ -1049,6 +1092,183 @@ class Replacements implements \JsonSerializable {
 	}
 
 	/**
+	 * Codes whose value is also a plausible field a public form could submit directly (the
+	 * contact's own core profile fields), used to resolve a safe fallback for an unverified
+	 * ambient session via get_unverified_submission_value(). Maps code => the SUBMISSION META
+	 * KEY to look up — not always the same string as the code itself; e.g. {line1}/{state}/
+	 * {zip_code} read contact meta 'street_address_1'/'region'/'postal_zip' (see
+	 * replacement_line1()/replacement_state()/replacement_zip()), and {phone}/{phone_ext} read
+	 * 'primary_phone'/'primary_phone_extension' (Contact::get_phone_number()/
+	 * get_phone_extension()) — a submitted form field is stored under that same real key (see
+	 * Form_v2::submit()), so the lookup has to match it, not the merge-tag's own name.
+	 * {first}/{last} are legacy aliases of {first_name}/{last_name} and must resolve to the same
+	 * key for the same reason. 'meta' and 'full_name' are handled specially by the call site
+	 * (meta's lookup key is its $arg; full_name composes from first_name + last_name rather than
+	 * ever being a literal submitted key) — both still listed here so they're recognized as
+	 * scopable at all.
+	 *
+	 * Deliberately NOT here: anything without a submission-shaped analog ({tag_names}, {notes},
+	 * {user.*}, {owner.*}, {files}, …) — those are simply withheld when unverified, not resolved
+	 * from a fallback, because there isn't a safe scoped version of them.
+	 *
+	 * @return array<string, string>
+	 */
+	protected function submission_scopable_codes() {
+		return apply_filters( 'groundhogg/replacements/submission_scopable_codes', [
+			'first'        => 'first_name',
+			'first_name'   => 'first_name',
+			'last'         => 'last_name',
+			'last_name'    => 'last_name',
+			'full_name'    => 'full_name',
+			'email'        => 'email',
+			'phone'        => 'primary_phone',
+			'phone_ext'    => 'primary_phone_extension',
+			'mobile_phone' => 'mobile_phone',
+			'line1'        => 'street_address_1',
+			'line2'        => 'street_address_2',
+			'city'         => 'city',
+			'state'        => 'region',
+			'zip_code'     => 'postal_zip',
+			'country'      => 'country',
+			'country_code' => 'country',
+			'birthday'     => 'birthday',
+			'time_zone'    => 'time_zone',
+			// The value here is irrelevant for all five — do_replacement() special-cases them
+			// to use $arg (the custom field key) as the lookup key instead, same as {meta.x}
+			// itself, since andList/orList/ol/ul are just formatted wrappers around
+			// replacement_meta() (see replacement_andList() etc.).
+			'meta'         => 'meta',
+			'andList'      => 'meta',
+			'orList'       => 'meta',
+			'ol'           => 'meta',
+			'ul'           => 'meta',
+		] );
+	}
+
+	/**
+	 * Codes that don't read anything specific to the ambient contact at all, so gating them
+	 * behind verification serves no purpose — either they operate on literal text/arguments the
+	 * template author wrote (substr/redact/urlencode/html_context/plain_context/GET), or they
+	 * read something that isn't per-contact data in the first place (a WP post, an admin-
+	 * configured site-wide setting shown to every visitor, today's date, a static quote). These
+	 * run their real callback normally in an unverified ambient context, same as
+	 * self_scoping_codes() but for a different reason (nothing to scope, rather than scoping
+	 * itself internally).
+	 *
+	 * Deliberately NOT here despite looking similarly "generic": {view_in_browser_url} and
+	 * {owner_signature}/{confirmation_link}/{auto_login_url}/{unsubscribe_url} carry a signed,
+	 * per-contact permissions token or expose real personal data — exempting those would hand an
+	 * unverified session a working credential or someone else's data, not just skip a no-op check.
+	 *
+	 * @return string[]
+	 */
+	protected function contact_independent_codes() {
+		return apply_filters( 'groundhogg/replacements/contact_independent_codes', [
+			'GET',
+			'redact',
+			'urlencode',
+			'html_context',
+			'plain_context',
+			'substr',
+			'date',
+			'groundhogg_day_quote',
+			'business_name',
+			'business_phone',
+			'business_address',
+			'site_url',
+			'posts',
+			'post_title',
+			'post_excerpt',
+			'post_content',
+			'post_featured_image',
+			'post_featured_image_url',
+			'post_url',
+		] );
+	}
+
+	/**
+	 * Codes that DO read real, per-contact data (unlike contact_independent_codes() — this
+	 * genuinely varies contact to contact, e.g. by which staff member owns the record) but are
+	 * judged low-sensitivity enough to allow anyway: the owner is a staff member, not the
+	 * contact, and their name is routinely public elsewhere on the site already (a team page,
+	 * every email signature they send). "Who is this contact's rep" isn't private information
+	 * worth degrading legitimate personalization ("You're meeting with {owner_first_name}") to
+	 * protect.
+	 *
+	 * Deliberately narrow — NOT {owner_email}/{owner_phone} (directly reachable contact info for
+	 * the rep; leaking it enables spamming/harassing them, not just naming them) or
+	 * {owner_signature}/{owner.*} (signature is 'nested' and can carry more than a name; the
+	 * generic {owner.<attr>} is an unrestricted property read, the same class of risk as
+	 * {user.<key>}).
+	 *
+	 * @return string[]
+	 */
+	protected function low_sensitivity_codes() {
+		return apply_filters( 'groundhogg/replacements/low_sensitivity_codes', [
+			'owner_first_name',
+			'owner_last_name',
+		] );
+	}
+
+	/**
+	 * Codes that scope themselves to the current session's own submissions internally (see
+	 * replacement_form_submission()) and so should run their real callback normally even in an
+	 * unverified ambient context, rather than being withheld or routed through the generic
+	 * key-lookup fallback.
+	 *
+	 * @return string[]
+	 */
+	protected function self_scoping_codes() {
+		return apply_filters( 'groundhogg/replacements/self_scoping_codes', [
+			'form_submission',
+		] );
+	}
+
+	/**
+	 * For an unverified ambient session, look up a field's value among the Submissions this same
+	 * browser has itself made (Tracking::get_current_session_submission_ids()) rather than the
+	 * real contact record. Looks up the SUBMISSION'S OWN raw meta (get_all_meta()) — not
+	 * get_answers(), which relabels keys for display and would not match a plain field/meta key.
+	 *
+	 * 'full_name' is composed from the same submission's own first_name/last_name rather than
+	 * ever being a literal submitted key (nothing ever submits "full_name" directly).
+	 *
+	 * @param string $key
+	 *
+	 * @return string
+	 */
+	protected function get_unverified_submission_value( string $key ) {
+
+		if ( empty( $key ) ) {
+			return '';
+		}
+
+		if ( $key === 'full_name' ) {
+			$first = $this->get_unverified_submission_value( 'first_name' );
+			$last  = $this->get_unverified_submission_value( 'last_name' );
+
+			return trim( "$first $last" );
+		}
+
+		foreach ( array_reverse( tracking()->get_current_session_submission_ids() ) as $submission_id ) {
+
+			$submission = new Submission( $submission_id );
+
+			if ( ! $submission->exists() || $submission->get_contact_id() !== $this->contact_id ) {
+				continue;
+			}
+
+			$meta = $submission->get_all_meta();
+
+			if ( array_key_exists( $key, $meta ) && ! is_array( $meta[ $key ] ) && ! is_object( $meta[ $key ] ) ) {
+				return $meta[ $key ];
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Process the given replacement code
 	 *
 	 * @param $m
@@ -1075,6 +1295,12 @@ class Replacements implements \JsonSerializable {
 				// if there is no defined plain callback we should reference the html version
 				$this->get_context(),
 				$this->contact_id ?: 'anon',
+				// A verified and an unverified render of the same contact_id/code must never
+				// share a cache entry — the unverified branch below returns a deliberately
+				// restricted value, and a persistent object cache backend could otherwise leak
+				// a fully-resolved value cached during a verified/automation render into a later
+				// unverified/ambient one for the same contact.
+				$this->unverified_ambient_context ? 'unverified' : 'verified',
 				md5serialize( $parts ),
 				cache_get_last_changed( 'groundhogg/replacements' )
 			] );
@@ -1083,6 +1309,44 @@ class Replacements implements \JsonSerializable {
 
 			if ( $found ) {
 				return $cache_value;
+			}
+
+			// An unverified ambient session — an existing contact matched by a submitted email
+			// that was never independently proven — may only ever see data it has itself
+			// submitted, never the real contact record. 'form_submission' scopes its own query
+			// internally (see replacement_form_submission()) and always runs normally, as does
+			// anything in contact_independent_codes() (nothing contact-specific to protect there
+			// in the first place) or low_sensitivity_codes() (real per-contact data, but judged
+			// low-risk enough to allow); a small set of core-profile-shaped codes have a safe,
+			// submission-scoped fallback; anything else is withheld outright rather than calling
+			// the real callback at all.
+			if ( $this->unverified_ambient_context
+			     && ! in_array( $code, $this->self_scoping_codes(), true )
+			     && ! in_array( $code, $this->contact_independent_codes(), true )
+			     && ! in_array( $code, $this->low_sensitivity_codes(), true ) ) {
+
+				$scopable = $this->submission_scopable_codes();
+
+				if ( ! isset( $scopable[ $code ] ) ) {
+					return $default;
+				}
+
+				// meta/andList/orList/ol/ul's own lookup key is their $arg (the custom field
+				// name), not the map's placeholder value for them — see submission_scopable_codes().
+				$meta_like  = [ 'meta', 'andList', 'orList', 'ol', 'ul' ];
+				$lookup_key = in_array( $code, $meta_like, true ) ? $arg : $scopable[ $code ];
+				$text       = $this->get_unverified_submission_value( $lookup_key );
+
+				if ( empty( $text ) ) {
+					$text = $default;
+				}
+
+				$text = $this->escape_merge_tags( $text );
+				$text = $this->escape_shortcodes( $text );
+
+				wp_cache_set( $cache_key, $text, 'groundhogg/replacements' );
+
+				return $text;
 			}
 
 			$callback = $this->context_is_html() ? $html_callback : $plain_callback;
@@ -1135,6 +1399,9 @@ class Replacements implements \JsonSerializable {
 		$field     = str_starts_with( $code, '_' ) ? substr( $code, 1 ) : $code;
 		$cache_key = implode( ':', [
 			$this->contact_id ?: 'anon',
+			// See the identical note in the registered-code branch above: verified and
+			// unverified renders must never share a cache entry.
+			$this->unverified_ambient_context ? 'unverified' : 'verified',
 			$field,
 			cache_get_last_changed( 'groundhogg/replacements' )
 		] );
@@ -1143,6 +1410,24 @@ class Replacements implements \JsonSerializable {
 
 		if ( $found ) {
 			return $cache_value;
+		}
+
+		// Same data as {meta.<field>} (a custom field, by bare-name shorthand), so it gets the
+		// same unverified-ambient treatment: only what this session has itself submitted.
+		if ( $this->unverified_ambient_context ) {
+
+			$text = $this->get_unverified_submission_value( $field );
+
+			if ( empty( $text ) ) {
+				$text = $default;
+			}
+
+			$text = $this->escape_merge_tags( $text );
+			$text = $this->escape_shortcodes( $text );
+
+			wp_cache_set( $cache_key, $text, 'groundhogg/replacements' );
+
+			return $text;
 		}
 
 		if ( $property = Properties::instance()->get_field( $field ) ) {
@@ -1498,47 +1783,39 @@ class Replacements implements \JsonSerializable {
 	}
 
 	/**
-	 * Determine whether a WP_User property or usermeta key should be withheld from
-	 * {user.<key>} output. This is a disallow list rather than an allow list so that
-	 * existing/custom usages of other fields keep working; it blocks known-sensitive
-	 * WP_User properties plus any key whose name suggests it holds a credential,
-	 * secret, or token (e.g. from another plugin's usermeta).
+	 * Determine whether a WP_User property or usermeta key is permitted in {user.<key>} /
+	 * {owner.<attr>} output.
+	 *
+	 * This used to be a deny list, which is fundamentally unsound for a generic "read any key"
+	 * accessor: it only ever blocks key NAMES someone thought to list. It missed 'data' — WP_User's
+	 * own public $data property, the raw wp_users row as a stdClass — which isn't sensitive-sounding
+	 * by name but hands back user_pass/user_activation_key wholesale (and gets print_r()'d into the
+	 * output by handle_meta_replacement(), disclosing them). An allow list of specific, known-safe
+	 * fields is the only version of this that's actually safe by construction: anything not
+	 * explicitly named here is withheld, whatever it turns out to contain.
 	 *
 	 * @param string $key
 	 *
 	 * @return bool
 	 */
-	protected function is_disallowed_user_key( $key ) {
+	protected function is_allowed_user_key( $key ) {
 
-		$disallowed_keys = apply_filters( 'groundhogg/replacements/user/disallowed_keys', [
-			'user_pass',
-			'user_activation_key',
-			'session_tokens',
-			'_application_passwords',
+		$allowed_keys = apply_filters( 'groundhogg/replacements/user/allowed_keys', [
+			'ID',
+			'user_login',
+			'user_nicename',
+			'user_email',
+			'user_url',
+			'user_registered',
+			'display_name',
+			'first_name',
+			'last_name',
+			'nickname',
+			'description',
+			'locale',
 		] );
 
-		if ( in_array( strtolower( $key ), array_map( 'strtolower', $disallowed_keys ), true ) ) {
-			return true;
-		}
-
-		$disallowed_patterns = apply_filters( 'groundhogg/replacements/user/disallowed_key_patterns', [
-			'pass',
-			'secret',
-			'token',
-			'private_key',
-			'api_key',
-			'auth_key',
-			'2fa',
-			'otp',
-		] );
-
-		foreach ( $disallowed_patterns as $pattern ) {
-			if ( stripos( $key, $pattern ) !== false ) {
-				return true;
-			}
-		}
-
-		return false;
+		return in_array( $key, $allowed_keys, true );
 	}
 
 	/**
@@ -1556,7 +1833,7 @@ class Replacements implements \JsonSerializable {
 
 		return self::handle_meta_replacement( $arg, function ( $key ) {
 
-			if ( $this->is_disallowed_user_key( $key ) ) {
+			if ( ! $this->is_allowed_user_key( $key ) ) {
 				return '';
 			}
 
@@ -1565,6 +1842,12 @@ class Replacements implements \JsonSerializable {
 			// Try to get from meta
 			if ( ! $rep ) {
 				$rep = get_user_meta( $this->get_current_contact()->get_user_id(), $key, true );
+			}
+
+			// Never disclose a whole object/array (e.g. WP_User::$data, the raw wp_users row) —
+			// handle_meta_replacement() would print_r() it, dumping every property verbatim.
+			if ( is_object( $rep ) || is_array( $rep ) ) {
+				return '';
 			}
 
 			return $rep;
@@ -1917,7 +2200,19 @@ class Replacements implements \JsonSerializable {
 			return false;
 		}
 
-		return $user->$attr;
+		// Same unrestricted-property-read risk as {user.<key>} (the owner is still just a
+		// WP_User), so route through the same allow-list.
+		if ( ! $this->is_allowed_user_key( $attr ) ) {
+			return '';
+		}
+
+		$rep = $user->$attr;
+
+		if ( is_object( $rep ) || is_array( $rep ) ) {
+			return '';
+		}
+
+		return $rep;
 	}
 
 	/**
@@ -2926,6 +3221,21 @@ class Replacements implements \JsonSerializable {
 			      ->where()
 			      ->equals( 'contact_id', $this->get_current_contact()->get_id() )
 			      ->equals( 'type', $props['type'] );
+
+			// An unverified ambient session (an existing contact matched by unverified email)
+			// may only see submissions it has itself made this session — otherwise "most recent
+			// submission for this contact" would leak whatever the real contact told a
+			// completely different, legitimate form, to whoever is currently impersonating them.
+			if ( $this->unverified_ambient_context ) {
+
+				$submission_ids = tracking()->get_current_session_submission_ids();
+
+				if ( empty( $submission_ids ) ) {
+					return '';
+				}
+
+				$query->where()->in( 'id', $submission_ids );
+			}
 
 			if ( in_array( $props['form'], [ 'last', 'newest', 'recent' ] ) || empty( $props['form'] ) ) {
 

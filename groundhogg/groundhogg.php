@@ -3,7 +3,7 @@
  * Plugin Name: Groundhogg
  * Plugin URI: https://groundhogg.io/?utm_source=wp-plugins&utm_campaign=plugin-uri&utm_medium=wp-dash
  * Description: CRM and marketing automation for WordPress
- * Version: 4.8.2
+ * Version: 4.8.3
  * Author: Groundhogg Inc.
  * Author URI: https://groundhogg.io/?utm_source=wp-plugins&utm_campaign=author-uri&utm_medium=wp-dash
  * Text Domain: groundhogg
@@ -26,8 +26,8 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
-define( 'GROUNDHOGG_VERSION', '4.8.2' );
-define( 'GROUNDHOGG_PREVIOUS_STABLE_VERSION', '4.8.1' );
+define( 'GROUNDHOGG_VERSION', '4.8.3' );
+define( 'GROUNDHOGG_PREVIOUS_STABLE_VERSION', '4.8.2' );
 
 define( 'GROUNDHOGG__FILE__', __FILE__ );
 define( 'GROUNDHOGG_PLUGIN_BASE', plugin_basename( GROUNDHOGG__FILE__ ) );
@@ -37,7 +37,8 @@ define( 'GROUNDHOGG_URL', plugins_url( '/', GROUNDHOGG__FILE__ ) );
 define( 'GROUNDHOGG_ASSETS_PATH', GROUNDHOGG_PATH . 'assets/' );
 define( 'GROUNDHOGG_ASSETS_URL', GROUNDHOGG_URL . 'assets/' );
 
-add_action( 'plugins_loaded', 'groundhogg_load_plugin_textdomain' );
+// Must run before Plugin::init() (plugins_loaded priority 0) so early gettext calls don't trigger just-in-time loading
+add_action( 'plugins_loaded', 'groundhogg_load_plugin_textdomain', -1 );
 
 define( 'GROUNDHOGG_TEXT_DOMAIN', 'groundhogg' );
 define( 'GROUNDHOGG_MINIMUM_PHP_VERSION', '7.4' );
