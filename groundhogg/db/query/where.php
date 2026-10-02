@@ -426,6 +426,8 @@ class Where {
 	 * @return $this
 	 */
 	public function exists( Query $query ) {
+		$this->query->add_dependency( $query );
+
 		return $this->addCondition( "EXISTS ($query)" );
 	}
 
@@ -447,6 +449,7 @@ class Where {
 		$column = $this->sanitize_column( $column );
 
 		if ( is_a( $values, Query::class ) ) {
+			$this->query->add_dependency( $values );
 			$this->addCondition( "$column IN ( $values )" );
 
 			return $this;
@@ -476,6 +479,7 @@ class Where {
 		$column = $this->sanitize_column( $column );
 
 		if ( is_a( $values, Query::class ) ) {
+			$this->query->add_dependency( $values );
 			$this->addCondition( "$column NOT IN ( $values )" );
 
 			return $this;
@@ -606,23 +610,32 @@ class Where {
 	/**
 	 * Adds a sub where clause, in brackets
 	 *
-	 * @param string $relation 'OR' or 'AND'
+	 * @param string        $relation 'OR' or 'AND'
+	 * @param callable|null $callback If provided, called with the sub Where instance and the
+	 *                                Table_Query (as the 2nd arg), and this (the parent) Where
+	 *                                is returned instead for chaining.
 	 *
-	 * @return Where
+	 * @return Where|static
 	 */
-	public function subWhere( string $relation = 'OR' ) {
+	public function subWhere( string $relation = 'OR', $callback = null ) {
 		$where = new Where( $this->query, $relation );
 		$this->addCondition( $where );
+
+		if ( is_callable( $callback ) ) {
+			call_user_func( $callback, $where, $this->query );
+
+			return $this;
+		}
 
 		return $where;
 	}
 
-	public function subOr() {
-		return $this->subWhere( 'OR' );
+	public function subOr( $callback = null ) {
+		return $this->subWhere( 'OR', $callback );
 	}
 
-	public function subAnd() {
-		return $this->subWhere( 'AND' );
+	public function subAnd( $callback = null ) {
+		return $this->subWhere( 'AND', $callback );
 	}
 
 	/**

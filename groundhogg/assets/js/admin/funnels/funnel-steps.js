@@ -15,7 +15,13 @@
     icons,
     moreMenu,
     dangerConfirmationModal,
+    escHTML,
   } = Groundhogg.element
+
+  const {
+    get,
+    routes,
+  } = Groundhogg.api
 
   const { createFilters } = Groundhogg.filters.functions
   const {
@@ -49,7 +55,13 @@
     Input,
     Select,
     Label,
-    Skeleton
+    Skeleton,
+    Table,
+    THead,
+    TBody,
+    Tr,
+    Th,
+    Td,
   } = MakeEl
 
   const {
@@ -180,7 +192,7 @@
 
     switch (run_when) {
       case 'now':
-        preview.unshift(_x('at any time', 'groundhogg'))
+        preview.unshift(_x('at any time', 'run at any time of day', 'groundhogg'))
         break
       case 'later':
         /* translators: %s: a specific time like "09:00:00" */
@@ -687,246 +699,261 @@
     return items.sort((a, b) => ( orderMap.get(a.id) ?? Infinity ) - ( orderMap.get(b.id) ?? Infinity ))
   }
 
+  /**
+   * The delay timer's settings
+   *
+   * @param ID the step
+   * @param meta Object its settings
+   * @param updateMeta function( patch )
+   */
+  const DelayTimerSettings = (ID, meta, updateMeta) => {
+
+    const timerSettings = {
+      ...delayTimerDefaults,
+      ...meta,
+    }
+
+    const {
+      delay_amount,
+      delay_type,
+      run_on_type,
+      run_when,
+      run_time,
+      send_in_timezone,
+      run_time_to,
+      run_on_dow_type, // Run on days of week type
+      run_on_dow, // Run on days of week
+      run_on_month_type, // Run on month type
+      run_on_months, // Run on months
+      run_on_dom, // Run on days of month
+      delay_preview = '',
+    } = timerSettings
+
+    const runWhenTypes = {
+      now  : __('Any time', 'groundhogg'),
+      later: __('Specific time', 'groundhogg'),
+    }
+
+    if ([
+      'minutes',
+      'hours',
+      'none',
+    ].includes(delay_type)) {
+      runWhenTypes.between = __('Between', 'groundhogg')
+    }
+
+    const runOnMonthOptions = () => MakeEl.InputGroup([
+      MakeEl.Select({
+        id      : `run-on-month-type-${ ID }`,
+        name    : 'run_on_month_type',
+        options : runOnMonthTypes,
+        selected: run_on_month_type,
+        onChange: e => updateMeta({
+          run_on_month_type: e.target.value,
+        }),
+      }),
+      run_on_month_type === 'specific' ? ItemPicker({
+        id          : `run-on-months-${ ID }`,
+        selected    : sortByOrder(Object.keys(delay_timer_i18n.months), run_on_months.map(m => ( {
+          id  : m,
+          text: delay_timer_i18n.months[m],
+        } ))),
+        fetchOptions: async (search) => {
+          return Groundhogg.functions.assoc2array(delay_timer_i18n.months).filter(item => item.text.match(search))
+        },
+        onChange    : months => {
+          updateMeta({
+            run_on_months: months.map(m => m.id),
+          })
+        },
+      }) : null,
+    ])
+
+    const daysOfWeekOptions = () => MakeEl.InputGroup([
+      MakeEl.Select({
+        id      : `run-on-dow-type-${ ID }`,
+        name    : 'run_on_dow_type',
+        options : delay_timer_i18n.day_of_week_determiners,
+        selected: run_on_dow_type,
+        onChange: e => updateMeta({
+          run_on_dow_type: e.target.value,
+        }),
+      }),
+      ItemPicker({
+        id          : `run-on-dow-${ ID }`,
+        selected    : sortByOrder(Object.keys(delay_timer_i18n.days_of_week), run_on_dow.map(dow => ( {
+          id  : dow,
+          text: delay_timer_i18n.days_of_week[dow],
+        } ))),
+        fetchOptions: async (search) => {
+          return Groundhogg.functions.assoc2array(delay_timer_i18n.days_of_week).filter(item => item.text.match(search))
+        },
+        onChange    : dow => {
+          updateMeta({
+            run_on_dow: dow.map(d => d.id),
+          })
+        },
+      }),
+    ])
+
+    const daysOfMonthOptions = () => ItemPicker({
+      id          : `run-on-dom-${ ID }`,
+      selected    : sortByOrder(Object.keys(runOnDaysOfMonth), run_on_dom.map(dom => ( {
+        id  : `${ dom }`,
+        text: ordinal_suffix_of(dom),
+      } ))),
+      fetchOptions: async (search) => {
+        return Groundhogg.functions.assoc2array(runOnDaysOfMonth).map(dom => ( {
+          id  : `${ dom.id }`,
+          text: ordinal_suffix_of(dom.text),
+        } )).filter(item => item.text.match(search))
+      },
+      onChange    : dom => {
+        updateMeta({
+          run_on_dom: dom.map(d => d.id),
+        })
+      },
+    })
+
+    return Div({
+      className: 'display-flex column gap-10',
+    }, [
+      MakeEl.H3({
+        className: 'delay-preview',
+        style    : {
+          fontWeight: 'normal',
+        },
+      }, delayTimerName(timerSettings)),
+      // Delay amount
+      Div({ className: 'row display-flex gap-10 column' }, [
+        MakeEl.Label({ className: 'row-label' }, __('Wait at least...', 'groundhogg')),
+        MakeEl.InputGroup([
+          Input({
+            value   : delay_amount,
+            name    : 'delay_amount',
+            type    : 'number',
+            min     : 0,
+            disabled: delay_type === 'none',
+            onChange: e => updateMeta({
+              delay_amount: e.target.value,
+            }),
+          }),
+          MakeEl.Select({
+            name    : 'delay_type',
+            options : delay_timer_i18n.delay_duration_types,
+            selected: delay_type,
+            onChange: e => updateMeta({
+              delay_type: e.target.value,
+            }),
+          }),
+        ]),
+      ]),
+      Div({ className: 'row display-flex gap-10 column' }, [
+        MakeEl.Label({ className: 'row-label' }, _x('Then run on...', 'meaning to run a process on a certain date', 'groundhogg')),
+        Div({ className: 'display-flex gap-10' }, [
+          MakeEl.Select({
+            name    : 'run_on_type',
+            options : runOnTypes,
+            selected: run_on_type,
+            onChange: e => updateMeta({
+              run_on_type: e.target.value,
+            }),
+          }),
+          run_on_type === 'day_of_week' ? daysOfWeekOptions() : null,
+          run_on_type === 'day_of_month' ? daysOfMonthOptions() : null,
+        ]),
+        run_on_type === 'day_of_week' || run_on_type === 'day_of_month' ? runOnMonthOptions() : null,
+      ]),
+      Div({ className: 'row display-flex gap-10 column' }, [
+        MakeEl.Label({ className: 'row-label' }, _x('Then run at...', 'meaning to run a process at a certain time', 'groundhogg')),
+        MakeEl.InputGroup([
+          MakeEl.Select({
+            name    : 'run_when',
+            options : runWhenTypes,
+            selected: run_when,
+            onChange: e => updateMeta({
+              run_when: e.target.value,
+            }),
+          }),
+          run_when === 'later' ? Input({
+            className: 'delay-input',
+            type     : 'time',
+            name     : 'run_time',
+            value    : run_time,
+            onChange : e => updateMeta({ run_time: e.target.value }),
+          }) : null,
+          run_when === 'between' ? MakeEl.Fragment([
+            Input({
+              className: 'delay-input',
+              type     : 'time',
+              name     : 'run_time',
+              value    : run_time,
+              onChange : e => updateMeta({ run_time: e.target.value }),
+            }),
+            Input({
+              className: 'delay-input',
+              type     : 'time',
+              name     : 'run_time_to',
+              value    : run_time_to,
+              onChange : e => updateMeta({ run_time_to: e.target.value }),
+            })
+          ]) : null,
+        ]),
+      ]),
+      Div({ className: 'display-flex align-center gap-10' }, [
+        Pg({},  __('Run in the contact\'s timezone?', 'groundhogg') ),
+        MakeEl.Toggle({
+          onLabel : 'Yes',
+          offLabel: 'No',
+          id      : `${ ID }_send_in_timezone`,
+          name    : 'send_in_timezone',
+          checked : Boolean(send_in_timezone),
+          onChange: e => updateMeta({
+            send_in_timezone: e.target.checked
+          })
+        })
+      ])
+    ])
+  }
+
+  /**
+   * The delay timer's settings, which keep the title's preview, delay_preview, up to date. The server's title is
+   * delay_preview, so this is where the delay timer's title comes from.
+   */
+  const DelayTimer = (ID, meta, update) => Div({ id: `step_${ ID }_delay_timer_settings` }, morph => DelayTimerSettings(ID, meta, patch => {
+
+    meta = {
+      ...meta,
+      ...patch,
+    }
+
+    update({
+      ...patch,
+      delay_preview: delayTimerName({
+        ...delayTimerDefaults,
+        ...meta,
+      }),
+    })
+
+    morph()
+  }))
+
   Funnel.registerStepCallbacks('delay_timer', {
-    onActive: async ({
+    onActive: ({
       ID,
       meta,
-      data,
-    }) => {
+    }) => morphdom(document.getElementById(`step_${ ID }_delay_timer_settings`), DelayTimer(ID, { ...meta }, patch => Funnel.updateStepMeta(patch))),
+  })
 
-      let id = `step_${ ID }_delay_timer_settings`
-
-      const DelayTimerSettings = (updateMeta) => {
-
-        const timerSettings = {
-          ...delayTimerDefaults,
-          ...meta,
-        }
-
-        const {
-          delay_amount,
-          delay_type,
-          run_on_type,
-          run_when,
-          run_time,
-          send_in_timezone,
-          run_time_to,
-          run_on_dow_type, // Run on days of week type
-          run_on_dow, // Run on days of week
-          run_on_month_type, // Run on month type
-          run_on_months, // Run on months
-          run_on_dom, // Run on days of month
-          delay_preview = '',
-        } = timerSettings
-
-        const runWhenTypes = {
-          now  : __('Any time', 'groundhogg'),
-          later: __('Specific time', 'groundhogg'),
-        }
-
-        if ([
-          'minutes',
-          'hours',
-          'none',
-        ].includes(delay_type)) {
-          runWhenTypes.between = __('Between', 'groundhogg')
-        }
-
-        const runOnMonthOptions = () => MakeEl.InputGroup([
-          MakeEl.Select({
-            id      : `run-on-month-type-${ ID }`,
-            name    : 'run_on_month_type',
-            options : runOnMonthTypes,
-            selected: run_on_month_type,
-            onChange: e => updateMeta({
-              run_on_month_type: e.target.value,
-            }),
-          }),
-          run_on_month_type === 'specific' ? ItemPicker({
-            id          : `run-on-months-${ ID }`,
-            selected    : sortByOrder(Object.keys(delay_timer_i18n.months), run_on_months.map(m => ( {
-              id  : m,
-              text: delay_timer_i18n.months[m],
-            } ))),
-            fetchOptions: async (search) => {
-              return Groundhogg.functions.assoc2array(delay_timer_i18n.months).filter(item => item.text.match(search))
-            },
-            onChange    : months => {
-              updateMeta({
-                run_on_months: months.map(m => m.id),
-              })
-            },
-          }) : null,
-        ])
-
-        const daysOfWeekOptions = () => MakeEl.InputGroup([
-          MakeEl.Select({
-            id      : `run-on-dow-type-${ ID }`,
-            name    : 'run_on_dow_type',
-            options : delay_timer_i18n.day_of_week_determiners,
-            selected: run_on_dow_type,
-            onChange: e => updateMeta({
-              run_on_dow_type: e.target.value,
-            }),
-          }),
-          ItemPicker({
-            id          : `run-on-dow-${ ID }`,
-            selected    : sortByOrder(Object.keys(delay_timer_i18n.days_of_week), run_on_dow.map(dow => ( {
-              id  : dow,
-              text: delay_timer_i18n.days_of_week[dow],
-            } ))),
-            fetchOptions: async (search) => {
-              return Groundhogg.functions.assoc2array(delay_timer_i18n.days_of_week).filter(item => item.text.match(search))
-            },
-            onChange    : dow => {
-              updateMeta({
-                run_on_dow: dow.map(d => d.id),
-              })
-            },
-          }),
-        ])
-
-        const daysOfMonthOptions = () => ItemPicker({
-          id          : `run-on-dom-${ ID }`,
-          selected    : sortByOrder(Object.keys(runOnDaysOfMonth), run_on_dom.map(dom => ( {
-            id  : `${ dom }`,
-            text: ordinal_suffix_of(dom),
-          } ))),
-          fetchOptions: async (search) => {
-            return Groundhogg.functions.assoc2array(runOnDaysOfMonth).map(dom => ( {
-              id  : `${ dom.id }`,
-              text: ordinal_suffix_of(dom.text),
-            } )).filter(item => item.text.match(search))
-          },
-          onChange    : dom => {
-            updateMeta({
-              run_on_dom: dom.map(d => d.id),
-            })
-          },
-        })
-
-        return Div({
-          className: 'display-flex column gap-10',
-        }, [
-          MakeEl.H3({
-            className: 'delay-preview',
-            style    : {
-              fontWeight: 'normal',
-            },
-          }, delayTimerName(timerSettings)),
-          // Delay amount
-          Div({ className: 'row display-flex gap-10 column' }, [
-            MakeEl.Label({ className: 'row-label' }, __('Wait at least...', 'groundhogg')),
-            MakeEl.InputGroup([
-              Input({
-                value   : delay_amount,
-                name    : 'delay_amount',
-                type    : 'number',
-                min     : 0,
-                disabled: delay_type === 'none',
-                onChange: e => updateMeta({
-                  delay_amount: e.target.value,
-                }),
-              }),
-              MakeEl.Select({
-                name    : 'delay_type',
-                options : delay_timer_i18n.delay_duration_types,
-                selected: delay_type,
-                onChange: e => updateMeta({
-                  delay_type: e.target.value,
-                }),
-              }),
-            ]),
-          ]),
-          Div({ className: 'row display-flex gap-10 column' }, [
-            MakeEl.Label({ className: 'row-label' }, _x('Then run on...', 'meaning to run a process on a certain date', 'groundhogg')),
-            Div({ className: 'display-flex gap-10' }, [
-              MakeEl.Select({
-                name    : 'run_on_type',
-                options : runOnTypes,
-                selected: run_on_type,
-                onChange: e => updateMeta({
-                  run_on_type: e.target.value,
-                }),
-              }),
-              run_on_type === 'day_of_week' ? daysOfWeekOptions() : null,
-              run_on_type === 'day_of_month' ? daysOfMonthOptions() : null,
-            ]),
-            run_on_type === 'day_of_week' || run_on_type === 'day_of_month' ? runOnMonthOptions() : null,
-          ]),
-          Div({ className: 'row display-flex gap-10 column' }, [
-            MakeEl.Label({ className: 'row-label' }, _x('Then run at...', 'meaning to run a process at a certain time', 'groundhogg')),
-            MakeEl.InputGroup([
-              MakeEl.Select({
-                name    : 'run_when',
-                options : runWhenTypes,
-                selected: run_when,
-                onChange: e => updateMeta({
-                  run_when: e.target.value,
-                }),
-              }),
-              run_when === 'later' ? Input({
-                className: 'delay-input',
-                type     : 'time',
-                name     : 'run_time',
-                value    : run_time,
-                onChange : e => updateMeta({ run_time: e.target.value }),
-              }) : null,
-              run_when === 'between' ? MakeEl.Fragment([
-                Input({
-                  className: 'delay-input',
-                  type     : 'time',
-                  name     : 'run_time',
-                  value    : run_time,
-                  onChange : e => updateMeta({ run_time: e.target.value }),
-                }),
-                Input({
-                  className: 'delay-input',
-                  type     : 'time',
-                  name     : 'run_time_to',
-                  value    : run_time_to,
-                  onChange : e => updateMeta({ run_time_to: e.target.value }),
-                })
-              ]) : null,
-            ]),
-          ]),
-          Div({ className: 'display-flex align-center gap-10' }, [
-            Pg({},  __('Run in the contact\'s timezone?', 'groundhogg') ),
-            MakeEl.Toggle({
-              onLabel : 'Yes',
-              offLabel: 'No',
-              id      : `${ ID }_send_in_timezone`,
-              name    : 'send_in_timezone',
-              checked : Boolean(send_in_timezone),
-              onChange: e => updateMeta({
-                send_in_timezone: e.target.checked
-              })
-            })
-          ])
-        ])
-      }
-
-      morphdom(document.getElementById(id), Div({ id }, morph => {
-        const updateMeta = (newMeta) => {
-          meta = {
-            ...meta,
-            ...newMeta,
-          }
-
-          Funnel.updateStepMeta({
-            ...newMeta,
-            delay_preview: delayTimerName({
-              ...delayTimerDefaults,
-              ...meta,
-            }),
-          })
-          morph()
-        }
-
-        return DelayTimerSettings(updateMeta)
-      }))
-
-    },
+  Funnel.registerStepType('delay_timer', {
+    title   : ({ meta }) => delayTimerName({
+      ...delayTimerDefaults,
+      ...meta,
+    }),
+    settings: ({
+      ID,
+      meta,
+    }, update) => DelayTimer(ID, { ...meta }, update),
   })
 
   Funnel.registerStepCallbacks('apply_tag', {
@@ -1317,6 +1344,542 @@
     },
   })
 
+  /**
+   * Step types drawn by JS, see Funnel.registerStepType()
+   */
+
+  const { StepTitles } = Groundhogg
+
+  // the names titles need, undefined until they're loaded
+  const titleNames = {
+    tag   : id => TagsStore.has(id) ? TagsStore.get(id).data.tag_name : undefined,
+    email : id => EmailsStore.has(id) ? EmailsStore.get(id).data.title : undefined,
+    funnel: id => FunnelsStore.has(id) ? FunnelsStore.get(id).data.title : undefined,
+  }
+
+  /**
+   * Picking tags, with a condition for triggers
+   *
+   * @param intro string what the step does with them
+   * @param condition bool whether it has "any of" or "all of"
+   */
+  const TagSettings = ({
+    intro,
+    condition = false,
+  }) => ({
+    ID,
+    meta,
+  }, update) => {
+
+    let tags = Array.isArray(meta.tags) ? meta.tags : []
+    let which = meta.condition ?? 'any'
+
+    return Div({
+      id       : `step_${ ID }_tag_settings`,
+      className: 'display-flex column gap-10',
+    }, morph => {
+
+      const missing = tags.filter(id => !TagsStore.has(id))
+
+      if (missing.length) {
+        TagsStore.maybeFetchItems(missing).then(() => morph())
+        return Skeleton({}, ['full'])
+      }
+
+      return Fragment([
+        Pg({}, intro),
+        Div({ className: 'display-flex gap-10 align-top' }, [
+          condition ? Select({
+            name    : `steps[${ ID }][condition]`,
+            options : {
+              any: __('Any of...', 'groundhogg'),
+              all: __('All of...', 'groundhogg'),
+            },
+            selected: which,
+            onChange: e => {
+              which = e.target.value
+              update({ condition: which })
+            },
+          }) : null,
+          TagPicker({
+            id      : `step-tags-${ ID }`,
+            tagIds  : tags,
+            onChange: ids => {
+              tags = ids
+              update({ tags })
+            },
+          }),
+        ]),
+      ])
+    })
+  }
+
+  Funnel.registerStepType('apply_tag', {
+    title   : ({ meta }) => StepTitles.apply_tag(meta, titleNames),
+    settings: TagSettings({ intro: __('Apply all of the following tags...', 'groundhogg') }),
+  })
+
+  Funnel.registerStepType('remove_tag', {
+    title   : ({ meta }) => StepTitles.remove_tag(meta, titleNames),
+    settings: TagSettings({ intro: __('Remove all of the following tags...', 'groundhogg') }),
+  })
+
+  Funnel.registerStepType('tag_applied', {
+    title   : ({ meta }) => StepTitles.tag_applied(meta, titleNames),
+    settings: TagSettings({
+      intro    : __('Run when the following tags are applied to the contact...', 'groundhogg'),
+      condition: true,
+    }),
+  })
+
+  Funnel.registerStepType('tag_removed', {
+    title   : ({ meta }) => StepTitles.tag_removed(meta, titleNames),
+    settings: TagSettings({
+      intro    : __('Run when the following tags are removed from the contact...', 'groundhogg'),
+      condition: true,
+    }),
+  })
+
+  Funnel.registerStepType('if_else', {
+    title   : ({ meta }) => StepTitles.if_else(meta),
+    branches: () => [
+      {
+        key    : 'yes',
+        name   : __('YES', 'groundhogg'),
+        classes: 'green',
+      },
+      {
+        key    : 'no',
+        name   : __('NO', 'groundhogg'),
+        classes: 'red',
+      },
+    ],
+    settings: ({
+      ID,
+      meta,
+    }, update) => {
+
+      const {
+        include_filters = [],
+        exclude_filters = [],
+      } = meta
+
+      return Div({ className: 'display-flex column gap-10' }, [
+        Pg({}, sprintf(
+          /* translators: 1: the YES branch pill, 2: the NO branch pill */
+          __('If the contact matches the conditions they will go down the %1$s branch, otherwise the %2$s branch.', 'groundhogg'),
+          `<span class="pill green">${ __('YES', 'groundhogg') }</span>`,
+          `<span class="pill red">${ __('NO', 'groundhogg') }</span>`,
+        )),
+        Div({ className: 'include-search-filters' }, ContactFilters(`step_${ ID }_include_filters`, include_filters, filters => update({
+          include_filters: filters,
+          include_display: ContactFilterDisplay(filters).innerHTML,
+        }))),
+        Div({ className: 'exclude-search-filters' }, ContactFilters(`step_${ ID }_exclude_filters`, exclude_filters, filters => update({
+          exclude_filters: filters,
+          exclude_display: ContactFilterDisplay(filters).innerHTML,
+        }))),
+      ])
+    },
+  })
+
+  Funnel.registerStepType('add_to_flow', {
+    title   : ({ meta }) => StepTitles.add_to_flow(meta, titleNames),
+    settings: ({
+      ID,
+      meta,
+    }, update) => {
+
+      let funnel_id = parseInt(meta.funnel_id) || 0
+      let step_id = parseInt(meta.step_id) || 0
+
+      return Div({
+        id       : `step_${ ID }_add_to_flow`,
+        className: 'display-flex column gap-10',
+      }, morph => {
+
+        if (funnel_id && !FunnelsStore.has(funnel_id)) {
+          FunnelsStore.maybeFetchItem(funnel_id).then(() => morph())
+          return Skeleton({}, ['full'])
+        }
+
+        const funnel = funnel_id ? FunnelsStore.get(funnel_id) : null
+        const actionSteps = ( funnel?.steps ?? [] ).filter(step => step.data.step_group === 'action')
+        const selectedStep = actionSteps.find(step => step.ID == step_id)
+
+        return Fragment([
+          Pg({}, __('Add the contact to the following flow...', 'groundhogg')),
+          ItemPicker({
+            id          : `step_${ ID }_funnel`,
+            noneSelected: __('Select a flow...', 'groundhogg'),
+            selected    : funnel ? {
+              id  : funnel.ID,
+              text: funnel.data.title,
+            } : [],
+            multiple    : false,
+            fetchOptions: search => FunnelsStore.fetchItems({
+              search,
+              status: 'active',
+            }).then(funnels => funnels.map(({
+              ID,
+              data,
+            }) => ( {
+              id  : ID,
+              text: data.title,
+            } ))),
+            onChange    : item => {
+              funnel_id = item ? item.id : 0
+              step_id = 0
+              update({
+                funnel_id,
+                step_id,
+              })
+              morph()
+            },
+          }),
+          funnel ? ItemPicker({
+            id          : `step_${ ID }_funnel_step`,
+            noneSelected: __('First step (default)', 'groundhogg'),
+            selected    : selectedStep ? {
+              id  : selectedStep.ID,
+              text: selectedStep.data.step_title,
+            } : [],
+            multiple    : false,
+            fetchOptions: () => Promise.resolve(actionSteps.map(({
+              ID,
+              data,
+            }) => ( {
+              id  : ID,
+              text: data.step_title,
+            } ))),
+            onChange    : item => {
+              step_id = item ? item.id : 0
+              update({ step_id })
+            },
+          }) : null,
+        ])
+      })
+    },
+  })
+
+  // its settings are still drawn by its onActive callback
+  Funnel.registerStepType('send_email', {
+    title: ({ meta }) => StepTitles.send_email(meta, titleNames),
+  })
+
+  // the branches of the premium branching types, which Pro extends, show while they're edited
+  ;[
+    'split_path',
+    'weighted_distribution',
+    'split_test',
+  ].forEach(type => Funnel.registerStepType(type, {
+    branches: step => StepTitles.branches[type](step.meta, step.ID),
+  }))
+
+  // task steps in this flow, for the task completed trigger
+  titleNames.task = id => {
+    const step = Funnel.getStep(id)
+    return step ? step.meta.summary ?? '' : undefined
+  }
+
+  // their settings are drawn by PHP, and the step-active event for their editors
+  ;[
+    'create_task',
+    'admin_notification',
+    'web_form',
+    'email_confirmed',
+    'task_completed',
+  ].forEach(type => Funnel.registerStepType(type, {
+    title: ({ meta }) => StepTitles[type](meta, titleNames),
+  }))
+
+  // the fields a value can be mapped to, in their groups
+  const mappableOptions = () => Object.entries(Groundhogg.fields.mappable).map(([group, fields]) => ( {
+    text   : group,
+    options: Object.entries(fields).map(([id, text]) => ( {
+      id,
+      text        : escHTML(text),
+      // labels like "Line 1" need their group to make sense once they're chosen
+      selectedText: `${ escHTML(group) }: ${ escHTML(text) }`,
+    } )),
+  } ))
+
+  // finds a mappable field by its name in any group
+  const mappableField = key => mappableOptions().flatMap(({ options }) => options).find(({ id }) => id === key)
+
+  /**
+   * Picks the contact field something is mapped to
+   *
+   * @param id string
+   * @param selected string the contact field it's mapped to, if it is
+   * @param onChange function called with the contact field, or an empty string when it's not mapped
+   */
+  const MappingPicker = ({
+    id,
+    selected = '',
+    onChange,
+  }) => ItemPicker({
+    id,
+    multiple    : false,
+    noneSelected: __('Do not map', 'groundhogg'),
+    selected    : mappableField(selected) ?? [],
+    fetchOptions: async search => mappableOptions().map(({
+      text,
+      options,
+    }) => ( {
+      text,
+      options: options.filter(option => option.text.toLowerCase().includes(escHTML(search).toLowerCase())),
+    } )).filter(({ options }) => options.length),
+    onChange    : item => onChange(item ? item.id : ''),
+  })
+
+  // what the server says about a form integration's forms and fields is the same until the page is reloaded
+  const formIntegrationRequests = {}
+
+  /**
+   * Ask the server for the forms a form integration step type can pick, or the fields of one of them. Asking again
+   * gives the same request, which is loaded once it has an answer.
+   *
+   * @param type string the step type
+   * @param formId number|undefined a form to get the fields of, otherwise the forms are
+   * @return {{loaded: boolean, value: Array, promise: Promise}}
+   */
+  const formIntegrationData = (type, formId) => {
+
+    const key = formId ? `${ type }:${ formId }` : type
+
+    if (!formIntegrationRequests[key]) {
+
+      const request = {
+        loaded : false,
+        value  : [],
+        promise: null,
+      }
+
+      request.promise = get(`${ routes.v4.funnels }/form-integration`, formId ? {
+        type,
+        form_id: formId,
+      } : { type }).then(r => {
+        request.loaded = true
+        request.value = ( formId ? r.fields : r.forms ) ?? []
+        return request.value
+      }).catch(err => {
+        // so it's asked again
+        delete formIntegrationRequests[key]
+        throw err
+      })
+
+      formIntegrationRequests[key] = request
+    }
+
+    return formIntegrationRequests[key]
+  }
+
+  // the field map is an empty array, not an object, when it's empty
+  const fieldMapOf = map => map && typeof map === 'object' && !Array.isArray(map) ? { ...map } : {}
+
+  /**
+   * A form integration step type picks the form it runs for, then maps the form's fields to contact fields. Which
+   * types are form integrations comes from the server, see Form_Integration::jsonSerialize()
+   *
+   * @param type string
+   */
+  const registerFormIntegrationType = type => Funnel.registerStepType(type, {
+    defaults: {
+      form_id  : 0,
+      field_map: {},
+    },
+    // the same warnings the server adds to the step, see Form_Integration::validate_settings()
+    validate: ({ meta }) => {
+
+      const mapped = Object.values(fieldMapOf(meta.field_map))
+
+      if (!mapped.length) {
+        return [
+          {
+            code   : 'invalid_field_map',
+            message: __('Map your form fields to capture submissions.', 'groundhogg'),
+          },
+        ]
+      }
+
+      if (!mapped.includes('email')) {
+        return [
+          {
+            code   : 'missing_email_field',
+            message: __('There is no email address field mapped, submissions may not be captured correctly.', 'groundhogg'),
+          },
+        ]
+      }
+
+      return []
+    },
+    settings: ({
+      ID,
+      meta,
+    }, update) => {
+
+      let form_id = parseInt(meta.form_id) || 0
+      const field_map = fieldMapOf(meta.field_map)
+      let error = ''
+      let waiting = false
+
+      return Div({
+        id       : `step_${ ID }_form_integration`,
+        className: 'display-flex column gap-10',
+      }, morph => {
+
+        if (error) {
+          return Fragment([
+            Pg({}, error),
+            Button({
+              className: 'gh-button secondary',
+              onClick  : () => {
+                error = ''
+                morph()
+              },
+            }, __('Try again', 'groundhogg')),
+          ])
+        }
+
+        const formsRequest = formIntegrationData(type)
+        const fieldsRequest = form_id ? formIntegrationData(type, form_id) : null
+        const pending = [formsRequest, fieldsRequest].filter(request => request && !request.loaded)
+
+        if (pending.length) {
+
+          if (!waiting) {
+            waiting = true
+            Promise.all(pending.map(request => request.promise)).then(() => {
+              waiting = false
+              morph()
+            }).catch(err => {
+              waiting = false
+              error = err.message || __('The forms could not be loaded.', 'groundhogg')
+              morph()
+            })
+          }
+
+          return Skeleton({}, ['full'])
+        }
+
+        const forms = formsRequest.value
+        const fields = fieldsRequest ? fieldsRequest.value : []
+        const form = forms.find(({ id }) => id == form_id)
+
+        // what's mapped, that isn't in the form, so it can be cleared
+        const unknown = Object.keys(field_map).filter(key => !fields.some(({ id }) => id === key))
+
+        const rows = [
+          ...fields,
+          ...unknown.map(key => ( {
+            id   : key,
+            label: __('Not in this form', 'groundhogg'),
+          } )),
+        ]
+
+        return Fragment([
+          Pg({}, __('Run when this form is submitted...', 'groundhogg')),
+          ItemPicker({
+            id          : `step_${ ID }_form_id`,
+            noneSelected: __('Select a form...', 'groundhogg'),
+            placeholder : __('Search forms...', 'groundhogg'),
+            multiple    : false,
+            selected    : form_id ? {
+              id  : form_id,
+              text: escHTML(form ? form.text : sprintf(__('Form %d (not found)', 'groundhogg'), form_id)),
+            } : [],
+            fetchOptions: async search => forms.filter(({ text }) => text.toLowerCase().includes(search.toLowerCase())).map(({
+              id,
+              text,
+            }) => ( {
+              id,
+              text: escHTML(text),
+            } )),
+            onChange    : item => {
+
+              const id = item ? parseInt(item.id) : 0
+
+              if (id === form_id) {
+                return
+              }
+
+              form_id = id
+
+              if (!form_id) {
+                Object.keys(field_map).forEach(key => delete field_map[key])
+                update({
+                  form_id,
+                  field_map: { ...field_map },
+                })
+                morph()
+                return
+              }
+
+              update({ form_id })
+
+              // the fields of the form it was don't apply to this one, but the ones that are in both still do
+              formIntegrationData(type, id).promise.then(newFields => {
+
+                if (form_id !== id) {
+                  return
+                }
+
+                Object.keys(field_map).filter(key => !newFields.some(field => field.id === key)).forEach(key => delete field_map[key])
+                update({ field_map: { ...field_map } })
+                morph()
+              }).catch(() => {})
+
+              morph()
+            },
+          }),
+          Pg({}, __('Then map the form fields to contact fields...', 'groundhogg')),
+          rows.length ? Table({
+            id       : `step_${ ID }_field_map`,
+            className: 'field-map widefat striped',
+            style    : {
+              tableLayout: 'fixed',
+              width      : '100%',
+            },
+          }, [
+            THead({}, Tr({}, [
+              Th({ style: { width: '30%' } }, __('Field ID', 'groundhogg')),
+              Th({ style: { width: '30%' } }, __('Field Label', 'groundhogg')),
+              Th({ style: { width: '40%' } }, __('Map To', 'groundhogg')),
+            ])),
+            TBody({}, rows.map(({
+              id,
+              label,
+            }) => Tr({}, [
+              Td({ style: { verticalAlign: 'top' } }, `<code style="word-break:break-all">${ escHTML(id) }</code>`),
+              Td({ style: { verticalAlign: 'top' } }, escHTML(label)),
+              Td({ style: { verticalAlign: 'top' } }, MappingPicker({
+                id      : `step_${ ID }_map_${ id }`,
+                selected: field_map[id] ?? '',
+                onChange: field => {
+
+                  if (field) {
+                    field_map[id] = field
+                  }
+                  else {
+                    delete field_map[id]
+                  }
+
+                  update({ field_map: { ...field_map } })
+                },
+              })),
+            ]))),
+          ]) : Pg({}, form_id ? __('This form has no fields that can be mapped.', 'groundhogg') : __('Select a form to map its fields.', 'groundhogg')),
+        ])
+      })
+    },
+  })
+
+  Object.values(Groundhogg.rawStepTypes).
+    filter(({ form_integration }) => form_integration).
+    forEach(({ type }) => registerFormIntegrationType(type))
+
   Groundhogg.components.TagPicker = TagPicker
+  Groundhogg.components.MappingPicker = MappingPicker
 
 } )(jQuery)

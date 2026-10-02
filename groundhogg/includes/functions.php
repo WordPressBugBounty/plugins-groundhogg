@@ -73,6 +73,7 @@ function maybe_get_option_from_constant( $value, $option_name ) {
 
 add_constant_support( 'gh_secret_key' );
 add_constant_support( 'gh_secret_iv' );
+add_constant_support( 'gh_inbound_secret' );
 add_constant_support( 'gh_recaptcha_secret_key' );
 add_constant_support( 'gh_recaptcha_site_key' );
 add_constant_support( 'gh_click_tracking_delay' );
@@ -1360,6 +1361,12 @@ function get_cookie( $cookie = '', $default = false ) {
  * @return bool
  */
 function set_cookie( $cookie = '', $value = '', $expiration = HOUR_IN_SECONDS ) {
+
+	// Can't send a cookie once output has started
+	if ( headers_sent() ) {
+		return false;
+	}
+
 	return setcookie( $cookie, $value, time() + $expiration, COOKIEPATH, COOKIE_DOMAIN );
 }
 
@@ -1725,7 +1732,8 @@ function convert_user_to_contact_when_user_registered( $userId ) {
 function get_form_list() {
 
 	$forms = get_db( 'steps' )->query( [
-		'step_type' => [ 'form_fill', 'web_form' ]
+		'step_type'   => [ 'form_fill', 'web_form' ],
+		'step_status' => [ '!=', 'archived' ],
 	] );
 
 	$form_options = array();
@@ -7173,6 +7181,8 @@ function enqueue_email_block_editor_assets( $extra = [] ) {
 		],
 		'post_types'     => $post_types,
 		'senderProfiles' => get_sender_profiles(),
+		// whether there's an inbox to send replies to, for the setting of an email that does
+		'inboxActive'    => \Groundhogg\Classes\Inbox::is_active(),
 	], $extra );
 
 	wp_add_inline_script( 'groundhogg-email-block-editor', 'const _BlockEditor = ' . wp_json_encode( $localized ), 'before' );

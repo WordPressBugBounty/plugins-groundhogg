@@ -84,6 +84,11 @@ function use_edit_lock( Base_Object_With_Meta $object, $can_take_over = true ) {
 		// Otherwise set the lock
 		$new_lock          = set_lock( $object );
 		$lock_data['lock'] = implode( ':', $new_lock );
+		// to release the lock when the editor closes
+		$lock_data['remove_nonce'] = wp_create_nonce( 'groundhogg_remove_lock' );
+		// to tell when something else changes it, like an ability, see maybe_refresh_lock()
+		$lock_data['version']      = get_edit_version( $object );
+		$lock_data['changed_text'] = get_changed_text( $object );
 	}
 
 	wp_enqueue_script( 'groundhogg-admin-edit-lock' );
@@ -204,11 +209,129 @@ function maybe_refresh_lock( array $response, array $data, $screen_id ) {
 		if ( $new_lock ) {
 			$send['new_lock'] = implode( ':', $new_lock );
 		}
+
+		// the editor compares it with the version it has, see edit-lock.js
+		if ( isset( $received['version'] ) ) {
+			$send['version'] = get_edit_version( $object );
+		}
 	}
 
 	$response['groundhogg-refresh-lock'] = $send;
 
 	return $response;
+}
+
+/**
+ * A version of the object, which changes when it's changed, so an editor can tell when something else changed it
+ * while it's open, like an ability. Meta starting with _ (like the edit lock) doesn't count.
+ *
+ * @param Base_Object_With_Meta $object
+ *
+ * @return string
+ */
+function get_edit_version( Base_Object_With_Meta $object ) {
+
+	// as stored, the object may have more, like empty values for meta it asked for that isn't set
+	$stored = create_object_from_type( $object->get_id(), $object->_get_object_type() ) ?: $object;
+
+	$meta = array_filter( $stored->get_meta(), function ( $key ) {
+		return ! str_starts_with( (string) $key, '_' );
+	}, ARRAY_FILTER_USE_KEY );
+
+	ksort( $meta );
+
+	$version = md5( wp_json_encode( [ $stored->get_data(), $meta ] ) );
+
+	/**
+	 * The version of an object being edited, see get_edit_version()
+	 *
+	 * @param string                $version
+	 * @param Base_Object_With_Meta $object
+	 */
+	return (string) apply_filters( "groundhogg/edit_lock/{$object->_get_object_type()}/version", $version, $object );
+}
+
+/**
+ * What the editor says when the object was changed while it's open
+ *
+ * @param Base_Object_With_Meta $object
+ *
+ * @return string
+ */
+function get_changed_text( Base_Object_With_Meta $object ) {
+
+	switch ( $object->_get_object_type() ) {
+		case 'funnel':
+			$text = __( 'Changes have been made to this flow. Reload the page to see them.', 'groundhogg' );
+			break;
+		case 'email':
+			$text = __( 'Changes have been made to this email. Reload the page to see them.', 'groundhogg' );
+			break;
+		default:
+			$text = __( 'Changes have been made since this page was opened. Reload the page to see them.', 'groundhogg' );
+			break;
+	}
+
+	/**
+	 * What the editor says when the object was changed while it's open
+	 *
+	 * @param string                $text
+	 * @param Base_Object_With_Meta $object
+	 */
+	return esc_html( apply_filters( "groundhogg/edit_lock/{$object->_get_object_type()}/changed_text", $text, $object ) );
+}
+
+add_filter( 'groundhogg/edit_lock/funnel/version', __NAMESPACE__ . '\funnel_edit_version', 10, 2 );
+
+/**
+ * A flow's version is its draft's revision, which the flow editor keeps up to date with its own saves
+ *
+ * @param string                $version
+ * @param Base_Object_With_Meta $object the funnel, which isn't a Funnel when it's from create_object_from_type()
+ *
+ * @return string
+ */
+function funnel_edit_version( $version, $object ) {
+
+	$funnel = $object instanceof Funnel ? $object : new Funnel( $object->get_id() );
+
+	return $funnel->while_editing( function () use ( $funnel ) {
+		return Abilities\Funnels\Get_Flow::revision( $funnel );
+	} );
+}
+
+add_action( 'wp_ajax_groundhogg_remove_lock', __NAMESPACE__ . '\ajax_remove_lock' );
+
+/**
+ * Release the lock when the editor closes, so others don't have to wait for it to expire
+ *
+ * @return void
+ */
+function ajax_remove_lock() {
+
+	$id   = absint( get_post_var( 'id' ) );
+	$type = sanitize_key( get_post_var( 'type' ) );
+
+	if ( ! $id || ! $type || ! wp_verify_nonce( get_post_var( '_wpnonce' ), 'groundhogg_remove_lock' ) || ! current_user_can( "edit_$type", $id ) ) {
+		wp_send_json_error();
+	}
+
+	$object = create_object_from_type( $id, $type );
+
+	if ( ! $object || ! $object->exists() ) {
+		wp_send_json_error();
+	}
+
+	$lock = explode( ':', (string) $object->get_meta( '_edit_lock' ) );
+
+	// only the user holding the lock can release it
+	if ( absint( $lock[1] ?? 0 ) !== get_current_user_id() ) {
+		wp_send_json_error();
+	}
+
+	$object->delete_meta( '_edit_lock' );
+
+	wp_send_json_success();
 }
 
 add_action( 'groundhogg/set_lock', __NAMESPACE__ . '\lock_emails_when_editing_funnel' );

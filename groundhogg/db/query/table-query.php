@@ -30,6 +30,12 @@ class Table_Query extends Query {
 	protected $db_table;
 
 	/**
+	 * Found rows from the last call to get_results(), and the cache key of the query they belong to
+	 */
+	protected int $last_found_rows = 0;
+	protected string $last_results_key = '';
+
+	/**
 	 * @param $table      DB|string
 	 */
 	public function __construct( $table, $params = [] ) {
@@ -56,6 +62,17 @@ class Table_Query extends Query {
 	}
 
 	/**
+	 * The main table is always a DB
+	 *
+	 * @param $table
+	 *
+	 * @return void
+	 */
+	protected function add_table_dependency( $table ) {
+		$this->add_dependency( $this->db_table );
+	}
+
+	/**
 	 * Parse params from an array into the query
 	 *
 	 * @throws FilterException
@@ -69,6 +86,11 @@ class Table_Query extends Query {
 		$params = wp_parse_args( $params, [
 			'search_columns' => $this->db_table->get_searchable_columns(),
 		] );
+
+		// Set before any date ranges are parsed, they depend on it
+		if ( isset( $params['cache'] ) ) {
+			$this->setCache( $params['cache'] );
+		}
 
 		foreach ( $params as $param => $value ) {
 			$param = strtolower( $param );
@@ -189,7 +211,7 @@ class Table_Query extends Query {
 	 * @return void
 	 */
 	public function parseFilters( $filters ) {
-		$this->db_table->parse_filters( $filters, $this->where );
+		$this->collect_dependencies( fn() => $this->db_table->parse_filters( $filters, $this->where ) );
 	}
 
 	protected $sanitize_columns = true;
@@ -410,6 +432,42 @@ class Table_Query extends Query {
 	}
 
 	/**
+	 * The salt that invalidates cached results of this query when a table it depends on changes
+	 *
+	 * @return string|false false if the results should not be cached
+	 */
+	protected function get_cache_salt() {
+
+		if ( $this->cache === false ) {
+			return false;
+		}
+
+		// Allowed to be stale, so only changes to the main table matter
+		if ( is_int( $this->cache ) ) {
+			return $this->db_table->cache_get_last_changed();
+		}
+
+		// Can't know when the results would change
+		if ( $this->has_untracked_table() ) {
+			return false;
+		}
+
+		$groups = $this->get_cache_groups();
+		sort( $groups );
+
+		return md5( implode( ':', array_map( [ DB::class, 'get_group_last_changed' ], $groups ) ) );
+	}
+
+	/**
+	 * How long the object cache should keep the results
+	 *
+	 * @return int
+	 */
+	protected function get_cache_expiration() {
+		return is_int( $this->cache ) ? $this->cache : MINUTE_IN_SECONDS;
+	}
+
+	/**
 	 * Get SQL for a select statement
 	 *
 	 * @return string
@@ -443,38 +501,49 @@ class Table_Query extends Query {
 		do_action_ref_array( "groundhogg/{$this->db_table->get_object_type()}/pre_get_results", [ &$this ] );
 
 		$cache_key   = $this->create_cache_key( __METHOD__ );
-		$cache_value = $this->db_table->cache_get( $cache_key, $found );
+		$cache_salt  = $this->get_cache_salt();
+		$cache_value = $cache_salt ? $this->db_table->cache_get( $cache_key, $found, $cache_salt ) : false;
 
-		if ( $found ) {
-			return $cache_value;
+		// Items and found rows are cached together, so SELECT FOUND_ROWS() never runs after a cache hit
+		// where it would return the count from whatever query happened to run last
+		if ( $cache_salt && $found && is_array( $cache_value ) && isset( $cache_value['items'], $cache_value['found_rows'] ) ) {
+			$this->last_results_key = $cache_key;
+			$this->last_found_rows  = $cache_value['found_rows'];
+
+			return $cache_value['items'];
 		}
 
 		$items = $this->db->get_results( $this->get_select_sql() );
 
-		$this->db_table->cache_set( $cache_key, $items );
+		// Without SQL_CALC_FOUND_ROWS, FOUND_ROWS() is just the number of rows returned
+		$found_rows = $this->found_rows ? (int) $this->db->get_var( 'SELECT FOUND_ROWS()' ) : count( $items );
+
+		if ( $cache_salt ) {
+			$this->db_table->cache_set( $cache_key, [
+				'items'      => $items,
+				'found_rows' => $found_rows,
+			], $cache_salt, $this->get_cache_expiration() );
+		}
+
+		$this->last_results_key = $cache_key;
+		$this->last_found_rows  = $found_rows;
 
 		return $items;
 	}
 
 	/**
-	 * Return the number of found rows for a query
+	 * Return the number of found rows for the query
+	 * Runs the query first if its results were not already retrieved
 	 *
 	 * @return int
 	 */
 	public function get_found_rows() {
 
-		$cache_key   = $this->create_cache_key( __METHOD__ );
-		$cache_value = $this->db_table->cache_get( $cache_key, $found );
-
-		if ( $found ) {
-			return $cache_value;
+		if ( $this->last_results_key !== $this->create_cache_key( __CLASS__ . '::get_results' ) ) {
+			$this->get_results();
 		}
 
-		$rows = (int) $this->db->get_var( 'SELECT FOUND_ROWS()' );
-
-		$this->db_table->cache_set( $cache_key, $rows );
-
-		return $rows;
+		return $this->last_found_rows;
 	}
 
 	/**
@@ -488,11 +557,6 @@ class Table_Query extends Query {
 	public function get_objects( string $as = '' ) {
 
 		$items = $this->get_results();
-
-		// We should do this here because subsequent queries during object creation might impact
-		if ( $this->found_rows ) {
-			$this->get_found_rows();
-		}
 
 		if ( $as && class_exists( $as ) ) {
 			array_map_to_class( $items, $as );
@@ -510,12 +574,15 @@ class Table_Query extends Query {
 	 */
 	public function get_var( $x = 0, $y = 0 ) {
 
-		$cache_key = $this->create_cache_key( __METHOD__ );
+		$cache_key  = $this->create_cache_key( __METHOD__ . ":$x:$y" );
+		$cache_salt = $this->get_cache_salt();
 
-		$cache_value = $this->db_table->cache_get( $cache_key, $found );
+		if ( $cache_salt ) {
+			$cache_value = $this->db_table->cache_get( $cache_key, $found, $cache_salt );
 
-		if ( $found ) {
-			return $cache_value;
+			if ( $found ) {
+				return $cache_value;
+			}
 		}
 
 		$query = [
@@ -527,7 +594,9 @@ class Table_Query extends Query {
 
 		$result = $this->db->get_var( implode( ' ', $query ), $x, $y );
 
-		$this->db_table->cache_set( $cache_key, $result );
+		if ( $cache_salt ) {
+			$this->db_table->cache_set( $cache_key, $result, $cache_salt, $this->get_cache_expiration() );
+		}
 
 		return $result;
 	}

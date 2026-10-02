@@ -80,6 +80,7 @@ class Manager {
 		$this->form_impressions     = new Form_Impressions();
 		$this->notes                = new Notes();
 		$this->tasks                = new Tasks();
+		$this->messages             = new Messages();
 		$this->permissions_keys     = new Permissions_Keys();
 		$this->email_log            = new Email_Log();
 		$this->event_queue          = new Event_Queue();
@@ -144,6 +145,24 @@ class Manager {
 	 *
 	 * @return string[]
 	 */
+	/**
+	 * Find the DB that manages a table
+	 *
+	 * @param string $table_name the full table name, including the prefix
+	 *
+	 * @return DB|false
+	 */
+	public function get_db_by_table_name( string $table_name ) {
+
+		foreach ( $this->dbs as $db ) {
+			if ( $db && $db->table_name === $table_name ) {
+				return $db;
+			}
+		}
+
+		return false;
+	}
+
 	public function get_table_names() {
 		$table_names = [];
 

@@ -48,27 +48,6 @@ class Contact_Query extends Table_Query {
 	protected $date_key = 'date_created';
 
 	/**
-	 * We'll also keep the legacy query on hand in the event there is an error
-	 *
-	 * @var Legacy_Contact_Query
-	 */
-	protected $legacy_query;
-
-	/**
-	 * Whether the most recent query(), count() or get_sql() call fell back to the
-	 * Legacy_Contact_Query because the modern query engine threw.
-	 *
-	 * When true, anything applied to the modern query object via method calls
-	 * (setLimit(), setOrderby(), where()->..., setGroupby(), etc.) was NOT honoured,
-	 * because the legacy engine only sees the raw query vars. Callers that depend on
-	 * that behaviour — most notably the broadcast scheduler's `ID > last_id` keyset
-	 * pagination — must check this and refuse to proceed.
-	 *
-	 * @var bool
-	 */
-	protected bool $used_legacy_fallback = false;
-
-	/**
 	 * @var int flags for later
 	 */
 	protected int $flags;
@@ -77,9 +56,6 @@ class Contact_Query extends Table_Query {
 		$this->query_vars   = $query_vars;
 		$this->flags = $flags;
 		parent::__construct( 'contacts' );
-
-		// Nice...
-		$this->legacy_query = new Legacy_Contact_Query( $query_vars );
 	}
 
 	protected function is_flag_set( int $flag ): bool {
@@ -325,7 +301,7 @@ class Contact_Query extends Table_Query {
 		 * @type $before DateTimeHelper
 		 * @type $after  DateTimeHelper
 		 */
-		[ 'before' => $before, 'after' => $after ] = Filters::get_before_and_after_from_date_range( $filter );
+		[ 'before' => $before, 'after' => $after ] = Filters::get_before_and_after_from_date_range( $filter, false, Filters::get_now_for_query( $where->query ) );
 
 		if ( $filter['compare'] === 'is_not' ) {
 			$where->not();
@@ -884,12 +860,14 @@ class Contact_Query extends Table_Query {
 			           ->equals( 'event_type', $event_type )
 			           ->equals( 'status', $status );
 
+			Filters::timestamp( 'time', $filter, $eventQuery->where() );
+
 			if ( $funnel_id ) {
 				$eventQuery->where()->equals( 'funnel_id', $funnel_id );
 			}
 
 			if ( $step_id ) {
-				$eventQuery->where()->equals( 'funnel_id', $step_id );
+				$eventQuery->where()->equals( 'step_id', $step_id );
 			}
 
 			if ( $email_id ) {
@@ -1364,9 +1342,10 @@ class Contact_Query extends Table_Query {
 			'email_id'      => 0,
 		] );
 
-		$funnel_id = absint( $filter['funnel_id'] );
-		$step_id   = absint( $filter['step_id'] );
-		$email_id  = absint( $filter['email_id'] );
+		// Each accepts a single ID or a list of IDs, any of which matches
+		$funnel_ids = array_filter( wp_parse_id_list( $filter['funnel_id'] ) );
+		$step_ids   = array_filter( wp_parse_id_list( $filter['step_id'] ) );
+		$email_ids  = array_filter( wp_parse_id_list( $filter['email_id'] ) );
 
 		$activityQuery = new Table_Query( 'activity' );
 
@@ -1386,16 +1365,16 @@ class Contact_Query extends Table_Query {
 			unset( $filter['value_compare'] );
 		}
 
-		if ( $funnel_id ) {
-			$activityQuery->where->equals( 'funnel_id', $funnel_id );
+		if ( ! empty( $funnel_ids ) ) {
+			$activityQuery->where->in( 'funnel_id', $funnel_ids );
 		}
 
-		if ( $email_id ) {
-			$activityQuery->where->equals( 'email_id', $email_id );
+		if ( ! empty( $email_ids ) ) {
+			$activityQuery->where->in( 'email_id', $email_ids );
 		}
 
-		if ( $step_id ) {
-			$activityQuery->where->equals( 'step_id', $step_id );
+		if ( ! empty( $step_ids ) ) {
+			$activityQuery->where->in( 'step_id', $step_ids );
 		}
 
 		$alias = alias_from_filter( $filter );
@@ -1506,6 +1485,48 @@ class Contact_Query extends Table_Query {
 		}
 
 		$where->compare( "COALESCE($alias.total_visits,0)", $filter['count'], $filter['count_compare'] );
+	}
+
+	/**
+	 * Filter by how many different pages were visited, optionally only counting pages whose path matches
+	 * `link` and `compare`. Unlike page_visited, the path condition applies before counting, so
+	 * "at least 3 pages starting with /blog/" counts across all of them.
+	 *
+	 * @param       $filter
+	 * @param Where $where
+	 *
+	 * @return void
+	 */
+	public static function filter_distinct_pages_visited( $filter, Where $where ) {
+
+		$filter = wp_parse_args( $filter, [
+			'link'          => '',
+			'compare'       => 'starts_with',
+			'count'         => 1,
+			'count_compare' => 'greater_than_or_equal_to'
+		] );
+
+		$pageVisitQuery = new Table_Query( 'page_visits' );
+		$pageVisitQuery->setSelect( 'contact_id', [ 'COUNT(DISTINCT(path))', 'pages' ] )
+		               ->setGroupby( 'contact_id' );
+
+		Filters::timestamp( 'timestamp', $filter, $pageVisitQuery->where );
+
+		$path = wp_parse_url( $filter['link'], PHP_URL_PATH );
+
+		if ( $path ) {
+			Filters::string( 'path', [
+				'value'   => $path,
+				'compare' => $filter['compare']
+			], $pageVisitQuery->where );
+		}
+
+		$alias = alias_from_filter( $filter );
+
+		$join = $where->query->addJoin( 'LEFT', [ $pageVisitQuery, $alias ] );
+		$join->onColumn( 'contact_id' );
+
+		$where->compare( "COALESCE($alias.pages,0)", $filter['count'], $filter['count_compare'] );
 	}
 
 	/**
@@ -1863,7 +1884,24 @@ class Contact_Query extends Table_Query {
 
 		$this->setup_flag = true;
 
+		// Filters can build sub queries against other tables, cached results must depend on them too
+		$this->collect_dependencies( fn() => $this->setup_query() );
+	}
+
+	/**
+	 * Build the query from the query vars
+	 *
+	 * @throws FilterException
+	 * @return void
+	 */
+	protected function setup_query() {
+
 		$this->parse_query_vars();
+
+		// Set before the filters are parsed, they may depend on it
+		if ( isset( $this->query_vars['cache'] ) ) {
+			$this->setCache( $this->query_vars['cache'] );
+		}
 
 		self::set_where_conditions( $this->query_vars, $this->where );
 
@@ -2249,6 +2287,7 @@ class Contact_Query extends Table_Query {
 		}
 
 		$activity_table = get_db( 'activity' );
+		$this->add_dependency( $activity_table );
 
 		$join = $this->db->prepare( "LEFT JOIN $activity_table->table_name $activity_table_alias 
 		ON {$this->alias}.ID = $activity_table_alias.contact_id 
@@ -2512,13 +2551,13 @@ class Contact_Query extends Table_Query {
 		_deprecated_function( __METHOD__, '3.2' );
 
 		$this->date_key = $string;
-		$this->legacy_query->set_date_key( $string );
 	}
 
 	/**
-	 * Backwards compat for Legacy Contact Query
+	 * Filters registered this way belonged to the legacy query engine, which has been removed.
+	 * They are no longer applied, and any filter of that type will match nothing.
 	 *
-	 * @deprecated use the Contact_Query::$filters->register() instead
+	 * @deprecated use Contact_Query::filters()->register() instead
 	 *
 	 * @param ...$args
 	 *
@@ -2526,7 +2565,6 @@ class Contact_Query extends Table_Query {
 	 */
 	public static function register_filter( ...$args ) {
 		_deprecated_function( __METHOD__, '3.2', 'Contact_Query::filters()->register()' );
-		Legacy_Contact_Query::register_filter( ...$args );
 	}
 
 	/**
@@ -2552,71 +2590,31 @@ class Contact_Query extends Table_Query {
 	 */
 	public function set_query_var( string $var, $value ) {
 		$this->query_vars[ $var ] = $value;
-		$this->legacy_query->set_query_var( $var, $value );
 	}
 
 	/**
-	 * Whether the most recent query(), count() or get_sql() call fell back to the
-	 * Legacy_Contact_Query because the modern query engine threw.
+	 * Handle an exception thrown while setting up the query, typically because of malformed
+	 * query vars. The query will return nothing rather than risk returning too much.
 	 *
-	 * @return bool
-	 */
-	public function used_legacy_fallback(): bool {
-		return $this->used_legacy_fallback;
-	}
-
-	/**
-	 * Handle an exception thrown by the modern query engine before falling back to
-	 * the Legacy_Contact_Query.
-	 *
-	 * The modern engine throws when a saved segment references a filter that is not
-	 * registered with Contact_Query — typically a legacy filter registered by an
-	 * outdated add-on. We still fall back so the query returns something, but this
-	 * must never be silent: callers that rely on modern-only behaviour need to be
-	 * able to detect it (see used_legacy_fallback()), and site owners need a
-	 * breadcrumb to find the offending add-on.
-	 *
-	 * @throws \Throwable
-	 *
-	 * @param  \Throwable  $e
+	 * @param \Exception $e
 	 *
 	 * @return void
 	 */
-	protected function handle_legacy_fallback( \Throwable $e ) {
+	protected function handle_query_exception( \Exception $e ) {
 
-		$this->used_legacy_fallback = true;
-
-		$message = sprintf(
-			'Contact_Query fell back to Legacy_Contact_Query: %s | query_vars: %s',
-			$e->getMessage(),
-			wp_json_encode( $this->query_vars )
-		);
-
-		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( '[Groundhogg] ' . $message );
-		}
+		_doing_it_wrong( __METHOD__, esc_html( $e->getMessage() ), '4.8.4' );
 
 		/**
-		 * Fires whenever the modern contact query engine throws and the query falls
-		 * back to the legacy engine. Hook for telemetry or an admin notice.
+		 * Fires when the contact query could not be set up. The query will match nothing.
 		 *
-		 * @param \Throwable    $e          the exception thrown by the modern engine
+		 * @param \Exception    $e          the exception
 		 * @param array         $query_vars the query vars being processed
 		 * @param Contact_Query $query      the query instance
 		 */
-		do_action( 'groundhogg/contact_query/legacy_fallback', $e, $this->query_vars, $this );
+		do_action( 'groundhogg/contact_query/error', $e, $this->query_vars, $this );
 
-		/**
-		 * Allow forcing the exception to propagate instead of silently falling back
-		 * to the legacy engine. Defaults to false for backwards compatibility.
-		 *
-		 * @param bool          $throw
-		 * @param \Throwable     $e
-		 * @param Contact_Query  $query
-		 */
-		if ( apply_filters( 'groundhogg/contact_query/throw_on_legacy_fallback', false, $e, $this ) ) {
-			throw $e;
-		}
+		$this->where = new Where( $this );
+		$this->where->addCondition( '1=0' );
 	}
 
 	/**
@@ -2633,10 +2631,14 @@ class Contact_Query extends Table_Query {
 		}
 		try {
 			$this->maybe_setup_query();
-		} catch ( \Exception|FilterException $exception ) {
-			$this->handle_legacy_fallback( $exception );
+		} catch ( \Exception $exception ) {
+			$this->handle_query_exception( $exception );
 
-			return $this->legacy_query->get_sql( $query );
+			// setup may have thrown before the select clause was applied, which matters if this is used as a sub query
+			$select = get_array_var( $this->query_vars, 'select' );
+			if ( $select ) {
+				$this->setSelect( ...ensure_array( $select ) );
+			}
 		}
 
 		return $this->get_select_sql();
@@ -2676,10 +2678,10 @@ class Contact_Query extends Table_Query {
 
 		try {
 			$items = $this->get_results();
-		} catch ( FilterException|\Exception $exception ) {
-			$this->handle_legacy_fallback( $exception );
-			$items             = $this->legacy_query->query( $query_vars );
-			$this->found_items = $this->legacy_query->found_items;
+		} catch ( \Exception $exception ) {
+			$this->handle_query_exception( $exception );
+			$items             = [];
+			$this->found_items = 0;
 		}
 
 		if ( $as_objects ) {
@@ -2706,10 +2708,10 @@ class Contact_Query extends Table_Query {
 
 		try {
 			$this->maybe_setup_query();
-		} catch ( FilterException|\Exception $exception ) {
-			$this->handle_legacy_fallback( $exception );
+		} catch ( \Exception $exception ) {
+			$this->handle_query_exception( $exception );
 
-			return $this->legacy_query->count( $query_vars );
+			return 0;
 		}
 
 		if ( $this->groupby ) {
@@ -2751,7 +2753,7 @@ class Contact_Query extends Table_Query {
 		/**
 		 * Before getting the results of the query
 		 */
-		do_action_ref_array( 'groundhogg/contact_query/pre_get_contacts', [ &$this ] );
+		$this->collect_dependencies( fn() => do_action_ref_array( 'groundhogg/contact_query/pre_get_contacts', [ &$this ] ) );
 
 		$items = parent::get_results();
 

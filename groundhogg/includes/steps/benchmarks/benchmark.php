@@ -102,19 +102,21 @@ abstract class Benchmark extends Funnel_Step {
 
 			if ( is_object( $value ) ) {
 				try {
-					if ( property_exists( $value, 'ID' ) ) {
-						$args[ $key ] = $value->ID;
-						continue;
-					}
-
-					if ( property_exists( $value, 'id' ) ) {
-						$args[ $key ] = $value->id;
-						continue;
-					}
-
-					if ( method_exists( $value, 'get_id' ) ) {
+					// Prefer the object's own accessor, direct property reads on things like WC_Order are flagged as incorrect usage.
+					// method_exists() rules out __call() catch-alls (WP_User::__call() returns false for any name), is_callable() rules out non-public methods
+					if ( method_exists( $value, 'get_id' ) && is_callable( [ $value, 'get_id' ] ) ) {
 						$args[ $key ] = $value->get_id();
 						continue;
+					}
+
+					// get_object_vars() called from here only returns public properties, and never triggers __get
+					$public_vars = get_object_vars( $value );
+
+					foreach ( [ 'ID', 'id' ] as $property ) {
+						if ( array_key_exists( $property, $public_vars ) ) {
+							$args[ $key ] = $public_vars[ $property ];
+							continue 2;
+						}
 					}
 				} catch ( \Throwable $e ) {
 					// Skip this value if accessing properties or methods fails
@@ -132,15 +134,28 @@ abstract class Benchmark extends Funnel_Step {
 		// Accepts no arguments, but requires that child implementations setup the data ahead of time.
 		foreach ( $this->get_complete_hooks() as $hook => $args ) {
 			if ( is_array( $args ) ) {
+				add_action( $args[0], [ $this, 'reset' ], 97, 0 );
 				add_action( $args[0], [ $this, 'setup' ], 98, $args[1] );
 				add_action( $args[0], [ $this, 'complete' ], 99, 0 );
 			} else {
+				add_action( $hook, [ $this, 'reset' ], 97, 0 );
 				add_action( $hook, [ $this, 'setup' ], 98, $args );
 				add_action( $hook, [ $this, 'complete' ], 99, 0 );
 			}
 		}
 
 		parent::__construct();
+	}
+
+	/**
+	 * Step elements are singletons, so clear the data and args before each hook fire
+	 * otherwise a trigger that fires more than once in a request would carry over the previous fire's values
+	 *
+	 * @return void
+	 */
+	public function reset() {
+		$this->data = [];
+		$this->args = [];
 	}
 
 	/**
@@ -207,9 +222,10 @@ abstract class Benchmark extends Funnel_Step {
 
 				if ( $this->can_complete_step() ) {
 
-					$this->args = array_merge( $this->data_as_args(), $this->args );
+					// explicit args take precedence over those derived from data, don't write back so nothing accumulates between contacts or steps
+					$args = array_merge( $this->data_as_args(), $this->args );
 
-					$step->benchmark_enqueue( $this->get_current_contact(), $this->args );
+					$step->benchmark_enqueue( $this->get_current_contact(), $args );
 				}
 			}
 		}

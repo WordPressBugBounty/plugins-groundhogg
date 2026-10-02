@@ -30,9 +30,14 @@ use Groundhogg\Abilities\Funnels\Activate_Flow;
 use Groundhogg\Abilities\Funnels\Add_To_Flow;
 use Groundhogg\Abilities\Funnels\Create_Flow;
 use Groundhogg\Abilities\Funnels\Deactivate_Flow;
+use Groundhogg\Abilities\Funnels\Discard_Flow_Changes;
+use Groundhogg\Abilities\Funnels\Edit_Flow;
+use Groundhogg\Abilities\Funnels\Get_Flow;
+use Groundhogg\Abilities\Funnels\Get_Form_Integration_Fields;
 use Groundhogg\Abilities\Funnels\List_Flows;
 use Groundhogg\Abilities\Funnels\List_Step_Types;
 use Groundhogg\Abilities\Funnels\Live_Simulate_Flow;
+use Groundhogg\Abilities\Funnels\Publish_Flow_Changes;
 use Groundhogg\Abilities\Funnels\Simulate_Flow;
 use Groundhogg\Abilities\Emails\Create_Email_Template;
 use Groundhogg\Abilities\Emails\Get_Email_Template;
@@ -42,6 +47,7 @@ use Groundhogg\Abilities\Emails\List_Sender_Profiles;
 use Groundhogg\Abilities\Emails\Send_Composed_Email;
 use Groundhogg\Abilities\Emails\Send_Email_Template;
 use Groundhogg\Abilities\Emails\Update_Email_Template;
+use Groundhogg\Abilities\Schemas\Step_Type_Schema;
 use Groundhogg\Abilities\Reports\Get_Reports;
 use Groundhogg\Abilities\Reports\List_Report_Types;
 use Groundhogg\Abilities\Settings\List_Settings;
@@ -54,12 +60,14 @@ use Groundhogg\Abilities\Utils\Upload_Media;
  * Registers Groundhogg's own abilities/categories, and acts as the registry add-ons use to
  * register their own alongside them - Abilities::add_category() and Abilities::add_ability().
  *
- * Both must be called before the WP Abilities API actually registers anything - the
- * 'wp_abilities_api_categories_init'/'wp_abilities_api_init' hooks below, which normally fire on
- * 'init'. Groundhogg's own bootstrap runs on 'plugins_loaded' at priority 0 (see Plugin::init()),
- * so any add-on's own 'plugins_loaded' (default priority 10) or 'init' callback is early enough.
- * Registering from that far out just queues the category/class; if a call ever comes in after the
- * relevant hook has already fired, it's applied immediately instead of being silently dropped.
+ * WordPress only accepts registrations while the 'wp_abilities_api_categories_init' and
+ * 'wp_abilities_api_init' actions are running (they normally fire on 'init'); anywhere else
+ * wp_register_ability()/wp_register_ability_category() call _doing_it_wrong() and return null.
+ * Groundhogg's own bootstrap runs on 'plugins_loaded' at priority 0 (see Plugin::init()), so any
+ * add-on's own 'plugins_loaded' (default priority 10) or 'init' callback is early enough: the
+ * call is queued and applied when the action runs. Calling from inside one of those actions
+ * registers straight away. Calling after the action has finished is too late - WordPress would
+ * refuse it, so it's reported with _doing_it_wrong() instead of being silently lost.
  *
  * Example - a 3rd-party add-on registering its own category and ability:
  *
@@ -75,8 +83,62 @@ use Groundhogg\Abilities\Utils\Upload_Media;
  *
  * Do_The_Thing must extend Groundhogg\Abilities\Ability just like Groundhogg's own abilities -
  * it's instantiated the same way, which is what actually calls wp_register_ability().
+ *
+ * Registration order
+ * ------------------
+ * WordPress builds its abilities registries lazily, the first time something asks for one, which
+ * is not a moment add-ons can predict (usually after 'init', but any plugin can trigger it
+ * earlier). And an ability builds its input/output schema from the schema classes as they are at
+ * that moment, so whatever an add-on contributes to those has to be in place first. To make the
+ * order explicit instead of a matter of which 'init' priority an add-on happened to pick,
+ * Groundhogg fires four actions, in this order, once each, from inside the registries' own
+ * actions - register what belongs to each one on it:
+ *
+ *  1. groundhogg/abilities/register_schema_extensions
+ *       Contributions to the schemas other schemas and abilities are built from:
+ *       Segment_Schema::extend(), Contact_Schema::extend() and any other Extensible_Schema.
+ *  2. groundhogg/abilities/register_step_types
+ *       Step_Type_Schema::extend(). Runs after every schema extension is in, so a step type's
+ *       settings schema can embed Segment_Schema::properties() and include what add-ons added
+ *       to it. All step types are already registered with the step manager by now.
+ *  3. groundhogg/abilities/register_categories
+ *       Abilities::add_category(), after Groundhogg's own categories.
+ *  4. groundhogg/abilities/register_abilities
+ *       Abilities::add_ability(), after Groundhogg's own abilities.
+ *
+ * 1 and 2 run before anything is registered with WordPress, at the start of whichever registry
+ * action comes first, see register_schemas(). The plugins an add-on depends on have loaded by
+ * then, so there's no need to defer to a late 'init' priority just to wait for them.
+ *
+ *     add_action( 'groundhogg/abilities/register_schema_extensions', function () {
+ *         Segment_Schema::extend( 'my_addon', $json_schema, $to_filters, true );
+ *     } );
+ *
+ *     add_action( 'groundhogg/abilities/register_step_types', function () {
+ *         Step_Type_Schema::extend( 'my_addon_step', $settings_schema );
+ *     } );
+ *
+ *     add_action( 'groundhogg/abilities/register_categories', function () {
+ *         Abilities::add_category( 'my-addon', [ 'label' => '…', 'description' => '…' ] );
+ *     } );
+ *
+ *     add_action( 'groundhogg/abilities/register_abilities', function () {
+ *         Abilities::add_ability( My_Addon\Abilities\Do_The_Thing::class );
+ *     } );
+ *
+ * Calling the add_*() and extend() methods from anywhere else keeps working as it did, but the
+ * result depends on whether the call beat the registry.
+ *
+ * Full guide for add-ons, with the schema/step type/ability details: docs/abilities-registration.md
  */
 class Abilities {
+
+	/**
+	 * Whether the two schema actions have fired
+	 *
+	 * @var bool
+	 */
+	protected static bool $schemas_registered = false;
 
 	/**
 	 * Ability classes registered by add-ons via self::add_ability(), instantiated alongside
@@ -94,11 +156,24 @@ class Abilities {
 	 */
 	protected static array $extra_categories = [];
 
+	/**
+	 * Ability classes / category slugs already handed to WordPress, so a request that is both
+	 * queued and made mid-action is never registered twice.
+	 *
+	 * @var array<string, true>
+	 */
+	protected static array $registered = [];
+
 	public function __construct() {
 
 		if ( ! function_exists( 'wp_register_ability' ) ) {
 			return;
 		}
+
+		// Either registry can come first (the categories one can be built on its own), and neither
+		// may register anything before the schemas add-ons extend are complete
+		add_action( 'wp_abilities_api_categories_init', [ __CLASS__, 'register_schemas' ], 0 );
+		add_action( 'wp_abilities_api_init', [ __CLASS__, 'register_schemas' ], 0 );
 
 		add_action(
 			'wp_abilities_api_categories_init',
@@ -109,6 +184,48 @@ class Abilities {
 			'wp_abilities_api_init',
 			[ $this, 'register_abilities' ]
 		);
+	}
+
+	/**
+	 * Fire the actions add-ons register schema extensions and step types on, once, in order. See the
+	 * class docblock. Runs at the start of the first registry action, and is safe to call again.
+	 *
+	 * @return void
+	 */
+	public static function register_schemas() {
+
+		// Set first, so anything the actions trigger that gets here again isn't a second run
+		if ( self::$schemas_registered ) {
+			return;
+		}
+
+		self::$schemas_registered = true;
+
+		/**
+		 * Register contributions to the schemas other schemas and abilities are built from:
+		 * Segment_Schema::extend(), Contact_Schema::extend() and any other Extensible_Schema.
+		 * Runs before register_step_types, so those can build on them.
+		 */
+		do_action( 'groundhogg/abilities/register_schema_extensions' );
+
+		/**
+		 * Register step types for create-flow, edit-flow and get-flow with Step_Type_Schema::extend().
+		 * Every schema extension is in by now, and every step type is registered with the step manager.
+		 */
+		do_action( 'groundhogg/abilities/register_step_types' );
+
+		// after the add-ons', so one that opts its own form integration in is respected
+		Step_Type_Schema::extend_form_integrations();
+	}
+
+	/**
+	 * Whether the schema actions have fired. Anything added to the schemas after this is too late for abilities
+	 * that registered already, which built their input and output schemas from what was there.
+	 *
+	 * @return bool
+	 */
+	public static function schemas_registered(): bool {
+		return self::$schemas_registered;
 	}
 
 	/**
@@ -124,11 +241,16 @@ class Abilities {
 	 */
 	public static function add_category( string $slug, array $args ) {
 
+		if ( ! doing_action( 'wp_abilities_api_categories_init' ) && did_action( 'wp_abilities_api_categories_init' ) ) {
+			self::too_late( __METHOD__, 'wp_abilities_api_categories_init' );
+
+			return;
+		}
+
 		self::$extra_categories[ $slug ] = $args;
 
-		// The categories hook already fired - register it right away rather than dropping it.
-		if ( did_action( 'wp_abilities_api_categories_init' ) && function_exists( 'wp_register_ability_category' ) ) {
-			wp_register_ability_category( $slug, $args );
+		if ( doing_action( 'wp_abilities_api_categories_init' ) ) {
+			self::register_category( $slug, $args );
 		}
 	}
 
@@ -143,74 +265,124 @@ class Abilities {
 	 */
 	public static function add_ability( string $class ) {
 
+		if ( ! doing_action( 'wp_abilities_api_init' ) && did_action( 'wp_abilities_api_init' ) ) {
+			self::too_late( __METHOD__, 'wp_abilities_api_init' );
+
+			return;
+		}
+
 		self::$extra_abilities[] = $class;
 
-		// The abilities hook already fired - register it right away rather than dropping it.
-		if ( did_action( 'wp_abilities_api_init' ) ) {
-			new $class();
+		if ( doing_action( 'wp_abilities_api_init' ) ) {
+			self::instantiate( $class );
 		}
+	}
+
+	/**
+	 * Report a registration that arrived after WordPress stopped accepting them.
+	 *
+	 * @param string $method the add_*() method the add-on called
+	 * @param string $hook   the action that has already finished
+	 *
+	 * @return void
+	 */
+	protected static function too_late( string $method, string $hook ) {
+		_doing_it_wrong(
+			esc_html( $method ),
+			/* translators: %s: an action name */
+			esc_html( sprintf( __( 'Too late to register: WordPress only accepts registrations while the %s action runs. Register on the groundhogg/abilities/register_categories or groundhogg/abilities/register_abilities action, or call this on plugins_loaded.', 'groundhogg' ), $hook ) ),
+			'4.8.4'
+		);
+	}
+
+	protected static function register_category( string $slug, array $args ) {
+
+		if ( isset( self::$registered[ 'category:' . $slug ] ) ) {
+			return;
+		}
+
+		self::$registered[ 'category:' . $slug ] = true;
+
+		wp_register_ability_category( $slug, $args );
+	}
+
+	protected static function instantiate( string $class ) {
+
+		if ( isset( self::$registered[ $class ] ) || ! class_exists( $class ) ) {
+			return;
+		}
+
+		self::$registered[ $class ] = true;
+
+		new $class();
 	}
 
 	public function register_categories() {
 
-		wp_register_ability_category( 'groundhogg-contacts', [
+		self::register_category( 'groundhogg-contacts', [
 			'label'       => __( 'Groundhogg Contacts', 'groundhogg' ),
 			'description' => __( 'Find, inspect, and manage contacts in Groundhogg.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-tags', [
+		self::register_category( 'groundhogg-tags', [
 			'label'       => __( 'Groundhogg Tags', 'groundhogg' ),
 			'description' => __( 'Find and manage Groundhogg tags.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-campaigns', [
+		self::register_category( 'groundhogg-campaigns', [
 			'label'       => __( 'Groundhogg Campaigns', 'groundhogg' ),
 			'description' => __( 'Find Groundhogg campaigns, used to group flows, broadcasts, and emails.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-funnels', [
+		self::register_category( 'groundhogg-funnels', [
 			'label'       => __( 'Groundhogg Flows', 'groundhogg' ),
 			'description' => __( 'Find Groundhogg flows and add contacts to them.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-email', [
+		self::register_category( 'groundhogg-email', [
 			'label'       => __( 'Groundhogg Email', 'groundhogg' ),
 			'description' => __( 'Find, inspect, and manage Groundhogg emails.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-broadcasts', [
+		self::register_category( 'groundhogg-broadcasts', [
 			'label'       => __( 'Groundhogg Broadcasts', 'groundhogg' ),
 			'description' => __( 'Schedule Groundhogg email broadcasts and review their performance.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-reports', [
+		self::register_category( 'groundhogg-reports', [
 			'label'       => __( 'Groundhogg Reports', 'groundhogg' ),
 			'description' => __( 'Pull Groundhogg\'s built-in and custom reports.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-db', [
+		self::register_category( 'groundhogg-db', [
 			'label'       => __( 'Groundhogg Database', 'groundhogg' ),
 			'description' => __( 'Direct, read-only access to Groundhogg\'s own database tables. Administrators only.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-utils', [
+		self::register_category( 'groundhogg-utils', [
 			'label'       => __( 'Groundhogg Utilities', 'groundhogg' ),
 			'description' => __( 'General-purpose utilities that support the other categories but aren\'t specific to any one of them.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-extensions', [
+		self::register_category( 'groundhogg-extensions', [
 			'label'       => __( 'Groundhogg Extensions', 'groundhogg' ),
 			'description' => __( 'Manage Groundhogg add-on extensions and their licenses.', 'groundhogg' ),
 		] );
 
-		wp_register_ability_category( 'groundhogg-settings', [
+		self::register_category( 'groundhogg-settings', [
 			'label'       => __( 'Groundhogg Settings', 'groundhogg' ),
 			'description' => __( 'List and update Groundhogg settings that have been registered for ability access.', 'groundhogg' ),
 		] );
 
 		foreach ( self::$extra_categories as $slug => $args ) {
-			wp_register_ability_category( $slug, $args );
+			self::register_category( $slug, $args );
 		}
+
+		/**
+		 * Register an add-on's ability categories with Abilities::add_category(), after Groundhogg's own.
+		 * WordPress is accepting registrations now, so they're registered straight away.
+		 */
+		do_action( 'groundhogg/abilities/register_categories' );
 	}
 
 	public function register_abilities() {
@@ -245,8 +417,13 @@ class Abilities {
 			Get_Broadcast::class,
 			Cancel_Broadcast::class,
 			List_Flows::class,
+			Get_Flow::class,
 			List_Step_Types::class,
+			Get_Form_Integration_Fields::class,
 			Create_Flow::class,
+			Edit_Flow::class,
+			Publish_Flow_Changes::class,
+			Discard_Flow_Changes::class,
 			Activate_Flow::class,
 			Deactivate_Flow::class,
 			Add_To_Flow::class,
@@ -266,7 +443,14 @@ class Abilities {
 		], self::$extra_abilities );
 
 		foreach ( $abilities as $ability ) {
-			new $ability();
+			self::instantiate( $ability );
 		}
+
+		/**
+		 * Register an add-on's abilities with Abilities::add_ability(), after Groundhogg's own.
+		 * WordPress is accepting registrations now, so they're registered straight away, and the
+		 * schemas they build from are complete.
+		 */
+		do_action( 'groundhogg/abilities/register_abilities' );
 	}
 }

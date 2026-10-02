@@ -511,6 +511,317 @@ h2.nav-tab-wrapper.gh button .dashicons {
   border-top: 1px solid var(--gh-dark-15);
 }
 
+.messages-inbox-notice {
+  margin: 0 0 12px;
+}
+
+.pill.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+.pill.clickable.active {
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+.pill.clickable:not(.bold) {
+  opacity: 0.65;
+}
+.pill.clickable:not(.bold):hover, .pill.clickable:not(.bold):focus-visible {
+  opacity: 1;
+}
+
+.gh-modal.sidebar.messages-sidebar {
+  width: 480px;
+  max-width: 100%;
+}
+.gh-modal.sidebar.messages-sidebar .messages-sidebar-contact {
+  text-decoration: none;
+}
+.gh-modal.sidebar.messages-sidebar .gh-modal-dialog {
+  display: flex;
+  flex-direction: column;
+}
+.gh-modal.sidebar.messages-sidebar .gh-modal-dialog-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.gh-modal.sidebar.messages-sidebar .messages-widget {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 10px 0;
+}
+.gh-modal.sidebar.messages-sidebar .messages-widget .messages-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.gh-modal.sidebar.messages-sidebar .messages-widget .messages-thread > :first-child {
+  margin-top: auto;
+}
+.gh-modal.sidebar.messages-sidebar .messages-widget .messages-compose {
+  padding: 10px 0;
+  background: #fff;
+}
+
+.unread-messages {
+  padding: 10px;
+}
+.unread-messages .unread-messages-toolbar {
+  margin-bottom: 10px;
+}
+.unread-messages .unread-messages-list {
+  display: flex;
+  flex-direction: column;
+}
+.unread-messages .unread-messages-empty,
+.unread-messages .unread-messages-more {
+  text-align: center;
+  margin: 10px 0;
+}
+.unread-messages .unread-message {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.unread-messages .unread-message:hover, .unread-messages .unread-message:focus-visible {
+  background: var(--gh-panel-gray);
+}
+.unread-messages .unread-message + .unread-message {
+  border-top: 1px solid var(--gh-dark-10);
+}
+.unread-messages .unread-message-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.unread-messages .unread-message-details {
+  min-width: 0;
+  flex-grow: 1;
+}
+.unread-messages .unread-message-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--gh-dark-50);
+  white-space: nowrap;
+}
+.unread-messages .unread-message-subject {
+  font-weight: 500;
+}
+.unread-messages .unread-message-subject,
+.unread-messages .unread-message-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.unread-messages .unread-message-preview,
+.unread-messages .unread-message-from {
+  font-size: 12px;
+  color: var(--gh-dark-50);
+}
+
+.messages-widget {
+  padding: 10px;
+}
+.messages-widget .messages-header {
+  margin-bottom: 12px;
+}
+.messages-widget .messages-header .messages-search {
+  flex: 1 1 100px;
+  min-width: 100px;
+  max-width: 200px;
+  height: 26px;
+  min-height: 0;
+  padding: 0 8px;
+  font-size: 13px;
+}
+.messages-widget .messages-compose {
+  margin-top: 12px;
+}
+.messages-widget .messages-compose-button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  border: 1px solid var(--gh-dark-15);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--gh-dark-50);
+  font-size: 14px;
+  cursor: text;
+}
+.messages-widget .messages-compose-button:hover, .messages-widget .messages-compose-button:focus-visible {
+  border-color: var(--gh-primary);
+  color: var(--gh-dark);
+}
+.messages-widget .message-unread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gh-primary);
+  flex-shrink: 0;
+}
+.messages-widget .message-more {
+  margin: -4px -6px -4px 0;
+  padding: 2px;
+  height: auto;
+  min-height: 0;
+  line-height: 1;
+}
+.messages-widget .message-more .dashicons {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+.messages-widget .messages-hint {
+  margin: -5px 0 10px;
+  font-size: 12px;
+  color: var(--gh-dark-50);
+}
+.messages-widget .messages-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.messages-widget .messages-load-earlier {
+  text-align: center;
+}
+.messages-widget .message-row {
+  display: flex;
+}
+.messages-widget .message-row.outbound {
+  justify-content: flex-end;
+}
+.messages-widget .message-row.outbound .message-bubble {
+  background: var(--gh-primary);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.messages-widget .message-row.outbound .message-bubble .message-meta {
+  color: rgba(255, 255, 255, 0.75);
+}
+.messages-widget .message-row.outbound .message-bubble.automated {
+  background: var(--gh-primary-10);
+  color: #1c1c1e;
+  border: 1px solid var(--gh-primary-20);
+}
+.messages-widget .message-row.outbound .message-bubble.automated .message-meta {
+  color: rgba(28, 28, 30, 0.6);
+}
+.messages-widget .message-row.inbound {
+  justify-content: flex-start;
+}
+.messages-widget .message-row.inbound .message-bubble {
+  background: #e9e9eb;
+  color: #1c1c1e;
+  border-bottom-left-radius: 4px;
+}
+.messages-widget .message-row.inbound .message-bubble .message-meta {
+  color: rgba(28, 28, 30, 0.6);
+}
+.messages-widget .message-bubble {
+  max-width: 75%;
+  min-width: 200px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.messages-widget .message-bubble:hover {
+  filter: brightness(0.97);
+}
+.messages-widget .message-bubble.expanded {
+  width: 75%;
+  cursor: default;
+}
+.messages-widget .message-bubble.failed {
+  outline: 1px solid var(--gh-danger, #d63638);
+}
+.messages-widget .message-bubble .message-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--gh-dark-50);
+}
+.messages-widget .message-bubble .message-meta .message-sender {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.messages-widget .message-bubble .message-meta .message-time {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.messages-widget .message-bubble .message-subject {
+  font-weight: 600;
+  margin-top: 4px;
+}
+.messages-widget .message-bubble .message-source {
+  margin-top: 2px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+.messages-widget .message-bubble .message-note {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-style: italic;
+  background: rgba(255, 255, 255, 0.6);
+}
+.messages-widget .message-bubble .message-preview {
+  margin-top: 2px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.messages-widget .message-bubble .message-body {
+  margin-top: 10px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: auto;
+}
+.messages-widget .message-bubble .message-body .message-frame {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  border: 0;
+}
+
+.message-modal {
+  width: min(900px, 90vw);
+}
+.message-modal .message-modal-header {
+  align-items: flex-start;
+  padding: 15px 20px;
+}
+.message-modal .message-modal-header h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.message-modal .message-modal-header .message-modal-details div {
+  font-size: 13px;
+}
+.message-modal .message-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+.message-modal .message-note {
+  padding: 20px;
+  font-style: italic;
+}
+
 .tasks-widget {
   overflow: auto;
 }
@@ -813,6 +1124,10 @@ a.action-link {
 .pill.danger, .pill.red {
   background: rgba(233, 31, 79, 0.25);
   color: rgb(77.8536585366, 7.6463414634, 24.3292682927);
+}
+.pill.colorless {
+  background: var(--gh-dark-5);
+  color: var(--gh-dark);
 }
 .pill.dark {
   background-color: var(--gh-dark);
@@ -2947,6 +3262,16 @@ button:has(.gh-dropdown-menu) {
   font-size: 14px;
   padding: 0 calc(var(--gh-item-padding) * 2);
   line-height: var(--gh-option-line-height);
+}
+.gh-picker .gh-picker-options .gh-picker-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--gh-dark-50, #646970);
+  padding: 6px calc(var(--gh-item-padding) * 2) 2px;
+  cursor: default;
+  user-select: none;
 }
 .gh-picker .gh-picker-options .gh-picker-option {
   cursor: pointer;

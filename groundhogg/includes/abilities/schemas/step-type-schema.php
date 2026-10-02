@@ -7,7 +7,9 @@ use Groundhogg\Email;
 use Groundhogg\Funnel;
 use Groundhogg\Plugin;
 use Groundhogg\Step;
+use Groundhogg\Steps\Benchmarks\Form_Integration;
 use WP_Error;
+use function Groundhogg\get_mappable_fields;
 use function Groundhogg\parse_tag_list;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -77,8 +79,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  *         }
  *     );
  *
- * Call this once (e.g. on `init`, after both Groundhogg and the add-on's own
- * step type registration have run) - before any ability builds its schema.
+ * Call this once, on the `groundhogg/abilities/register_step_types` action. That
+ * is after the add-on's own step type registration has run and after every
+ * Segment_Schema/Contact_Schema extension is in, and before any ability builds its
+ * schema. See docs/abilities-registration.md.
  *
  * A branch-logic type whose branch keys are defined *per step instance* (by
  * that step's own `settings`, not fixed for the whole type - e.g. a
@@ -227,10 +231,17 @@ class Step_Type_Schema {
 	 *                                         Funnel::set_step_levels() has run -
 	 *                                         see resolve_settings()'s own docblock.
 	 *                                         Return a WP_Error to reject the input.
+	 * @param callable|null   $exporter        function( array $settings, Step $step ): array.
+	 *                                         Optional - the reverse of $resolver, for
+	 *                                         groundhogg/get-flow. Gets the step's stored
+	 *                                         meta already narrowed to the keys in
+	 *                                         $settings_schema, returns the settings in
+	 *                                         the shape $settings_schema describes. Omit
+	 *                                         if the meta is already in that shape.
 	 *
 	 * @return void
 	 */
-	public static function extend( string $type, array $settings_schema, $branch_keys = [], ?callable $resolver = null ) {
+	public static function extend( string $type, array $settings_schema, $branch_keys = [], ?callable $resolver = null, ?callable $exporter = null ) {
 
 		if ( ! is_array( $branch_keys ) && ! is_callable( $branch_keys ) ) {
 			_doing_it_wrong( __METHOD__, '$branch_keys must be an array or a callable.', '4.8' );
@@ -264,6 +275,114 @@ class Step_Type_Schema {
 			'settings_schema' => $settings_schema,
 			'branch_keys'     => $branch_keys,
 			'resolver'        => $resolver,
+			'exporter'        => $exporter,
+		];
+	}
+
+	/**
+	 * Opt in every registered form integration step type (the add-ons that extend Form_Integration) that an add-on
+	 * hasn't opted in itself. They all have the same settings, a form and a map of its fields to contact fields, and
+	 * the add-on already says how to list its forms and fields, so none of them need to do anything.
+	 *
+	 * Runs after groundhogg/abilities/register_step_types, see Abilities::register_schemas().
+	 *
+	 * @return void
+	 */
+	public static function extend_form_integrations() {
+
+		foreach ( Plugin::instance()->step_manager->get_elements() as $type => $element ) {
+
+			if ( ! $element instanceof Form_Integration || in_array( $type, self::supported_types(), true ) ) {
+				continue;
+			}
+
+			self::extend(
+				$type,
+				self::form_integration_settings_schema( $element ),
+				[],
+				fn( array $settings ) => self::resolve_form_integration_settings( $element, $settings ),
+				// meta comes back from the database as strings
+				fn( array $settings ) => array_merge( $settings, array_filter( [ 'form_id' => absint( $settings['form_id'] ?? 0 ) ] ) )
+			);
+		}
+	}
+
+	/**
+	 * The settings of a form integration step type.
+	 *
+	 * @param Form_Integration $element
+	 *
+	 * @return array
+	 */
+	private static function form_integration_settings_schema( Form_Integration $element ): array {
+
+		$contact_fields = array_keys( array_reduce( get_mappable_fields(), 'array_merge', [] ) );
+
+		return [
+			'type'                 => 'object',
+			'additionalProperties' => false,
+			'required'             => [ 'form_id' ],
+			'properties'           => [
+				'form_id'   => [
+					'type'        => 'integer',
+					/* translators: 1: the step type's name, like Contact Form 7, 2: the ability */
+					'description' => sprintf( __( 'The ID of the %1$s form that triggers this step when it is submitted. Use groundhogg/get-form-integration-fields to list them.', 'groundhogg' ), $element->get_name() ),
+				],
+				'field_map' => [
+					'type'                 => 'object',
+					'description'          => __( 'Maps fields in the form to the contact field their value is saved to. The keys are the field ids, which groundhogg/get-form-integration-fields lists for the form. Map an email address field to "email", submissions can only be matched to a contact with one.', 'groundhogg' ),
+					'additionalProperties' => [
+						'type' => 'string',
+						'enum' => $contact_fields,
+					],
+				],
+			],
+		];
+	}
+
+	/**
+	 * Check a form integration's form and fields exist, so a typo isn't saved as a step that never runs.
+	 *
+	 * @param Form_Integration $element
+	 * @param array            $settings
+	 *
+	 * @return array|WP_Error
+	 */
+	private static function resolve_form_integration_settings( Form_Integration $element, array $settings ) {
+
+		$form_id = absint( $settings['form_id'] ?? 0 );
+
+		if ( ! $form_id ) {
+			return new WP_Error( 'groundhogg_form_integration_no_form', __( 'form_id is required.', 'groundhogg' ) );
+		}
+
+		if ( ! in_array( (string) $form_id, wp_list_pluck( $element->get_forms_for_api(), 'id' ), true ) ) {
+			/* translators: 1: the form ID, 2: the step type's name */
+			return new WP_Error( 'groundhogg_form_integration_form_not_found', sprintf( __( 'There is no form %1$d in %2$s. Use groundhogg/get-form-integration-fields to list the forms.', 'groundhogg' ), $form_id, $element->get_name() ) );
+		}
+
+		$field_map = (array) ( $settings['field_map'] ?? [] );
+		$unknown   = array_diff( array_map( 'strval', array_keys( $field_map ) ), wp_list_pluck( $element->get_fields_for_api( $form_id ), 'id' ) );
+
+		if ( ! empty( $unknown ) ) {
+			/* translators: 1: the field ids, 2: the form ID */
+			return new WP_Error( 'groundhogg_form_integration_unknown_fields', sprintf( __( 'These field_map keys are not fields of form %2$d: %1$s. Use groundhogg/get-form-integration-fields to list the fields, and send the whole field_map again if the form changed.', 'groundhogg' ), implode( ', ', $unknown ), $form_id ) );
+		}
+
+		// the sanitizer would drop what isn't a contact field, and the field would quietly not be mapped
+		$contact_fields = array_keys( array_reduce( get_mappable_fields(), 'array_merge', [] ) );
+		$invalid        = array_filter( $field_map, fn( $value ) => ! is_string( $value ) || ! in_array( $value, $contact_fields, true ) );
+
+		if ( ! empty( $invalid ) ) {
+			/* translators: %s: the values */
+			return new WP_Error( 'groundhogg_form_integration_unknown_contact_fields', sprintf( __( 'These field_map values are not contact fields: %s. Use groundhogg/get-form-integration-fields with a form_id to list them.', 'groundhogg' ), implode( ', ', array_unique( array_map( 'wp_json_encode', $invalid ) ) ) ) );
+		}
+
+		return [
+			'settings' => [
+				'form_id'   => $form_id,
+				'field_map' => $field_map,
+			],
 		];
 	}
 
@@ -415,12 +534,12 @@ class Step_Type_Schema {
 					'properties'           => [
 						'from_status' => [
 							'type'        => 'array',
-							'items'       => [ 'enum' => self::optin_status_enum() ],
+							'items'       => [ 'type' => [ 'integer', 'string' ], 'enum' => self::optin_status_enum() ],
 							'description' => __( 'Only trigger when changing FROM one of these opt-in statuses. Empty/omitted matches any prior status.', 'groundhogg' ),
 						],
 						'status' => [
 							'type'        => 'array',
-							'items'       => [ 'enum' => self::optin_status_enum() ],
+							'items'       => [ 'type' => [ 'integer', 'string' ], 'enum' => self::optin_status_enum() ],
 							'description' => __( 'Only trigger when changing TO one of these opt-in statuses. Empty/omitted matches any new status.', 'groundhogg' ),
 						],
 					],
@@ -818,27 +937,128 @@ class Step_Type_Schema {
 
 			case 'if_else':
 
-				$include = Segment_Schema::to_filters( (array) ( $settings['include_condition'] ?? [] ) );
+				foreach ( [ 'include', 'exclude' ] as $which ) {
 
-				if ( is_wp_error( $include ) ) {
-					return $include;
+					$condition_key = "{$which}_condition";
+					$filters_key   = "{$which}_filters";
+
+					if ( isset( $settings[ $condition_key ] ) && isset( $settings[ $filters_key ] ) ) {
+						return new WP_Error(
+							'groundhogg_conflicting_if_else_settings',
+							// Translators: %1$s the condition setting, %2$s the filters setting.
+							sprintf( __( 'Pass either %1$s or %2$s, not both.', 'groundhogg' ), $condition_key, $filters_key )
+						);
+					}
+
+					// raw filters, as groundhogg/get-flow returns them, are kept as they are
+					if ( isset( $settings[ $filters_key ] ) ) {
+						$settings[ $filters_key ] = (array) $settings[ $filters_key ];
+						continue;
+					}
+
+					$filters = Segment_Schema::to_filters( (array) ( $settings[ $condition_key ] ?? [] ) );
+
+					if ( is_wp_error( $filters ) ) {
+						return $filters;
+					}
+
+					unset( $settings[ $condition_key ] );
+
+					$settings[ $filters_key ] = $filters;
 				}
-
-				$exclude = Segment_Schema::to_filters( (array) ( $settings['exclude_condition'] ?? [] ) );
-
-				if ( is_wp_error( $exclude ) ) {
-					return $exclude;
-				}
-
-				unset( $settings['include_condition'], $settings['exclude_condition'] );
-
-				$settings['include_filters'] = $include;
-				$settings['exclude_filters'] = $exclude;
 
 				break;
 		}
 
 		return [ 'settings' => $settings, 'deferred_settings' => $deferred ];
+	}
+
+	/**
+	 * A step's settings in the shape settings_schema() describes - the reverse
+	 * of resolve_settings(), for groundhogg/get-flow. Reads the step's meta as
+	 * the Step instance currently has it (merge its changes first for the
+	 * draft a flow editor would see).
+	 *
+	 * Everything comes back in a form resolve_settings() accepts again: tags as
+	 * IDs, if_else's conditions as the stored include_filters/exclude_filters
+	 * (conditions built in the flow editor usually can't be expressed as a
+	 * segment), and references to other steps (send_email's reply_in_thread,
+	 * task_completed's tasks) as real step IDs.
+	 *
+	 * @param Step $step
+	 *
+	 * @return array|null Null if the step's type isn't in supported_types().
+	 */
+	public static function export_settings( Step $step ): ?array {
+
+		$type = $step->get_type();
+
+		if ( ! in_array( $type, self::supported_types(), true ) ) {
+			return null;
+		}
+
+		$meta = $step->get_meta();
+
+		// the stored meta is in the settings' shape, apart from what's changed below
+		$keys = array_keys( self::settings_schema( $type )['properties'] ?? [] );
+
+		switch ( $type ) {
+			case 'web_form':
+				$keys[] = 'form';
+				break;
+			case 'add_to_flow':
+				$keys[] = 'funnel_id';
+				break;
+		}
+
+		$settings = array_intersect_key( $meta, array_flip( $keys ) );
+
+		if ( isset( self::$extensions[ $type ]['exporter'] ) ) {
+			return (array) call_user_func( self::$extensions[ $type ]['exporter'], $settings, $step );
+		}
+
+		switch ( $type ) {
+
+			case 'web_form':
+
+				// see resolve_settings(), these four are nested under 'form'
+				$form = (array) ( $settings['form'] ?? [] );
+				unset( $settings['form'] );
+
+				foreach ( [ 'fields', 'button', 'recaptcha', 'turnstile' ] as $key ) {
+					if ( isset( $form[ $key ] ) ) {
+						$settings[ $key ] = $form[ $key ];
+					}
+				}
+
+				break;
+
+			case 'add_to_flow':
+
+				if ( isset( $settings['funnel_id'] ) ) {
+					$settings['flow_id'] = absint( $settings['funnel_id'] );
+					unset( $settings['funnel_id'] );
+				}
+
+				break;
+
+			case 'task_completed':
+
+				if ( isset( $settings['tasks'] ) ) {
+					$settings['tasks'] = wp_parse_id_list( $settings['tasks'] );
+				}
+
+				break;
+
+			case 'if_else':
+
+				$settings['include_filters'] = (array) ( $meta['include_filters'] ?? [] );
+				$settings['exclude_filters'] = (array) ( $meta['exclude_filters'] ?? [] );
+
+				break;
+		}
+
+		return $settings;
 	}
 
 	/**
@@ -954,6 +1174,22 @@ class Step_Type_Schema {
 			'properties'           => Segment_Schema::properties(),
 		];
 
+		// Groundhogg's filters: groups that are ORed together, each a list of conditions that are ANDed
+		$filters_schema = [
+			'type'  => 'array',
+			'items' => [
+				'type'  => 'array',
+				'items' => [
+					'type'                 => 'object',
+					'additionalProperties' => true,
+					'required'             => [ 'type' ],
+					'properties'           => [
+						'type' => [ 'type' => 'string' ],
+					],
+				],
+			],
+		];
+
 		return [
 			'type'                 => 'object',
 			'additionalProperties' => false,
@@ -963,6 +1199,12 @@ class Step_Type_Schema {
 				] ),
 				'exclude_condition' => array_merge( $condition_schema, [
 					'description' => __( 'Contacts matching this segment are excluded from "yes" (sent down "no") even if they matched include_condition.', 'groundhogg' ),
+				] ),
+				'include_filters' => array_merge( $filters_schema, [
+					'description' => __( 'Instead of include_condition: the stored filters, exactly as groundhogg/get-flow returns them. Pass them back unchanged to keep conditions built in the flow editor.', 'groundhogg' ),
+				] ),
+				'exclude_filters' => array_merge( $filters_schema, [
+					'description' => __( 'Instead of exclude_condition: the stored filters, exactly as groundhogg/get-flow returns them.', 'groundhogg' ),
 				] ),
 			],
 		];

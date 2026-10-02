@@ -5,6 +5,8 @@ namespace Groundhogg\Api\V4;
 // Exit if accessed directly
 use Groundhogg\Block_Registry;
 use Groundhogg\Campaign;
+use Groundhogg\Classes\Inbox;
+use Groundhogg\Classes\Message;
 use Groundhogg\Contact;
 use Groundhogg\Email;
 use Groundhogg\Email_Logger;
@@ -22,6 +24,7 @@ use function Groundhogg\enqueue_event;
 use function Groundhogg\get_contactdata;
 use function Groundhogg\get_default_from_email;
 use function Groundhogg\get_default_from_name;
+use function Groundhogg\get_sender_profiles;
 use function Groundhogg\get_object_ids;
 use function Groundhogg\is_sending;
 use function Groundhogg\is_template_site;
@@ -30,7 +33,6 @@ use function Groundhogg\maybe_explode;
 use function Groundhogg\process_events;
 use function Groundhogg\redact;
 use function Groundhogg\send_email_notification;
-use function Groundhogg\track_activity;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -456,6 +458,56 @@ class Emails_Api extends Base_Object_Api {
 
 
 	/**
+	 * Who a composed email is from. A sender profile can be given, by its id from get_sender_profiles(), and a from
+	 * email and name can be given too, which are used in place of the profile's when they are. Without any of them
+	 * it's the default sender.
+	 *
+	 * @param \WP_REST_Request $request
+	 * @param Contact|false    $contact the first recipient, that the merge tags of a profile, like the owner's, are for
+	 *
+	 * @return string[]|\WP_Error [ email, name ]
+	 */
+	protected function resolve_sender( \WP_REST_Request $request, $contact ) {
+
+		$from_email = get_default_from_email();
+		$from_name  = get_default_from_name();
+
+		$profile_id = sanitize_text_field( (string) $request->get_param( 'sender_profile' ) );
+		$profile    = false;
+
+		if ( $profile_id ) {
+
+			$profiles = get_sender_profiles();
+
+			if ( ! isset( $profiles[ $profile_id ] ) ) {
+				return self::ERROR_401( 'invalid_sender_profile', 'Not a valid sender profile.' );
+			}
+
+			$profile    = $profiles[ $profile_id ];
+			$from_email = $profile['from_email'];
+			$from_name  = $profile['from_name'];
+		}
+
+		$from_email = sanitize_email( $request->get_param( 'from_email' ) ) ?: $from_email;
+		$from_name  = sanitize_text_field( $request->get_param( 'from_name' ) ) ?: $from_name;
+
+		// Profiles such as "owner" have merge tags, for the first recipient
+		if ( $profile ) {
+
+			if ( $contact && $contact->exists() ) {
+				$from_email = sanitize_email( do_replacements( $from_email, $contact ) );
+				$from_name  = sanitize_text_field( do_replacements( $from_name, $contact ) );
+			}
+
+			if ( ! is_email( $from_email ) ) {
+				return self::ERROR_401( 'invalid_sender_profile', 'The sender profile could not be resolved to an email address.' );
+			}
+		}
+
+		return [ $from_email, $from_name ];
+	}
+
+	/**
 	 * Really basic send email handler
 	 *
 	 * @param \WP_REST_Request $request
@@ -485,8 +537,13 @@ class Emails_Api extends Base_Object_Api {
 		$contactRecords = array_map_to_contacts( $contactRecords );
 		$contact        = array_shift( $contactRecords );
 
-		$from_email = sanitize_email( $request->get_param( 'from_email' ) ) ?: get_default_from_email();
-		$from_name  = sanitize_text_field( $request->get_param( 'from_name' ) ) ?: get_default_from_name();
+		$from = $this->resolve_sender( $request, $contact );
+
+		if ( is_wp_error( $from ) ) {
+			return $from;
+		}
+
+		[ $from_email, $from_name ] = $from;
 
 		$content = $request->get_param( 'content' );
 
@@ -518,9 +575,30 @@ class Emails_Api extends Base_Object_Api {
 			$headers[] = 'Bcc: ' . implode( ',', $bcc );
 		}
 
+		// what makes it a reply
+		$extra_headers = Message::sanitize_composed_headers( $request->get_param( 'headers' ) );
+
+		if ( is_wp_error( $extra_headers ) ) {
+			return self::ERROR_400( $extra_headers->get_error_code(), $extra_headers->get_error_message() );
+		}
+
+		foreach ( $extra_headers as $header => $value ) {
+			$headers[] = "$header: $value";
+		}
+
 		add_action( 'wp_mail_failed', [ $this, 'handle_wp_mail_error' ] );
 
+		// we assign the Message-ID ourselves, so that a reply can be matched to what we sent
+		$message_id = Message::use_message_id();
+
+		// replies go to the inbox, when there is one
+		if ( $reply_to = Inbox::reply_to( $message_id ) ) {
+			$headers[] = 'Reply-To: ' . $reply_to;
+		}
+
 		$result = \Groundhogg_Email_Services::send_type( $type, $to, $subject, $content, $headers );
+
+		Message::release_message_id();
 
 		if ( $this->has_errors() ) {
 			return $this->get_last_error();
@@ -530,7 +608,7 @@ class Emails_Api extends Base_Object_Api {
 			return self::ERROR_500();
 		}
 
-		$subject = redact( $subject );
+		$response_subject = redact( $subject );
 
 		$all_recipients = array_unique( array_merge( $to, $bcc, $cc ) );
 
@@ -541,17 +619,21 @@ class Emails_Api extends Base_Object_Api {
 				continue;
 			}
 
-			track_activity( $contact, 'composed_email_sent', [], [
-				'subject' => $subject,
-				'from'    => $from_email,
-				'sent_by' => get_current_user_id(),
-				'log_id'  => Email_Logger::get_last_log_id()
+			Message::record_composed_email( $contact, [
+				'subject'      => $subject,
+				'content'      => $content,
+				'from_address' => $from_email,
+				'user_id'      => get_current_user_id(),
+				'email_log_id' => Email_Logger::get_last_log_id() ?: 0,
+				'message_id'   => $message_id,
+				'in_reply_to'  => Message::parse_message_ids( $extra_headers['In-Reply-To'] ?? '' )[0] ?? '',
+				'references'   => $extra_headers['References'] ?? '',
 			] );
 		}
 
 		$result = [
 			'from'    => $from_email,
-			'subject' => $subject,
+			'subject' => $response_subject,
 		];
 
 		if ( Email_Logger::is_enabled() ) {

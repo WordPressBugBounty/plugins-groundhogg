@@ -4,8 +4,11 @@ namespace Groundhogg\Steps\Actions;
 
 use Groundhogg\Step;
 use Groundhogg\Utils\DateTimeHelper;
+use function Groundhogg\bold_it;
 use function Groundhogg\html;
 use function Groundhogg\one_of;
+use function Groundhogg\ordinal_suffix;
+use function Groundhogg\orList;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -176,7 +179,190 @@ class Delay_Timer extends Action {
 	}
 
 	public function generate_step_title( $step ) {
-		return $this->get_setting( 'delay_preview' ) ?: 'Wait 3 days';
+		return $this->get_setting( 'delay_preview' ) ?: self::delay_preview( $this->get_delay_settings( $step ?: $this->get_current_step() ) );
+	}
+
+	/**
+	 * The step's delay settings, with defaults for anything missing
+	 *
+	 * @param Step $step
+	 *
+	 * @return array
+	 */
+	protected function get_delay_settings( Step $step ) {
+		return wp_parse_args( $step->get_meta(), [
+			'delay_amount'      => 3,
+			'delay_type'        => 'days',
+			'run_on_type'       => 'any',
+			'run_when'          => 'now',
+			'run_time'          => '09:00:00',
+			'send_in_timezone'  => false,
+			'run_time_to'       => '17:00:00',
+			'run_on_dow_type'   => 'any', // Run on days of week type
+			'run_on_dow'        => [], // Run on days of week
+			'run_on_month_type' => 'any', // Run on month type
+			'run_on_months'     => [], // Run on months
+			'run_on_dom'        => [], // Run on days of month,
+		] );
+	}
+
+	/**
+	 * Human-readable summary of the delay settings.
+	 * Mirrors delayTimerName() in assets/js/admin/funnels/funnel-steps.js, which computes delay_preview in the editor,
+	 * so steps whose settings were set some other way (abilities, REST, imports) still get an accurate title.
+	 *
+	 * @param array $settings
+	 *
+	 * @return string
+	 */
+	public static function delay_preview( array $settings ) {
+
+		$format_time = function ( $time ) {
+			try {
+				return bold_it( ( new DateTimeHelper( '2021-01-01 ' . $time ) )->wpTimeFormat() );
+			} catch ( \Exception $e ) {
+				return bold_it( esc_html( $time ) );
+			}
+		};
+
+		$days_of_week = [
+			'monday'    => __( 'Monday', 'groundhogg' ),
+			'tuesday'   => __( 'Tuesday', 'groundhogg' ),
+			'wednesday' => __( 'Wednesday', 'groundhogg' ),
+			'thursday'  => __( 'Thursday', 'groundhogg' ),
+			'friday'    => __( 'Friday', 'groundhogg' ),
+			'saturday'  => __( 'Saturday', 'groundhogg' ),
+			'sunday'    => __( 'Sunday', 'groundhogg' ),
+		];
+
+		$determiners = [
+			'first'  => __( 'First', 'groundhogg' ),
+			'second' => __( 'Second', 'groundhogg' ),
+			'third'  => __( 'Third', 'groundhogg' ),
+			'fourth' => __( 'Fourth', 'groundhogg' ),
+			'last'   => __( 'Last', 'groundhogg' ),
+		];
+
+		$months = [
+			'january'   => __( 'January', 'groundhogg' ),
+			'february'  => __( 'February', 'groundhogg' ),
+			'march'     => __( 'March', 'groundhogg' ),
+			'april'     => __( 'April', 'groundhogg' ),
+			'may'       => __( 'May', 'groundhogg' ),
+			'june'      => __( 'June', 'groundhogg' ),
+			'july'      => __( 'July', 'groundhogg' ),
+			'august'    => __( 'August', 'groundhogg' ),
+			'september' => __( 'September', 'groundhogg' ),
+			'october'   => __( 'October', 'groundhogg' ),
+			'november'  => __( 'November', 'groundhogg' ),
+			'december'  => __( 'December', 'groundhogg' ),
+		];
+
+		// Bold the labels of the selected keys, skipping unknown ones
+		$bold_labels = function ( $selected, $labels ) {
+			$selected = array_filter( (array) $selected, function ( $key ) use ( $labels ) {
+				return isset( $labels[ $key ] );
+			} );
+
+			return array_values( array_map( function ( $key ) use ( $labels ) {
+				return bold_it( $labels[ $key ] );
+			}, $selected ) );
+		};
+
+		$months_list = $settings['run_on_month_type'] === 'specific'
+			? orList( $bold_labels( $settings['run_on_months'], $months ) )
+			: bold_it( __( 'any month', 'groundhogg' ) );
+
+		$preview = [];
+
+		switch ( $settings['run_when'] ) {
+			default:
+			case 'now':
+				$preview[] = _x( 'at any time', 'run at any time of day', 'groundhogg' );
+				break;
+			case 'later':
+				/* translators: %s: a specific time like "09:00:00" */
+				$preview[] = sprintf( _x( 'at %s', 'at a specific time', 'groundhogg' ), $format_time( $settings['run_time'] ) );
+				break;
+			case 'between':
+				/* translators: 1: a specific time like "09:00:00", 2: another specific time like "17:00:00" */
+				$preview[] = sprintf( _x( 'between %1$s and %2$s', 'within a time from', 'groundhogg' ), $format_time( $settings['run_time'] ), $format_time( $settings['run_time_to'] ) );
+				break;
+		}
+
+		switch ( $settings['run_on_type'] ) {
+			default:
+			case 'any':
+				$run = _x( 'run', 'verb meaning to start a process', 'groundhogg' );
+				break;
+			case 'weekday':
+				$run = _x( 'run on <b>a weekday</b>', 'verb meaning to start a process - on a weekday', 'groundhogg' );
+				break;
+			case 'weekend':
+				$run = _x( 'run on <b>a weekend</b>', 'verb meaning to start a process - on a weekend', 'groundhogg' );
+				break;
+			case 'day_of_week':
+				$dow_list = orList( $bold_labels( $settings['run_on_dow'], $days_of_week ) );
+
+				if ( isset( $determiners[ $settings['run_on_dow_type'] ] ) ) {
+					/* translators: 1: the occurrence within the month, like "first", 2: a day of the week */
+					$days = sprintf( _x( 'the %1$s %2$s', 'the - determiner - day of week', 'groundhogg' ), strtolower( $determiners[ $settings['run_on_dow_type'] ] ), $dow_list );
+				} else {
+					/* translators: %s: a day of the week */
+					$days = sprintf( _x( 'any %s', 'any - day of the week', 'groundhogg' ), $dow_list );
+				}
+
+				/* translators: 1: a list of ordinal days of the month (1st, 2nd, 3rd, etc...), 2: a list of months (February, March, April) */
+				$run = sprintf( _x( 'run on %1$s of %2$s', 'verb meaning to start on process - on a specific day of a specific month', 'groundhogg' ), $days, $months_list );
+				break;
+			case 'day_of_month':
+				$doms = array_map( function ( $dom ) {
+					return bold_it( $dom === 'last' ? __( 'last day', 'groundhogg' ) : ordinal_suffix( $dom ) );
+				}, array_values( (array) $settings['run_on_dom'] ) );
+
+				$days = empty( $doms )
+					? bold_it( __( 'any day', 'groundhogg' ) )
+					/* translators: %s: and ordinal day of the month (1st, 2nd, 3rd, etc...) */
+					: sprintf( _x( 'the %s', 'the - ordinal day of month', 'groundhogg' ), orList( $doms ) );
+
+				/* translators: 1: a list of ordinal days of the month (1st, 2nd, 3rd, etc...), 2: a list of months (February, March, April) */
+				$run = sprintf( _x( 'run on %1$s of %2$s', 'verb meaning to start on process - on a specific day of a specific month', 'groundhogg' ), $days, $months_list );
+				break;
+		}
+
+		array_unshift( $preview, $run );
+
+		if ( $settings['delay_type'] !== 'none' ) {
+
+			$amount = absint( $settings['delay_amount'] );
+
+			switch ( $settings['delay_type'] ) {
+				case 'minutes':
+					$unit = _n( 'minute', 'minutes', $amount, 'groundhogg' );
+					break;
+				case 'hours':
+					$unit = _n( 'hour', 'hours', $amount, 'groundhogg' );
+					break;
+				default:
+				case 'days':
+					$unit = _n( 'day', 'days', $amount, 'groundhogg' );
+					break;
+				case 'weeks':
+					$unit = _n( 'week', 'weeks', $amount, 'groundhogg' );
+					break;
+				case 'months':
+					$unit = _n( 'month', 'months', $amount, 'groundhogg' );
+					break;
+				case 'years':
+					$unit = _n( 'year', 'years', $amount, 'groundhogg' );
+					break;
+			}
+
+			/* translators: %s: a duration of time like "3 days" */
+			array_unshift( $preview, sprintf( _x( 'Wait at least %s and then', 'wait for a duration', 'groundhogg' ), bold_it( $amount . ' ' . $unit ) ) );
+		}
+
+		return ucfirst( implode( ' ', $preview ) );
 	}
 
 	public function get_settings_schema() {
@@ -265,7 +451,14 @@ class Delay_Timer extends Action {
 			'run_on_dom'        => [
 				'default'  => [],
 				'sanitize' => function ( $value ) {
-					return array_intersect( array_map( 'absint', $value ), range( 1, 31 ) );
+					// 'last' must stay a string so calc_run_time()'s strict === 'last' check matches
+					$days = array_map( function ( $day ) {
+						return $day === 'last' ? 'last' : absint( $day );
+					}, (array) $value );
+
+					return array_values( array_filter( $days, function ( $day ) {
+						return $day === 'last' || ( $day >= 1 && $day <= 31 );
+					} ) );
 				}
 			],
 		];
@@ -283,20 +476,7 @@ class Delay_Timer extends Action {
 	 */
 	public function calc_run_time( int $baseTimestamp, Step $step ): int {
 
-		$settings = wp_parse_args( $step->get_meta(), [
-			'delay_amount'      => 3,
-			'delay_type'        => 'days',
-			'run_on_type'       => 'any',
-			'run_when'          => 'now',
-			'run_time'          => '09:00:00',
-			'send_in_timezone'  => false,
-			'run_time_to'       => '17:00:00',
-			'run_on_dow_type'   => 'any', // Run on days of week type
-			'run_on_dow'        => [], // Run on days of week
-			'run_on_month_type' => 'any', // Run on month type
-			'run_on_months'     => [], // Run on months
-			'run_on_dom'        => [], // Run on days of month,
-		] );
+		$settings = $this->get_delay_settings( $step );
 
 		$contact = $step->enqueued_contact;
 		$date    = new DelayDateTime( $baseTimestamp );
@@ -318,7 +498,8 @@ class Delay_Timer extends Action {
 
 				$date->modify( $settings['run_time'] );
 
-				if ( $date->isPast() ) {
+				// relative to the base time, not the current time, so historical base times work too
+				if ( $date->getTimestamp() < $baseTimestamp ) {
 					$date->modify( '+1 day' );
 				}
 
@@ -342,116 +523,8 @@ class Delay_Timer extends Action {
 				break;
 		}
 
-		$date->setMin();
-
-		$next_year = date( 'Y', strtotime( '+1 year', $baseTimestamp ) );
-		$time      = $date->format( 'H:i:s' );
-
-		// The date to run on
-		switch ( $settings['run_on_type'] ) {
-			default:
-			case 'any':
-				// Do nothing :)
-				break;
-			case 'weekday':
-				// If it is not a weekday modify to the next Monday
-				if ( ! in_array( $date->format( 'l' ), [ 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday' ] ) ) {
-					$date->modify( "next Monday {$time}" );
-				}
-				break;
-			case 'weekend':
-				// If is a weekday modify to the following saturday
-				if ( ! in_array( $date->format( 'l' ), [ 'Saturday', 'Sunday' ] ) ) {
-					$date->modify( "next Saturday {$time}" );
-				}
-				break;
-			case 'day_of_week':
-
-				$run_on_dow_type       = $settings['run_on_dow_type'];
-				$run_on_month_type     = $settings['run_on_month_type'];
-				$selected_days_of_week = $settings['run_on_dow'];
-
-				// Generate a list of all possible combinations of days and months
-				// TODO There is probably a more efficient way to do this other than brute forcing it.
-				foreach ( $selected_days_of_week as $day_of_week ) {
-
-					if ( $run_on_month_type !== 'any' ) {
-
-						foreach ( $settings['run_on_months'] as $month ) {
-
-							if ( $run_on_dow_type === 'any' ) {
-								foreach ( [ 'first', 'second', 'third', 'fourth', 'last' ] as $type ) {
-									$date->minMax( "$type $day_of_week of $month $time" );
-									$date->minMax( "$type $day_of_week of $month $next_year $time" );
-								}
-							} else {
-								$date->minMax( "$run_on_dow_type $day_of_week of $month $time" );
-								$date->minMax( "$run_on_dow_type $day_of_week of $month $next_year $time" );
-							}
-
-						}
-
-					} else {
-
-						if ( $run_on_dow_type === 'any' ) {
-							$date->minMax( "$day_of_week $time" );
-							$date->minMax( "next $day_of_week $time" );
-						} else {
-							$date->minMax( "$run_on_dow_type $day_of_week of this month $time" );
-							$date->minMax( "$run_on_dow_type $day_of_week of next month $time" );
-						}
-
-					}
-
-				}
-
-				$date->useMax();
-
-				break;
-			case 'day_of_month':
-
-				// Generate a list of all possible combinations of days and months
-				// TODO There is probably a more efficient way to do this other than brute forcing it.
-				foreach ( $settings['run_on_dom'] as $day_of_month ) {
-
-					if ( $settings['run_on_month_type'] !== 'any' ) {
-
-						foreach ( $settings['run_on_months'] as $month ) {
-
-							if ( $day_of_month === 'last' ) {
-								$date->minMax( "last day of $month this year" );
-								$date->minMax( "last day of $month $next_year" );
-							} else {
-
-								// do this year and next year
-								$date->minMax( "$month $day_of_month" );
-								$date->minMax( "$month $day_of_month $next_year" );
-							}
-
-						}
-
-					} else {
-						if ( $day_of_month === 'last' ) {
-							$date->minMax( "last day of this month" );
-							$date->minMax( "last day of next month" );
-						} else {
-
-							$thisMonth = $date->format( 'F' );
-
-							$date->minMax( "$thisMonth $day_of_month" );
-
-							$nextMonthDate = clone $date;
-							$nextMonthDate->modify( '+1 month' );
-
-							$date->minMax( $nextMonthDate->format( "Y-m-$day_of_month" ) );
-
-						}
-					}
-				}
-
-				$date->useMax();
-
-				break;
+		if ( in_array( $settings['run_on_type'], [ 'weekday', 'weekend', 'day_of_week', 'day_of_month' ] ) ) {
+			$this->next_matching_day( $date, $settings );
 		}
 
 		// if the calculated time is now, lets advanced the base time by a minute...
@@ -461,5 +534,113 @@ class Delay_Timer extends Action {
 		}
 
 		return $date->getTimestamp();
+	}
+
+	/**
+	 * Move the date forward to the first day, starting with the date itself, that matches the run_on_* settings.
+	 * Walks the calendar a day at a time, skipping whole months that aren't selected, and keeps the time of day.
+	 * If no day matches within 5 years (e.g. the 30th of February) the date is left unchanged.
+	 *
+	 * @param DateTimeHelper $date
+	 * @param array          $settings
+	 *
+	 * @return void
+	 */
+	protected function next_matching_day( DateTimeHelper $date, array $settings ) {
+
+		switch ( $settings['run_on_type'] ) {
+			case 'weekday':
+				$matches = function ( $date ) {
+					return $date->format( 'N' ) <= 5;
+				};
+				break;
+			case 'weekend':
+				$matches = function ( $date ) {
+					return $date->format( 'N' ) >= 6;
+				};
+				break;
+			case 'day_of_week':
+
+				$days_of_week = array_map( 'strtolower', (array) $settings['run_on_dow'] );
+				$dow_type     = $settings['run_on_dow_type'];
+				$nth          = array_search( $dow_type, [ 1 => 'first', 'second', 'third', 'fourth' ] );
+
+				if ( empty( $days_of_week ) ) {
+					return;
+				}
+
+				$matches = function ( $date ) use ( $days_of_week, $dow_type, $nth ) {
+
+					if ( ! in_array( strtolower( $date->format( 'l' ) ), $days_of_week ) ) {
+						return false;
+					}
+
+					$day = (int) $date->format( 'j' );
+
+					if ( $dow_type === 'last' ) {
+						return $day + 7 > (int) $date->format( 't' );
+					}
+
+					return ! $nth || (int) ceil( $day / 7 ) === $nth;
+				};
+
+				break;
+			case 'day_of_month':
+
+				$days_of_month = array_map( 'intval', array_filter( (array) $settings['run_on_dom'], 'is_numeric' ) );
+				$last_day      = in_array( 'last', (array) $settings['run_on_dom'], true );
+
+				if ( empty( $days_of_month ) && ! $last_day ) {
+					return;
+				}
+
+				$matches = function ( $date ) use ( $days_of_month, $last_day ) {
+					$day = (int) $date->format( 'j' );
+
+					return in_array( $day, $days_of_month, true ) || ( $last_day && $day === (int) $date->format( 't' ) );
+				};
+
+				break;
+			default:
+				return;
+		}
+
+		$months = false;
+
+		if ( $settings['run_on_month_type'] !== 'any' && in_array( $settings['run_on_type'], [ 'day_of_week', 'day_of_month' ] ) ) {
+			$months = array_map( 'strtolower', (array) $settings['run_on_months'] );
+
+			if ( empty( $months ) ) {
+				return;
+			}
+		}
+
+		$start = $date->getTimestamp();
+		$time  = array_map( 'intval', explode( ':', $date->format( 'H:i:s' ) ) );
+		$limit = ( clone $date )->modify( '+5 years' ); // long enough for the 29th of February
+
+		while ( $date < $limit ) {
+
+			[ $year, $month, $day ] = array_map( 'intval', explode( '-', $date->format( 'Y-n-j' ) ) );
+
+			if ( $months && ! in_array( strtolower( $date->format( 'F' ) ), $months ) ) {
+				$date->setDate( $year, $month + 1, 1 );
+				continue;
+			}
+
+			if ( $matches( $date ) ) {
+
+				// setDate() shifts the time when it lands in a DST gap, so restore the wall clock time
+				if ( $date->getTimestamp() !== $start ) {
+					$date->setTime( ...$time );
+				}
+
+				return;
+			}
+
+			$date->setDate( $year, $month, $day + 1 );
+		}
+
+		$date->setTimestamp( $start );
 	}
 }

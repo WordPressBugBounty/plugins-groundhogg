@@ -2,7 +2,9 @@
 
 namespace Groundhogg;
 
+use Groundhogg\Background\Add_Activity_Indexes;
 use Groundhogg\Background\Iterate_Over_List;
+use Groundhogg\Background\Migrate_Composed_Emails;
 use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\Steps\Actions\Send_Email;
 
@@ -359,6 +361,21 @@ class Main_Updater extends Old_Updater {
 				'callback'    => function () {
 					get_db( 'custom_objects' )->create_table();
 					get_db( 'custom_object_meta' )->create_table();
+				},
+			],
+			'4.9' => [
+				'automatic'   => true,
+				'description' => __( 'Add the messages table, move composed emails from activity to messages, and add indexes to the activity table for faster reports and segments.', 'groundhogg' ),
+				'callback'    => function () {
+					get_db( 'messages' )->create_table();
+
+					if ( ! db()->activity->has_performance_indexes() ) {
+						// building an index on a large activity table can take minutes, so do it online in the background
+						Background_Tasks::add( new Add_Activity_Indexes() );
+					}
+
+					// queued after the indexes so that finding the composed emails benefits from them
+					Background_Tasks::add( new Migrate_Composed_Emails() );
 				},
 			],
 		];

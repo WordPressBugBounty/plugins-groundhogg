@@ -32,6 +32,21 @@
     dry       : true,
   })
 
+  // the request for the selected contact, so redraws while it loads don't ask again
+  let fetchingContact = null
+
+  /**
+   * The selected contact couldn't be loaded, like when it was deleted, so ask for another one
+   */
+  const forgetContact = () => {
+    fetchingContact = null
+    localStorage.removeItem('gh-simulate-contact-id')
+    State.set({
+      contactId: null,
+    })
+    morph()
+  }
+
   let contactId = localStorage.getItem('gh-simulate-contact-id')
 
   if (contactId) {
@@ -65,7 +80,7 @@
         })
 
         // fetch the contact from the API in the event that it's properties or tags were updated.
-        Groundhogg.stores.contacts.fetchItem(State.contactId).then(morph)
+        Groundhogg.stores.contacts.fetchItem(State.contactId).then(morph).catch(forgetContact)
 
         morph()
         return
@@ -233,16 +248,31 @@
           ToolTip('View profile', 'top'),
         ]),
       ]),
-    }) : Button({
-      id     : 'select-contact-for-simulator',
-      onClick: handleChangeContact,
-    }, 'Select a contact'),
+    }) : Div({
+      className: 'inside display-flex space-between align-center gap-10',
+    }, [
+      Pg({
+        className: 'no-margin-top no-margin-bottom',
+      }, __('Select a contact to simulate with', 'groundhogg')),
+      Button({
+        id       : 'select-contact-for-simulator',
+        className: 'gh-button secondary',
+        onClick  : handleChangeContact,
+      }, __('Select', 'groundhogg')),
+    ]),
   ])
 
   const FlowSimulator = () => {
 
     if (State.contactId && !Groundhogg.stores.contacts.has(State.contactId)) {
-      Groundhogg.stores.contacts.maybeFetchItem(State.contactId).then(morph)
+
+      if (!fetchingContact) {
+        fetchingContact = Groundhogg.stores.contacts.maybeFetchItem(State.contactId).then(() => {
+          fetchingContact = null
+          morph()
+        }).catch(forgetContact)
+      }
+
       return Div({ id: 'flow-simulator' }, [
         Div({
           className: 'skeleton-loading',

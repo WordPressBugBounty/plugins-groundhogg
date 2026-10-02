@@ -99,8 +99,6 @@ class Filters {
 	/**
 	 * Parse a given filter set based on the registered filters
 	 *
-	 * @throws FilterException
-	 *
 	 * @param Where          $where
 	 * @param bool           $negate  Whether this is NOT IN or IN
 	 *
@@ -137,19 +135,52 @@ class Filters {
 
 			// And Group
 			foreach ( $filter_group as $filter ) {
-				$this->parse_filter( $filter, $ands );
+				try {
+					$this->parse_filter( $filter, $ands );
+				} catch ( \Exception $exception ) {
+					$this->handle_filter_error( $exception, $filter, $ands );
+				}
 			}
 		}
 	}
 
 	/**
+	 * A filter that can't be applied must never widen the result set, so the whole AND group
+	 * it belongs to is made to match nothing.
+	 *
+	 * @param \Exception $exception
+	 * @param mixed      $filter
+	 * @param Where      $where the AND group the filter belongs to
+	 *
+	 * @return void
+	 */
+	protected function handle_filter_error( \Exception $exception, $filter, Where $where ) {
+
+		$where->addCondition( '1=0' );
+
+		_doing_it_wrong( __METHOD__, esc_html( $exception->getMessage() ), '4.8.4' );
+
+		/**
+		 * Fires when a filter could not be applied, either because its type is not registered
+		 * or its callback threw. The filter's AND group will match nothing.
+		 *
+		 * @param \Exception $exception
+		 * @param mixed      $filter
+		 * @param Where      $where
+		 */
+		do_action( 'groundhogg/query/filter_error', $exception, $filter, $where );
+	}
+
+	/**
 	 * Given a date range, create a before & and after
 	 *
-	 * @param array $filter
+	 * @param array    $filter
+	 * @param bool     $format
+	 * @param int|null $now    timestamp the range is relative to, defaults to the current time
 	 *
 	 * @return DateTimeHelper[]
 	 */
-	public static function get_before_and_after_from_date_range( $filter, $format = false ) {
+	public static function get_before_and_after_from_date_range( $filter, $format = false, $now = null ) {
 
 		$filter = wp_parse_args( $filter, [
 			'date_range' => 'any',
@@ -158,8 +189,8 @@ class Filters {
 			'days'       => 0, // any positive integer
 		] );
 
-		$after  = new DateTimeHelper(); // now
-		$before = new DateTimeHelper(); // now
+		$after  = new DateTimeHelper( $now ?? 'now' );
+		$before = new DateTimeHelper( $now ?? 'now' );
 
 		switch ( $filter['date_range'] ) {
 			default:
@@ -351,6 +382,26 @@ class Filters {
 	}
 
 	/**
+	 * The time relative date ranges should be based on for a query.
+	 * Queries that allow stale results use the start of the current minute, so rolling ranges like
+	 * "in the last 7 days" produce the same SQL, and the same cache key, for the whole minute.
+	 *
+	 * @param Query $query
+	 *
+	 * @return int|null null for the current time
+	 */
+	public static function get_now_for_query( Query $query ) {
+
+		if ( ! $query->allows_stale_results() ) {
+			return null;
+		}
+
+		$now = time();
+
+		return $now - ( $now % MINUTE_IN_SECONDS );
+	}
+
+	/**
 	 * Handler for date related query filter clauses
 	 *
 	 * @param string          $column the table column
@@ -377,7 +428,7 @@ class Filters {
 
 		try {
 
-			[ 'before' => $before, 'after' => $after ] = self::get_before_and_after_from_date_range( $filter );
+			[ 'before' => $before, 'after' => $after ] = self::get_before_and_after_from_date_range( $filter, false, self::get_now_for_query( $where->query ) );
 
 			if ( method_exists( $before, $format ) ) {
 				$before = call_user_func( [ $before, $format ] );
@@ -467,6 +518,58 @@ class Filters {
 	}
 
 	/**
+	 * Parse a number that may be formatted with thousands separators and either a decimal point or
+	 * a decimal comma. "1.000,99", "1,000.99" and "1000,99" all give 1000.99.
+	 *
+	 * - Both "." and "," present: whichever comes last is the decimal separator.
+	 * - One separator used more than once: it's a thousands separator, "1.000.000" is 1000000.
+	 * - One separator used once: it's a thousands separator if followed by exactly 3 digits and preceded
+	 *   by 1-3 digits not starting with 0, so "1,000" is 1000. Otherwise it's the decimal, "0.125" is 0.125.
+	 *   Which means "2.125" is read as 2125.
+	 *
+	 * @param string $value
+	 *
+	 * @return int|float float if the value has a decimal part, int otherwise
+	 */
+	public static function parse_number( string $value ) {
+
+		// Ignore anything that isn't part of the number, like currency symbols and spaces
+		$value = preg_replace( '/[^0-9.,\-]/', '', $value );
+
+		$negative = str_starts_with( $value, '-' );
+		$value    = str_replace( '-', '', $value );
+
+		$last_dot   = strrpos( $value, '.' );
+		$last_comma = strrpos( $value, ',' );
+		$decimal    = false;
+
+		if ( $last_dot !== false && $last_comma !== false ) {
+			$decimal = $last_dot > $last_comma ? '.' : ',';
+		} else if ( $last_dot !== false || $last_comma !== false ) {
+			$separator = $last_dot !== false ? '.' : ',';
+
+			if ( substr_count( $value, $separator ) === 1 ) {
+				[ $whole, $fraction ] = explode( $separator, $value );
+
+				$is_thousands = strlen( $fraction ) === 3 && preg_match( '/^[1-9]\d{0,2}$/', $whole );
+
+				if ( ! $is_thousands ) {
+					$decimal = $separator;
+				}
+			}
+		}
+
+		if ( $decimal ) {
+			$thousands = $decimal === '.' ? ',' : '.';
+			$number    = floatval( str_replace( [ $thousands, $decimal ], [ '', '.' ], $value ) );
+		} else {
+			$number = intval( str_replace( [ '.', ',' ], '', $value ) );
+		}
+
+		return $negative ? - $number : $number;
+	}
+
+	/**
 	 * Simple number comparison filter
 	 *
 	 * @param $column
@@ -500,11 +603,7 @@ class Filters {
 
 		// Convert to float or int to be on the safe side
 		if ( is_string( $value ) ) {
-			if ( str_contains( $value, ',' ) ) {
-				$value = floatval( $value );
-			} else {
-				$value = intval( $value );
-			}
+			$value = self::parse_number( $value );
 		}
 
 		if ( is_float( $value ) ) {

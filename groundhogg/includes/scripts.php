@@ -277,6 +277,7 @@ class Scripts {
 			'jquery-ui-sortable',
 			'groundhogg-admin-tasks',
 			'groundhogg-admin-notes',
+			'groundhogg-admin-messages',
 			'groundhogg-admin-components',
 			'groundhogg-admin-properties',
 			'groundhogg-admin',
@@ -313,6 +314,19 @@ class Scripts {
 			'groundhogg-admin-element',
 			'groundhogg-admin-data',
 			'groundhogg-admin-saved-replies',
+		], GROUNDHOGG_VERSION );
+
+		wp_register_script( 'groundhogg-admin-messages', GROUNDHOGG_ASSETS_URL . 'js/admin/components/messages' . $dot_min . '.js', [
+			'groundhogg-admin-element',
+			'groundhogg-admin-data',
+			'groundhogg-make-el',
+		], GROUNDHOGG_VERSION );
+
+		wp_register_script( 'groundhogg-admin-incoming-messages', GROUNDHOGG_ASSETS_URL . 'js/admin/settings/incoming-messages' . $dot_min . '.js', [
+			'groundhogg-admin-element',
+			'groundhogg-admin-data',
+			'groundhogg-admin-components',
+			'groundhogg-make-el',
 		], GROUNDHOGG_VERSION );
 
 		wp_register_script( 'groundhogg-admin-saved-replies', GROUNDHOGG_ASSETS_URL . 'js/admin/components/replies' . $dot_min . '.js', [
@@ -381,9 +395,18 @@ class Scripts {
 
 		wp_register_script( 'groundhogg-admin-flow-simulator', GROUNDHOGG_ASSETS_URL . 'js/admin/funnels/simulator' . $dot_min . '.js', [], GROUNDHOGG_VERSION, true );
 		wp_register_script( 'groundhogg-admin-flow-logic-lines', GROUNDHOGG_ASSETS_URL . 'js/admin/funnels/logic-lines' . $dot_min . '.js', [], GROUNDHOGG_VERSION, true );
+		// after groundhogg-admin, which (re)defines the Groundhogg global these add to
+		wp_register_script( 'groundhogg-admin-flow-store', GROUNDHOGG_ASSETS_URL . 'js/admin/funnels/flow-store' . $dot_min . '.js', [
+			'groundhogg-admin',
+		], GROUNDHOGG_VERSION, true );
+		wp_register_script( 'groundhogg-admin-flow-canvas', GROUNDHOGG_ASSETS_URL . 'js/admin/funnels/flow-canvas' . $dot_min . '.js', [
+			'groundhogg-admin-flow-store',
+		], GROUNDHOGG_VERSION, true );
 
 		wp_register_script( 'groundhogg-admin-funnel-editor', GROUNDHOGG_ASSETS_URL . 'js/admin/funnels/funnel-editor' . $dot_min . '.js', [
 			'jquery',
+			'groundhogg-make-el',
+			'groundhogg-admin-flow-canvas',
 //			'groundhogg-leader-line',
 			'groundhogg-admin',
 			'groundhogg-admin-element',
@@ -395,8 +418,14 @@ class Scripts {
 			'groundhogg-admin-funnel-scheduler',
 		], GROUNDHOGG_VERSION, true );
 
+		wp_register_script( 'groundhogg-admin-step-titles', GROUNDHOGG_ASSETS_URL . 'js/admin/funnels/step-titles' . $dot_min . '.js', [
+			'wp-i18n',
+			'groundhogg-admin',
+		], GROUNDHOGG_VERSION, true );
+
 		wp_register_script( 'groundhogg-admin-funnel-steps', GROUNDHOGG_ASSETS_URL . 'js/admin/funnels/funnel-steps' . $dot_min . '.js', [
-			'groundhogg-admin-funnel-editor'
+			'groundhogg-admin-funnel-editor',
+			'groundhogg-admin-step-titles',
 		] );
 
 		wp_register_script( 'groundhogg-admin-form-builder', GROUNDHOGG_ASSETS_URL . 'js/admin/forms/form-builder' . $dot_min . '.js', [ 'jquery' ], GROUNDHOGG_VERSION, true );
@@ -438,9 +467,11 @@ class Scripts {
 			'wp-edit-post'
 		], GROUNDHOGG_VERSION );
 
-		wp_register_script( 'groundhogg-admin-guided-setup', GROUNDHOGG_ASSETS_URL . 'js/admin/features/setup' . $dot_min . '.js', [
+		wp_register_script( 'groundhogg-admin-guided-setup', GROUNDHOGG_ASSETS_URL . 'js/admin/features/guided-setup-v2' . $dot_min . '.js', [
+			'groundhogg-make-el',
 			'groundhogg-admin-element',
 			'groundhogg-admin-data',
+			'wp-i18n',
 		], GROUNDHOGG_VERSION, true );
 
 		wp_register_script( 'groundhogg-troubleshooter', GROUNDHOGG_ASSETS_URL . 'js/admin/features/troubleshooter' . $dot_min . '.js', [
@@ -529,6 +560,7 @@ class Scripts {
 			'groundhogg-make-el',
 			'groundhogg-admin-remote-notifications',
 			'groundhogg-admin-tasks',
+			'groundhogg-admin-messages',
 			'groundhogg-admin-components',
 			'groundhogg-admin-reporting',
 			'jquery-ui-sortable'
@@ -627,6 +659,8 @@ class Scripts {
 						'submissions' => rest_url( Base_Api::NAME_SPACE . '/submissions' ),
 						'tasks'       => rest_url( Base_Api::NAME_SPACE . '/tasks' ),
 						'email_log'   => rest_url( Base_Api::NAME_SPACE . '/email_log' ),
+						'messages'    => rest_url( Base_Api::NAME_SPACE . '/messages' ),
+						'inbox'       => rest_url( Base_Api::NAME_SPACE . '/inbox' ),
 					]
 				]
 			],
@@ -644,11 +678,18 @@ class Scripts {
 			'filters'          => [
 				'optin_status'                 => Preferences::get_preference_names(),
 				'owners'                       => array_map( fn( $user ) => new Safe_WP_User( $user ), array_values( has_team() ? get_team() : get_owners() ) ),
+				'sender_profiles'              => get_sender_profiles(),
 				'current'                      => get_request_var( 'filters', [] ),
 				'roles'                        => get_editable_roles(),
 				'countries'                    => utils()->location->get_countries_list(),
 				'gh_contact_custom_properties' => Properties::instance()->get_all(),
 				'unsubReasons'                 => get_unsub_reasons(),
+				// whether a reply from a contact comes back into Messages by itself, see Inbox::is_active(). The messages
+				// component shows a notice when it doesn't, has_license is the same check the settings page uses
+				'messages_inbox'               => [
+					'active'      => \Groundhogg\Classes\Inbox::is_active(),
+					'has_license' => (bool) \Groundhogg\Classes\Inbox_Client::license_key(),
+				],
 			],
 			'managed_page'     => [
 				'root' => managed_page_url()
@@ -701,6 +742,7 @@ class Scripts {
 			'groundhogg-admin-contact-editor',
 			'groundhogg-admin-tasks',
 			'groundhogg-admin-notes',
+			'groundhogg-admin-messages',
 			'groundhogg-admin-remote-notifications',
 			'groundhogg-admin-form-builder-v2',
 			'groundhogg-admin-flow-simulator',

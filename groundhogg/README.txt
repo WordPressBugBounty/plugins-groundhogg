@@ -6,7 +6,7 @@ Donate link: https://groundhogg.io/pricing/
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 4.8.3
+Stable tag: 4.9
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl.md
 
@@ -391,6 +391,68 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 
 == Changelog ==
 
+= 4.9 (2026-10-01) =
+* ADDED Receive replies in Groundhogg. Turn on Incoming Messages in Settings > Email (needs an active Groundhogg license), then switch on "Save replies as messages" in an email's settings, and replies to it are saved to the contact who replied instead of going to your own mailbox. You can also BCC your site's private inbox address to keep a copy of emails you send from your own mailbox.
+ * A Messages tab in the contact record shows your conversation with each contact, the emails you've sent them and their replies, laid out like a chat. Emails you composed to contacts before this update are moved into it in the background.
+ * A "Replies" dashboard widget lists contacts who've replied and haven't been read yet. Open a conversation right from the dashboard to read it, reply, or mark it read or unread.
+ * When composing an email to a contact, choose who it's from out of your sender profiles.
+* ADDED A new, shorter guided setup that gets your site ready to send: your business and who emails come from (with details filled in from WooCommerce or Easy Digital Downloads), privacy, your license, receiving replies, and updates. The last step helps you get started with AI, invite your team, and add your site's users as contacts.
+* ADDED Flow abilities for AI assistants.
+ * "Get Flow", "Edit Flow", "Publish Flow Changes" and "Discard Flow Changes" abilities, so an AI assistant can read an existing flow and add, change, move, duplicate, lock or delete its steps. Changes to an active flow are staged until they're published, the same as in the flow editor.
+ * Segments used by the abilities can target contacts by behavior: email opens and clicks, page visits, form submissions, flow conversions, and other activity. They can also exclude another segment, and contact searches link to the matching contacts in the Contacts page.
+ * The simulate abilities can run against a flow's unpublished changes, so a change can be tested before it's published.
+* ADDED When you publish changes to a flow or activate it, you choose what happens to contacts waiting at steps you deleted: cancel their events, or move them to another step. Before, they were silently removed from the flow. Deleted steps that contacts have already been through are archived, so their history and reports still work.
+* TWEAKED The flow editor has been rebuilt to be much faster. Adding, moving, deleting and changing steps shows right away and saves in the background, and undo and redo now cover step settings, duplicated steps and pasted steps too.
+* TWEAKED If a flow or an email is changed from somewhere else while you have it open in the editor, the editor tells you and offers to reload.
+* TWEAKED Public form submissions are limited to 20 per form, per IP address, every 10 minutes. People who can add contacts aren't limited.
+* TWEAKED The send time optimization option is hidden in the broadcast scheduler for now.
+ * Only one person can edit a flow at a time, so two people can't overwrite each other's changes. The flow is unlocked as soon as its editor is closed.
+ * Duplicating a step with branches, like a Yes/No, copies the steps in its branches too, and steps copied from one flow can be pasted into another.
+ * Steps that other steps rely on, like the step a Reroute goes to or the step another flow's "Add to Flow" starts at, can't be deleted until those steps are changed.
+ * The search in the add steps panel stays while you switch between Triggers, Actions and Logic.
+ * The flow editor tour is written for people new to Groundhogg.
+* TWEAKED Faster reports, segments and contact timelines.
+ * Segments, reports, and contact timelines that filter activity by type or by contact and date are faster, thanks to new indexes on the activity table. Existing sites get them from a background task after updating.
+ * Reports and contact counts are cached, so dashboards and reports load faster.
+* TWEAKED Number filters in contact searches understand numbers formatted for your locale, and the flow, step and email filters can match more than one at a time.
+* TWEAKED Settings and integrations.
+ * The telemetry setting explains exactly what's shared when it's turned on.
+ * Groundhogg's capabilities are grouped under "Groundhogg" in the User Role Editor plugin.
+ * Dashboard notices and the template library load from Groundhogg's CDN, with the original servers as a fallback.
+* FIXED Flow triggers and timing.
+ * A trigger's "Can be triggered" limit, like "At most once per contact" or "Up to X times per contact in X days", was never enforced.
+ * When a trigger fired more than once at the same time, for example tagging several contacts at once, contacts after the first could get the first contact's details in the flow.
+ * Delay timers set to run on the last day of the month never ran, dates that don't exist like April 31 ran on the next month, runs on the 29th to the 31st could skip a month, and long delays could ignore which days they were allowed to run on.
+ * Delay timers in flows built with the abilities were titled "Wait 3 days" whatever they were set to.
+* FIXED Flow editor and simulator issues.
+ * Unsaved step settings were lost when the flow editor couldn't save, and autosave stopped after a failed save.
+ * The Publish Changes button stayed off when the only change to a flow was deleting steps, and deactivating a flow brought back steps deleted while it was inactive.
+ * The flow simulator stayed stuck loading when the contact it last simulated with had been deleted. Now it asks you to select a contact.
+ * The REST API's commit route for flows always returned an error, and importing a flow could interfere with flows imported before it.
+ * Branch, trigger and jump lines that should curve were drawn straight when the editor was scrolled.
+* FIXED Contact searches and counts could show out-of-date results right after a tag, activity or custom field changed, and a search combining two flow activity filters ignored the step and date range of the second one.
+* FIXED Email tracking and contact identification.
+ * The open tracking pixel was missing from HTML emails that weren't a full HTML document.
+ * Contacts that arrived from a link in a tracked email weren't recognized as who they are, so merge tags like {user.*} were blocked for them.
+* FIXED Activating a license from the guided setup or the troubleshooter failed, and the old guided setup never saved its privacy and sender settings.
+* FIXED Forms on pages served by a full page cache could fail to submit because of an out of date nonce.
+* FIXED Triggers that pass a WooCommerce order to a flow logged an "Order properties should not be accessed directly" notice on every paid order.
+* FIXED The query table ability returned every contact, with the wrong total, when it was given filters. It now points to the search contacts ability instead.
+* SECURITY Access and verification hardening.
+ * An account could get administrator access by posing as the Groundhogg support user when an admin turned on support access.
+ * Contacts created by a form submission are no longer treated as verified visitors, since anyone can submit a form.
+ * The privacy policy and terms links in settings are only saved as real links.
+* DEV The flow editor's canvas, settings panels and add steps panel are drawn in JavaScript, and edits are saved as operations through the `gh_flow_operations` and `gh_flow_action` ajax actions.
+ * Step types can register JavaScript settings, titles and branch previews with `Funnel.registerStepType()`. `Funnel_Step::save()`, `get_posted_data()`, `setting_name_prefix()` and `setting_id_prefix()` work as before. See docs/flow-architecture.md.
+ * `Step::save()` takes the settings to save, and `Step::update_settings()` changes some of them.
+* DEV Query caching and the activity table.
+ * Queries take a `cache` var, `false` to skip the cache or a number of seconds that results can be stale for, and the `groundhogg/query/table_cache_group` filter lets queries on other plugins' tables be cached. `Table_Query::where()` and `Where::subWhere()` accept a callback.
+ * The activity table has two new indexes, `type_time_contact_idx` (activity_type, timestamp, contact_id) and `contact_time_idx` (contact_id, timestamp, activity_type, email_id, step_id), which replaces `contact_idx`. New `DB::index_exists()`, `DB::add_index_online()` and `DB::is_being_altered()` methods.
+* DEV New `groundhogg/email/reply_to_messages` and `groundhogg/inbox/address_prefix` filters, and `gh/v4/messages/unread` and `gh/v4/messages/read` REST endpoints.
+* DEV Add-ons register their abilities on ordered actions: `groundhogg/abilities/register_schema_extensions`, `groundhogg/abilities/register_step_types`, `groundhogg/abilities/register_categories` and `groundhogg/abilities/register_abilities`, so step types see the schema extensions of every add-on. See docs/abilities-registration.md.
+* DEV New `groundhogg/form/v2/rate_limit` and `groundhogg/form/v2/rate_limit_window` filters for the form submission limit, `0` turns it off.
+* DEV The `Legacy_Contact_Query` class, deprecated since 3.2, has been removed.
+
 = 4.8.3 (2026-09-18) =
 * ADDED Custom reports have been rebuilt for a faster, more consistent editor, with new "Table (Tags)" and "Pie Chart (Tags)" report types that group contact counts by one or more tags, with drill-down to the matching contacts.
 * TWEAKED Calendar date pickers have clearer hover states, greyed-out dates that are out of range, and a more interactive month picker.
@@ -632,225 +694,6 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 * TWEAKED Use local `moment.js` for the chart library.
 * FIXED Possible infinite recursion fatal error when editing flows.
 
-= 4.2.10 (2025-12-12) =
-* ADDED Start tracking the date when a tag is added to a contact. *Not* retroactive.
-* ADDED Developer filters to modify queries for the email archive.
-* FIXED UI issue in The Flow History filter.
-* FIXED Form selection in the Form Block not working unless a form was already selected.
-* FIXED Description formatting for the Advanced Timer action.
-* FIXED PHP Notice if a custom field tab was not configured correctly.
-
-= 4.2.9 (2025-11-21) =
-* ADDED WP Fusion event tracking filter so you don't **have** to use the custom activity filter.
-* ADDED "Day of Week" and "Day of Month" filters for conditional logic.
-* ADDED Email preview action to the broadcasts table and broadcast report.
-* IMPROVED Recaptcha and Turnstile scripts are now only enqueued if the fields are actually being used.
-* FIXED Some of the meta-comparisons for the custom activity filter and submission filters not returning correct results.
-
-= 4.2.8 (2025-11-14) =
-* IMPROVED Gutenberg form embed block has been updated to be compatible with latest Gutenberg standards.
-* IMPROVED The Gutenberg form embed block supports theme and color directly and can override the form's settings in the flow.
-* FIXED Preview text spacer has unrecognized HTML entity in outlook inboxes.
-* FIXED Anchor tags in text blocks getting inline CSS fill inconsistent with surrounding text.
-* FIXED Fatal error if trigger attempts to capture details from private class properties or methods.
-
-= 4.2.7 (2025-11-12) =
-* ADDED Built-in support for Polylang for the preferences page.
-* ADDED Bulk editing campaigns for emails, broadcasts, and flows.
-* ADDED New broadcasts reports. Broadcasts sent and total broadcast emails sent.
-* TWEAKED More space between preview text and content.
-* SECURITY Patched vulnerability. Credit to WordFence for practicing responsible disclosure.
-* FIXED Email template toggle showing enabled even if disabled.
-* FIXED Broken GeoIP reference.
-
-= 4.2.6.1 (2025-10-29) =
-* FIXED Recaptcha field missing in rendered form if the recaptcha version is v3
-* FIXED Font style not parsed correctly from text blocks if no `<p>` tag is present.
-* FIXED Escaped HTML visible on the licenses page.
-
-= 4.2.6 (2025-10-28) =
-* ADDED Frequency limits for triggers.
-* ADDED Batch scheduling for adding contacts to flows.
-* ADDED Support for `litespeed_finish_request()` in the `gh-cron.php` file.
-* ADDED Groundwork for AI in the email editor.
-* ADDED New API endpoint to fetch broadcast reports.
-* ADDED Step notes will appear in the flow editor, and now also support **basic** HTML.
-* IMPROVED Exporting of custom fields and metadata.
-* TWEAKED The flow emails table report will show *unique* clicks instead of *all* clicks.
-* FIXED Broadcast delayed by 24 hours when using the *send in local timezone* setting with a dynamic segment.
-* FIXED `<title>` tag in HTML emails should be the same as the subject line.
-* FIXED safe-mode causing errors on multisite.
-* FIXED Step settings not copied correctly when duplicating or copying steps with unpublished changes.
-* FIXED Turnstile/Recaptcha ignored if disabled in settings even if enabled in forms.
-* FIXED Export page not working if admin toolbar is disabled.
-
-= 4.2.5.3 (2025-08-30) =
-* FIXED Web form editor missing when adding a new blank Web Form trigger.
-* FIXED Fatal error when using the "Process events" button in the logs screen.
-
-= 4.2.5.2 (2025-08-29) =
-* FIXED Contact details card local time displaying incorrect time.
-
-= 4.2.5.1 (2025-08-29) =
-* FIXED Flow icons not loading correctly when using custom `wp-content` directory.
-* FIXED Custom Fields (properties) not loading when creating a fresh pipeline
-* FIXED Redaction query timeout on MySQL 8+
-
-= 4.2.5 (2025-08-20) =
-* ADDED Cloudflare Turnstile Integration as an alternative to Google Recaptcha.
-* FIXED Missing `sprintf` call on the unsubscribe page causing visible placeholders.
-
-= 4.2.4.2 (2025-08-15) =
-* TWEAKED Refactored usages of `file_get_contents()` to use the `WP_Filesystem` instead.
-* FIXED Don't use `esc_html()` for CSS. You'd think WordPress core would have a better internal solution for outputting CSS 🙄
-
-= 4.2.4.1 (2025-08-13) =
-* FIXED mopping up issues related to the refactoring effort.
-* FIXED Text block in the email editor would sometimes bug out.
-* FIXED Changing the font-family of a global font would not update text blocks using that global font.
-
-= 4.2.4 (2025-08-13) =
-Just an absolute huge refactoring effort with over 1000+ changes to please our WordPress.org overlords' WPCS checklist. Including, but not limited to:
-* Escaping literally anything that can be escaped.
-* Adding translator comments and re-ordering placeholders.
-* Refactoring DB Queries.
-* Replacing PHP functions with WordPress core functions.
-
-= 4.2.3.2 (2025-08-04) =
-* UPDATED Repository plugin name.
-* IMPROVED i18n for date and time.
-
-= 4.2.3.1 (2025-07-29) =
-* FIXED Missing developer action to filter the WP_Query associated with the query loop block.
-* FIXED Filter sanitization not correctly treating "0" as an integer.
-* FIXED Redaction for multi-line textarea not working.
-
-= 4.2.3 (2025-07-28) =
-* ADDED The new `{redact}` replacement code that will redact details from email logs. You can also use the function `Groundhogg\add_redaction( "my text" );` to add redactions programmatically.
-* ADDED Form Submission, Webhook Request, and Webhook Response search filters to filter by historical submission data.
-* ADDED Redaction option for form fields in the advanced tab. Will automatically redact sensitive information from submissions and contact meta after desired time period.
-* TWEAKED Re-ordered the tools page tabs so that sync tools appear first.
-* TWEAKED Changing the label while editing an existing custom field does automatically edit the internal name.
-* TWEAKED When changing the internal name of an existing custom field a warning is shown.
-* FIXED Some search filters requiring joins with 3rd party tables not working if join column is not correctly aliased.
-* FIXED Dropdown fields not showing as pre-filled if the current value in the contact record contained a space.
-
-= 4.2.2.1 (2025-07-07) =
-* FIXED Fatal error when uploading new contact CSV import.
-
-= 4.2.2 (2025-07-03) =
-* FIXED User ID not syncing.
-* FIXED Arbitrary file upload vulnerability. Credit to Patchstack for practicing responsible disclosure.
-
-= 4.2.1 (2025-06-30) =
-* HARDENED User ID syncing so that the correct user is always linked with the correct contact
-* HARDENED Sanitization for Query::addJoin()
-* HARDENED Removed sensitive data from the WP User object when returned via JSON.
-* FIXED Email content empty if importing an email template and making no content changes.
-
-= 4.2 (2025-06-11) =
-* ADDED Alter default appearance of emails blocks in the email editor settings.
-* ADDED Explicit save button for email editor settings.
-* ADDED Email Custom CSS (for the whole email, not just a single block) in the advanced tab.
-* OPTIMIZED Overall email HTML and CSS size reduced.
-* FIXED Unable to change from address when composing an email.
-* FIXED Email width set to 0 when a template is imported with no set width.
-
-= 4.1.3.1 (2025-06-11) =
-* HOT FIX 3rd party SMTP plugins not working if the email service is set to WordPress Default.
-* HOT FIX Broadcast scheduler sending extra emails if orderby is specified in the contact query.
-
-= 4.1.3 (2025-06-09) =
-* ADDED Explicit Right-to-Left language support in the email editor as a template option.
-* ADDED Notice to the send-email step in flows if an email is trashed.
-* ADDED New **Blocked** opt-in status.
-* OPTIMIZED Email log query so it loads faster.
-* OPTIMIZED Background task queries are faster.
-* RESTORED Form submissions through Groundhogg will check the **disallowed comment keys** setting for keywords to prevent submissions.
-* TWEAKED If a contact's opt-in status is changed to spam or blocked, their opt-in status can only be changed by an admin.
-* FIXED Block background images not showing properly in some email clients.
-* FIXED The broadcast report showed all clicks rather than unique in some areas.
-* FIXED Potential infinite recursion if `wp_mail()` is called before the `init` hook.
-* FIXED PHP notice if a flow has no entry triggers.
-* FIXED The email link clicked filter was using the legacy contact query instead of the new one.
-* FIXED The delay timer's run when option was not saving when set to `between`.
-* FIXED PHP warnings when delay timer step is not fully configured.
-
-= 4.1.2.1 (2025-05-14) =
-* TWEAKED Changed "Fixed Segment" to "Static Segment".
-* FIXED Contact activity timeline not loading in some cases if related resource was deleted.
-* FIXED The same flow step appearing in multiple different trigger branches if the trigger IDs start with the same number.
-
-= 4.1.2 (2025-05-06) =
-* ADDED Custom replacements for Emails and Flows.
-* TWEAKED Moved flow settings to the editor panel instead of modal.
-* FIXED Email picker in flow not showing selected template after creating a new email (display issue only).
-* FIXED Make sure file name is sanitized when deleting exports/imports. Credit to WordFence & Phat Do.
-
-= 4.1.1.2 (2025-04-21) =
-* FIXED Confirmation links not working in WordPress 6.8 due to password hashing changes.
-
-= 4.1.1 (2025-04-15) =
-* ADDED Query Loop block in the email editor for more control over displaying posts in emails.
-* FIXED Multi-select custom fields not displaying correctly in `{form_submission}` replacement code.
-* FIXED Not all steps appearing in the flow preview in reports.
-* FIXED Non-admins unable to complete tasks due to invalid permissions for fetching options from API.
-* FIXED Unable to update the names of saved searches.
-* FIXED Previous fix to avoid recursive replacements preventing nested replacements from working.
-* FIXED Fatal Error if background task is loaded with an undefined task handler class.
-* FIXED Functional email test not sending despite showing as successful.
-* FIXED Suggested documentation not loading in troubleshooter.
-
-= 4.1.0.1 (2025-04-09) =
-* FIXED Prevent recursive replacement codes.
-* FIXED Fatal error if event arguments is not a strict array.
-
-= 4.1 (2025-04-08) =
-* ADDED Flow Simulation tool to simulate a contact moving through a flow. Makes testing flows way easier.
- * You can also run simulations via the WP CLI.
-* FIXED Filters in logic steps sometimes not appearing.
-* FIXED Background task progress for large tasks not updating, causing them to never complete.
-* FIXED Branch names for multi-branch logic incorrect if nested inside another multi-branch.
-
-= 4.0.2 (2025-04-01) =
-* FIXED Multi-Branch not always returning the correct branch.
-
-= 4.0.1 (2025-04-01) =
-* FIXED Missing YouTube video in readme.
-* FIXED error notices above flows table if steps that are not registered are used in the flow preview
-
-= 4.0 (2025-03-31) =
-* RENAMED Funnels → Flows, and Benchmarks → Triggers
-* ADDED Flow branching and new logic steps
- * Yes/No logic
- * Multi-branch logic
- * Weight distribution
- * Split-testing
- * Loop, Skip, Stop
- * Smart Date Sequence
-* ADDED Undo & redo for flows.
-* ADDED Copy & paste steps between flows.
-* ADDED The **Pass-through** setting for triggers to allow contacts to pass through them even without matching conditions.
-* ADDED Additional bulk actions in the event logs tables.
-* ADDED Setting to disable page tracking.
-* ADDED New option in the footer block to disable phone, terms, and policy links.
-* ADDED "Unused" table filter for emails to see templates that are not being used in flows or broadcasts.
-* IMPROVED The Cron Job Setup page with additional instructions and a new layout.
-* IMPROVED Various admin UI improvements like tabs, reporting page width constraint.
-* IMPROVED Made tags in the contacts table clickable for filtering.
-* IMPROVED Add tags while editing options and fields in forms.
-* TWEAKED Simplified the "Start from scratch" email template.
-* TWEAKED Object ID can be omitted from relationship filters for more generic usage.
-* FIXED Fatal error if `page` query param is present but not a string in non-admin pages.
-* FIXED Incorrect filter for managed page body classes.
-* FIXED Incorrect cached results for plain-text replacements.
-* FIXED Composed email message contact wiped after enabling CC or BCC.
-* FIXED Broadcasts report not filtering by campaign when date range changes.
-* FIXED `Array` showing in emails when using the `{country}` replacement instead of nothing or the default value when no country is defined.
-* FIXED Added missing sanitization of form field labels, credit to WordFence for responsible disclosure.
-* DEV New event arguments API which will enable unique arguments to be associated with individual funnel (and other) events. This is VERY COOL! It paves the way for better handling of automation for related objects like orders, deals, and companies.
-* DEV New settings schema for funnel steps.
-
-Logs before 4.0 have been removed due to a 5000 word changelog size restriction. Groundhogg has been in active development since October 2018!
+Logs before 2026 have been removed due to a 5000 word changelog size restriction. Groundhogg has been in active development since October 2018!
 
 To see older logs you can view them on [github](https://github.com/groundhoggwp/groundhogg/).

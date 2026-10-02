@@ -289,6 +289,23 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 
 	}
 
+	/**
+	 * The IDs of the steps in this step's branches, and in their branches, which are deleted along with it
+	 *
+	 * @return int[]
+	 */
+	public function get_descendant_ids() {
+
+		$ids = [];
+
+		foreach ( $this->get_sub_steps() as $sub_step ) {
+			$ids[] = $sub_step->get_id();
+			array_push( $ids, ...$sub_step->get_descendant_ids() );
+		}
+
+		return $ids;
+	}
+
 	public function set_slug() {
 
 		$title_no_html = sanitize_text_field( $this->get_step_title() );
@@ -531,6 +548,7 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 		      ->where()
 		      ->equals( 'step_group', self::ACTION )
 		      ->equals( 'funnel_id', $this->get_funnel_id() )
+		      ->notEquals( 'step_status', 'archived' )
 		      ->greaterThan( 'step_order', $this->get_order() );
 
 		return $query->get_objects( Step::class );
@@ -549,6 +567,7 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 		      ->where()
 		      ->equals( 'step_group', self::BENCHMARK )
 		      ->equals( 'funnel_id', $this->get_funnel_id() )
+		      ->notEquals( 'step_status', 'archived' )
 		      ->greaterThan( 'step_order', $this->get_order() );
 
 		return $query->get_objects( Step::class );
@@ -663,6 +682,7 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 		      ->where()
 		      ->equals( 'step_group', self::ACTION )
 		      ->equals( 'funnel_id', $this->get_funnel_id() )
+		      ->notEquals( 'step_status', 'archived' )
 		      ->compare( 'step_order', $this->get_order() - 1, $this->is_action() ? '=' : '<=' );
 
 		$next = $query->get_objects( Step::class );
@@ -720,6 +740,7 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 		      ->setLimit( 1 )
 		      ->where()
 		      ->equals( 'funnel_id', $this->get_funnel_id() )
+		      ->notEquals( 'step_status', 'archived' )
 		      ->equals( 'step_order', $this->get_order() - 1 );
 
 		$prev = $query->get_objects( Step::class );
@@ -1234,7 +1255,8 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 	 */
 	public function check_trigger_frequency( Contact $contact ) {
 
-		$rule = $this->get_meta( '_frequency_rule' );
+		// set by the trigger frequency settings in the flow editor
+		$rule = $this->get_meta( '_trigger_frequency' );
 
 		$query = new Table_Query( 'events' );
 		$query->where()
@@ -1260,10 +1282,10 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 				$x_days  = absint( $this->get_meta( '_trigger_frequency_x_days' ) );
 
 				if ( $range === 'x_days' ) {
-					Filters::timestamp( 'timestamp', [
+					Filters::timestamp( 'time', [
 						'date_range' => 'x_days',
 						'days'       => $x_days
-					], $query->where );
+					], $query->where() );
 				}
 
 				// no need to get more events than the limit, if there are more, we're for sure over
@@ -1360,6 +1382,11 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 		// logic steps can't be enqueued, only their children or what they point to can be enqueued...
 		if ( $step->is_logic() ) {
 			$step = $step->get_next_action( $contact );
+
+			// nothing to do after it, like an empty branch at the end of the flow
+			if ( ! is_a( $step, Step::class ) ) {
+				return false;
+			}
 		}
 
 		$step = self::_maybe_filter_step_before_enqueuing( $step, $contact, $args );
@@ -1761,14 +1788,51 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 
 	/**
 	 * Save the step
+	 * Settings missing from $settings are reset, the same as a setting missing from the editor's request,
+	 * use update_settings() to change some of them.
+	 *
+	 * @param array|null $settings the step's full settings, including step_title, branch and the benchmark flags,
+	 *                             or null to read them from the flow editor's request
 	 */
-	public function save() {
+	public function save( ?array $settings = null ) {
 
 		$this->merge_changes(); // make sure changes are merged first as that will be relevant for some functions...
 
-		$this->get_step_element()->pre_save( $this );
+		$this->get_step_element()->pre_save( $this, $settings );
 		$this->get_step_element()->save( $this );
 		$this->get_step_element()->after_save( $this );
+	}
+
+	/**
+	 * The step's current settings, in the shape save() takes
+	 *
+	 * @return array
+	 */
+	public function get_settings() {
+
+		$this->merge_changes(); // staged changes are the current settings
+
+		$settings = array_merge( $this->get_meta(), [
+			'step_title' => $this->get_title(),
+			'branch'     => $this->branch,
+		] );
+
+		if ( $this->is_benchmark() ) {
+			$settings['is_conversion'] = (bool) $this->is_conversion;
+			$settings['is_entry']      = (bool) $this->is_entry;
+			$settings['can_passthru']  = (bool) $this->can_passthru;
+		}
+
+		return $settings;
+	}
+
+	/**
+	 * Change some of the step's settings and save it like the flow editor would, other settings are kept
+	 *
+	 * @param array $settings the settings to change, can include step_title, branch and the benchmark flags
+	 */
+	public function update_settings( array $settings ) {
+		$this->save( array_merge( $this->get_settings(), $settings ) );
 	}
 
 	/**
@@ -1808,6 +1872,11 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 	/**
 	 * Also call the delete method from the step element in the event there is cleanup
 	 *
+	 * Outside of committing this is a soft delete, the step is only flagged as deleted so the flow editor's undo/redo
+	 * can restore the row with its ID, meta and paused events (see Funnels_Page::process_edit() _restore). When the undo
+	 * history is cleared, by Funnel::commit() on Update or Funnel::remove_deleted_steps() on Activate, Step::commit()
+	 * removes the row, or archives it if contacts have been through the step so their history still points to something.
+	 *
 	 * @return bool
 	 */
 	public function delete() {
@@ -1816,12 +1885,38 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 		$this->get_step_element()->delete( $this );
 
 		// If an active step is deleted, what we'll do is add a change that it was deleted,
-		// and when we do get_steps() we'll filter out steps that have that flag
+		// and when we do get_steps() we'll filter out steps that have that flag.
+		// Inactive steps don't stage changes, so the deleted status is written to the row directly.
 		if ( $this->is_committing ) {
 			return parent::delete();
 		}
 
 		return $this->update( [ 'step_status' => 'deleted' ] );
+	}
+
+	/**
+	 * Whether any contact has been through this step, in the event history or the activity (like email opens and clicks)
+	 *
+	 * @return bool
+	 */
+	public function has_history() {
+
+		$where = [
+			'funnel_id' => $this->get_funnel_id(),
+			'step_id'   => $this->get_id(),
+		];
+
+		return get_db( 'events' )->exists( array_merge( $where, [ 'event_type' => Event::FUNNEL ] ) )
+		       || get_db( 'activity' )->exists( $where );
+	}
+
+	/**
+	 * Whether the step was removed from the flow but kept for its history
+	 *
+	 * @return bool
+	 */
+	public function is_archived() {
+		return $this->step_status === 'archived';
 	}
 
 	public function delete_and_commit() {
@@ -2037,6 +2132,15 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 
 		// delete the step if it was "deleted"
 		if ( $this->step_status === 'deleted' ) {
+
+			// keep steps with history so events and activity can still show what the step was, it's no longer part of the flow
+			if ( $this->has_history() ) {
+				$result = $this->update( [ 'step_status' => 'archived' ] );
+				$this->set_is_committing( false );
+
+				return $result;
+			}
+
 			// using parent avoids having to work around is_active()
 			return $this->delete();
 		}
@@ -2065,12 +2169,39 @@ class Step extends Base_Object_With_Meta implements Event_Process {
 	}
 
 	/**
-	 * If the steps are currently being imported...
+	 * How many imports are running, see start_importing()
 	 *
-	 * @return int|null
+	 * @var int
+	 */
+	protected static $importing = 0;
+
+	/**
+	 * Steps are being imported, so their settings use the schema's import sanitizers.
+	 * Every call must be paired with stop_importing().
+	 *
+	 * @return void
+	 */
+	public static function start_importing() {
+		self::$importing ++;
+	}
+
+	/**
+	 * Undo start_importing()
+	 *
+	 * @return void
+	 */
+	public static function stop_importing() {
+		self::$importing = max( 0, self::$importing - 1 );
+	}
+
+	/**
+	 * If the steps are currently being imported...
+	 * Only while Funnel::import() creates the steps, not for the rest of the request.
+	 *
+	 * @return bool
 	 */
 	public static function is_importing() {
-		return did_action( 'groundhogg/funnel/import/before' );
+		return self::$importing > 0;
 	}
 
 	/**
