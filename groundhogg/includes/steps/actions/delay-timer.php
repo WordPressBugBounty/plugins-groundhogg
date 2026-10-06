@@ -163,14 +163,23 @@ class Delay_Timer extends Action {
 
 				$date = new DelayDateTime( 'now' );
 
-				$date->setTimestamp( self::calc_run_time( time(), $step ) );
+				try {
+					$date->setTimestamp( self::calc_run_time( time(), $step ) );
+
+					$preview = [
+						'<b>' . esc_html__( 'Runs on...', 'groundhogg' ) . '</b>',
+						'<span>' . esc_html( $date->wpDateTimeFormat() ) . '</span>'
+					];
+				} catch ( \Exception $e ) {
+					$preview = [
+						'<b>' . esc_html__( 'Does not run', 'groundhogg' ) . '</b>',
+						'<span>' . esc_html( $e->getMessage() ) . '</span>'
+					];
+				}
 
 				html( 'div', [
 					'class' => "display-flex gap-10 column"
-				], [
-					'<b>' . esc_html__( 'Runs on...', 'groundhogg' ) . '</b>',
-					'<span>' . esc_html( $date->wpDateTimeFormat() ) . '</span>'
-				] );
+				], $preview );
 
 				?>
             </div>
@@ -467,7 +476,7 @@ class Delay_Timer extends Action {
 	/**
 	 * Replaces the get_enqueue_time() method and utilizes a base timestamp
 	 *
-	 * @throws \Exception
+	 * @throws \Exception when it can't be worked out, see next_matching_day()
 	 *
 	 * @param Step $step
 	 * @param int  $baseTimestamp
@@ -539,11 +548,14 @@ class Delay_Timer extends Action {
 	/**
 	 * Move the date forward to the first day, starting with the date itself, that matches the run_on_* settings.
 	 * Walks the calendar a day at a time, skipping whole months that aren't selected, and keeps the time of day.
-	 * If no day matches within 5 years (e.g. the 30th of February) the date is left unchanged.
+	 * If no day matches within 5 years it's the last day of the month for days of the month that no chosen month has,
+	 * the 30th of February is the 28th or the 29th. Nothing else is a day that a timer is run on when it's set not to,
+	 * so it throws. Days or months that are left empty aren't a restriction, that's any day or month.
 	 *
 	 * @param DateTimeHelper $date
 	 * @param array          $settings
 	 *
+	 * @throws \RuntimeException when there's no day that matches
 	 * @return void
 	 */
 	protected function next_matching_day( DateTimeHelper $date, array $settings ) {
@@ -566,7 +578,7 @@ class Delay_Timer extends Action {
 				$nth          = array_search( $dow_type, [ 1 => 'first', 'second', 'third', 'fourth' ] );
 
 				if ( empty( $days_of_week ) ) {
-					return;
+					return; // nothing selected is any day
 				}
 
 				$matches = function ( $date ) use ( $days_of_week, $dow_type, $nth ) {
@@ -591,7 +603,7 @@ class Delay_Timer extends Action {
 				$last_day      = in_array( 'last', (array) $settings['run_on_dom'], true );
 
 				if ( empty( $days_of_month ) && ! $last_day ) {
-					return;
+					return; // nothing selected is any day
 				}
 
 				$matches = function ( $date ) use ( $days_of_month, $last_day ) {
@@ -611,7 +623,7 @@ class Delay_Timer extends Action {
 			$months = array_map( 'strtolower', (array) $settings['run_on_months'] );
 
 			if ( empty( $months ) ) {
-				return;
+				return; // nothing selected is any month
 			}
 		}
 
@@ -641,6 +653,32 @@ class Delay_Timer extends Action {
 			$date->setDate( $year, $month, $day + 1 );
 		}
 
-		$date->setTimestamp( $start );
+		// Nothing matched, and for days of the month that's when every day chosen is after the last day of every month
+		// chosen, like the 30th of February. Only then is it the last day of the month, in the first month that it's not
+		// before the start, it's a month that was chosen and the closest day to what was chosen. Where there's a day that
+		// does match it's not used, the 31st doesn't run in April when it runs in May.
+		if ( $settings['run_on_type'] === 'day_of_month' ) {
+
+			$date->setTimestamp( $start );
+			[ $year, $month ] = array_map( 'intval', explode( '-', $date->format( 'Y-n' ) ) );
+
+			for ( $i = 0; $i < 60; $i ++ ) {
+
+				$date->setDate( $year, $month + $i, 1 );
+
+				if ( $months && ! in_array( strtolower( $date->format( 'F' ) ), $months ) ) {
+					continue;
+				}
+
+				$date->setDate( (int) $date->format( 'Y' ), (int) $date->format( 'n' ), (int) $date->format( 't' ) );
+				$date->setTime( ...$time );
+
+				if ( $date->getTimestamp() >= $start ) {
+					return;
+				}
+			}
+		}
+
+		throw new \RuntimeException( __( 'No day in the next 5 years matches the days and months that this delay timer is set to run on.', 'groundhogg' ) );
 	}
 }
