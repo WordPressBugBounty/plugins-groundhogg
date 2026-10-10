@@ -180,6 +180,58 @@ class Rewrites {
 		return new Template_Loader();
 	}
 
+	/**
+	 * Whether a broadcast is shown in the archive of a campaign: an email that's been sent, in the campaign. The same ones
+	 * that list_broadcasts_archive() lists.
+	 *
+	 * @param Broadcast $broadcast
+	 * @param Campaign  $campaign
+	 *
+	 * @return bool
+	 */
+	public static function is_in_campaign_archive( Broadcast $broadcast, Campaign $campaign ) {
+		return $broadcast->exists()
+		       && $broadcast->is_email()
+		       && $broadcast->is_sent()
+		       && $broadcast->is_related( $campaign );
+	}
+
+	/**
+	 * Files uploaded before 4.7.2 are in a folder with a different name than the one looked in now, and there are links
+	 * out there that go to it. If the path is in a contact's old folder, move their files to the right one, and give the
+	 * path to the file there.
+	 *
+	 * @param string $path the path of the file, relative to the Groundhogg uploads folder
+	 *
+	 * @return string
+	 */
+	public static function current_upload_folder_path( $path ) {
+
+		$parts = explode( '/', trim( wp_normalize_path( (string) $path ), '/' ) );
+
+		if ( count( $parts ) !== 3 || $parts[0] !== 'uploads' ) {
+			return $path;
+		}
+
+		// the contact that's being viewed by an admin, or the one that's following a link from an email
+		$contacts = [ new Contact( absint( get_request_var( 'id' ) ) ), get_contactdata() ];
+
+		foreach ( $contacts as $contact ) {
+
+			if ( ! $contact || ! $contact->exists() || $contact->get_legacy_upload_folder_basename() !== $parts[1] ) {
+				continue;
+			}
+
+			$contact->maybe_move_legacy_upload_folder();
+
+			$parts[1] = $contact->get_upload_folder_basename();
+
+			return implode( '/', $parts );
+		}
+
+		return $path;
+	}
+
 	public function get_404() {
 		global $wp_query;
 		$wp_query->set_404();
@@ -251,7 +303,7 @@ class Rewrites {
 
 					status_header( 404 );
 					$wp_query->set_404();
-					$template = get_query_template( '404' );
+					$template = get_query_template( '404' ) ?: get_index_template(); // a theme without a 404 template
 
 					break;
 				}
@@ -260,14 +312,24 @@ class Rewrites {
 
 				if ( $broadcast_id ) {
 					$broadcast = new Broadcast( $broadcast_id );
+
+					// Only what the archive lists. The ID is a number that counts up, and this is public, so without this any
+					// email broadcast of the site, unsent ones and ones of campaigns that are hidden, could be read.
+					if ( ! self::is_in_campaign_archive( $broadcast, $campaign ) ) {
+
+						status_header( 404 );
+						$wp_query->set_404();
+						$template = get_query_template( '404' ) ?: get_index_template();
+
+						break;
+					}
+
 					$GLOBALS['broadcast'] = $broadcast;
 
 					the_thing( 'broadcast', $broadcast );
 
-					if ( $broadcast->exists() ) {
-						$template = $template_loader->get_template_part( 'archive/broadcast', '', false );
-						break;
-					}
+					$template = $template_loader->get_template_part( 'archive/broadcast', '', false );
+					break;
 				}
 
 				$template = $template_loader->get_template_part( 'archive/campaign', '', false );
@@ -398,7 +460,7 @@ class Rewrites {
 				break;
 			case 'files':
 
-				$short_path      = get_query_var( 'file_path' );
+				$short_path      = self::current_upload_folder_path( get_query_var( 'file_path' ) );
 				$groundhogg_path = utils()->files->get_base_uploads_dir();
 				$file_path       = wp_normalize_path( $groundhogg_path . DIRECTORY_SEPARATOR . $short_path );
 
