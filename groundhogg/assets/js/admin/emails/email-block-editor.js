@@ -6336,6 +6336,8 @@
                                     setState({ page: 'editor' })
                                     setBlocks(parseBlocksFromContent(data.content),
                                       false)
+                                    // not a change to the blocks, so setBlocks doesn't request the preview
+                                    updatePreview()
                                     renderEditor()
                                     close()
                                     TitlePrompt()
@@ -8817,7 +8819,6 @@
           src,
           alt, // title,
           width,
-          height   : 'auto',
           style    : {
             verticalAlign: 'bottom',
             height       : 'auto',
@@ -8839,11 +8840,11 @@
         src   : src,
         alt, // title,
         width,
-        height: 'auto',
         style : {
           boxSizing    : 'border-box',
           verticalAlign: 'bottom',
           height       : 'auto',
+          maxWidth     : '100%',
           width,
           ...addBorderStyle(borderStyle),
         },
