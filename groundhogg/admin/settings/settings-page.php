@@ -93,7 +93,10 @@ class Settings_Page extends Admin_Page {
 		add_action( 'admin_init', array( $this, 'init_defaults' ) );
 		add_action( 'admin_init', array( $this, 'register_sections' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
-		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, 'api_keys_table' ] );
+		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, 'application_passwords' ], 5 );
+		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, 'api_routes' ], 10 );
+		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, 'api_keys_table' ], 15 );
+		add_filter( 'groundhogg/command_palette/commands', [ $this, 'command_palette_commands' ] );
 
 		Incoming_Messages::init();
 	}
@@ -164,13 +167,262 @@ class Settings_Page extends Admin_Page {
 	}
 
 	/**
+	 * The application password that was just generated, shown once and never stored
+	 *
+	 * @var array|null
+	 */
+	private $new_application_password = null;
+
+	/**
+	 * Build the value for a Basic auth header from a username and an application password
+	 *
+	 * WordPress ignores the spaces in application passwords, so they are stripped from the token.
+	 *
+	 * @param string $username
+	 * @param string $password
+	 *
+	 * @return string
+	 */
+	public static function basic_auth_token( string $username, string $password ): string {
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- building an auth header, not obfuscating
+		return base64_encode( $username . ':' . preg_replace( '/[^a-z\d]/i', '', $password ) );
+	}
+
+	/**
+	 * Display the application password generator, the recommended way of authenticating with the REST API
+	 */
+	public function application_passwords() {
+
+		$new      = $this->new_application_password;
+		$user_id  = get_current_user_id();
+		$base_url = rest_url( Base_Api::NAME_SPACE );
+
+		?>
+        <h3><?php esc_html_e( 'Application Passwords', 'groundhogg' ); ?>
+            <span class="pill green" style="vertical-align: middle; margin-left: 5px;"><?php esc_html_e( 'Recommended', 'groundhogg' ); ?></span>
+        </h3>
+        <p class="description" style="max-width: 900px;">
+			<?php esc_html_e( 'Application passwords are the best way to connect external applications to the REST API. They use standard Basic authentication, can be revoked individually, and never expose your real WordPress password.', 'groundhogg' ); ?>
+        </p>
+		<?php
+
+		if ( ! wp_is_application_passwords_available() ) {
+			?>
+            <div class="notice notice-warning inline" style="max-width: 900px;">
+                <p><?php esc_html_e( 'Application passwords are not available on this site. WordPress requires a secure (HTTPS) connection to use them, and they may have been disabled by another plugin.', 'groundhogg' ); ?></p>
+            </div>
+			<?php
+			return;
+		}
+
+		if ( $new ):
+			$header = 'Authorization: Basic ' . $new['token'];
+			?>
+            <div class="gh-panel outlined" style="max-width: 900px; margin-bottom: 20px;">
+                <div class="inside">
+                    <p style="margin-top: 0;">
+                        <b><?php
+							/* translators: %s: the username the application password belongs to */
+							echo esc_html( sprintf( __( 'Application password created for %s.', 'groundhogg' ), $new['username'] ) ); ?></b>
+						<?php esc_html_e( 'Copy it now, it will not be shown again.', 'groundhogg' ); ?>
+                    </p>
+					<?php
+
+					html()->start_form_table();
+
+					html()->start_row();
+					html()->th( esc_html__( 'Authentication token', 'groundhogg' ) );
+					html()->td( [
+						html()->input( [
+							'class'    => 'code input large-text',
+							'readonly' => true,
+							'value'    => $new['token'],
+							'onfocus'  => 'this.select()'
+						] ),
+						html()->description( esc_html__( 'The username and application password encoded for Basic authentication. Use this for services that ask for an API key or token instead of a username and password.', 'groundhogg' ) ),
+					] );
+					html()->end_row();
+
+					html()->start_row();
+					html()->th( esc_html__( 'Authorization header', 'groundhogg' ) );
+					html()->td( [
+						html()->input( [
+							'class'    => 'code input large-text',
+							'readonly' => true,
+							'value'    => $header,
+							'onfocus'  => 'this.select()'
+						] ),
+					] );
+					html()->end_row();
+
+					html()->start_row();
+					html()->th( esc_html__( 'Username', 'groundhogg' ) );
+					html()->td( html()->input( [
+						'class'    => 'code input regular-text',
+						'readonly' => true,
+						'value'    => $new['username'],
+						'onfocus'  => 'this.select()'
+					] ) );
+					html()->end_row();
+
+					html()->start_row();
+					html()->th( esc_html__( 'Application password', 'groundhogg' ) );
+					html()->td( [
+						html()->input( [
+							'class'    => 'code input regular-text',
+							'readonly' => true,
+							'value'    => $new['password'],
+							'onfocus'  => 'this.select()'
+						] ),
+						html()->description( esc_html__( 'For services that ask for a username and password.', 'groundhogg' ) ),
+					] );
+					html()->end_row();
+
+					html()->end_form_table();
+
+					?>
+                    <p class="description"><?php esc_html_e( 'Example request:', 'groundhogg' ); ?></p>
+                    <pre style="overflow-x: auto;"><?php echo esc_html( sprintf( 'curl -H "%s" %s', $header, $base_url ) ); ?></pre>
+                </div>
+            </div>
+		<?php endif; ?>
+
+        <form id="application-password-generate-form" method="post"
+              action="<?php echo esc_url( admin_url( 'admin.php?page=gh_settings&tab=api_tab' ) ); ?>">
+			<?php action_input( 'create_application_password', true, true ); ?>
+            <div class="gh-input-group">
+				<?php html( [
+					html()->input( [
+						'name'        => 'application_password_name',
+						'id'          => 'application_password_name',
+						'placeholder' => esc_attr__( 'Application name, e.g. Zapier', 'groundhogg' ),
+						'required'    => true,
+					] ),
+					html()->dropdown_owners( [
+						'option_none' => false,
+						'name'        => 'user_id',
+						'id'          => 'application_password_user_id',
+						'selected'    => $user_id,
+					] ),
+					html()->button( [
+						'class' => 'gh-button primary',
+						'text'  => esc_html__( 'Generate application password', 'groundhogg' ),
+						'type'  => 'submit',
+					] )
+				] ); ?>
+            </div>
+        </form>
+        <p class="description" style="max-width: 900px;">
+			<?php
+			printf(
+			/* translators: %s: link to the user profile */
+				esc_html__( 'To see or revoke existing application passwords, visit the %s.', 'groundhogg' ),
+				'<a href="' . esc_url( admin_url( 'profile.php#application-passwords-section' ) ) . '">' . esc_html__( 'application passwords section of your profile', 'groundhogg' ) . '</a>'
+			); ?>
+        </p>
+		<?php
+	}
+
+	/**
+	 * Generate an application password for a user and keep it in memory so it can be shown once
+	 *
+	 * @return true|WP_Error
+	 */
+	public function process_create_application_password() {
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			$this->wp_die_no_access();
+		}
+
+		$user_id = absint( get_post_var( 'user_id', get_current_user_id() ) );
+		$name    = sanitize_text_field( get_post_var( 'application_password_name' ) );
+
+		if ( empty( $name ) ) {
+			return new WP_Error( 'error', __( 'Please provide a name for the application.', 'groundhogg' ) );
+		}
+
+		$user = get_userdata( $user_id );
+
+		if ( ! $user || ! current_user_can( 'edit_user', $user_id ) ) {
+			return new WP_Error( 'error', __( 'You are not allowed to create application passwords for this user.', 'groundhogg' ) );
+		}
+
+		if ( ! wp_is_application_passwords_available_for_user( $user ) ) {
+			return new WP_Error( 'error', __( 'Application passwords are not available for this user.', 'groundhogg' ) );
+		}
+
+		foreach ( \WP_Application_Passwords::get_user_application_passwords( $user_id ) as $existing ) {
+			if ( strcasecmp( $existing['name'], $name ) === 0 ) {
+				return new WP_Error( 'error', __( 'An application password with that name already exists for this user.', 'groundhogg' ) );
+			}
+		}
+
+		$created = \WP_Application_Passwords::create_new_application_password( $user_id, [ 'name' => $name ] );
+
+		if ( is_wp_error( $created ) ) {
+			return $created;
+		}
+
+		[ $password ] = $created;
+
+		$this->new_application_password = [
+			'username' => $user->user_login,
+			'password' => $password,
+			'token'    => self::basic_auth_token( $user->user_login, $password ),
+		];
+
+		$this->add_notice( 'success', 'Application password created!' );
+
+		return true;
+	}
+
+	/**
+	 * Display the API routes
+	 */
+	public function api_routes() {
+		html()->start_form_table();
+		html()->start_row();
+		html()->th( esc_html__( 'API v4 Route', 'groundhogg' ) );
+		html()->td( [
+			html()->input( [
+					'class'    => 'code input regular-text',
+					'readonly' => true,
+					'value'    => rest_url( Base_Api::NAME_SPACE ),
+					'onfocus'  => 'this.select()'
+				]
+			),
+			html()->description( html()->e( 'a', [
+				'href' => admin_page_url( 'gh_tools', [ 'tab' => 'api' ] )
+			], esc_html__( 'Test out the API in the new REST API Playground.', 'groundhogg' ) ) ),
+		] );
+		html()->end_row();
+		html()->start_row();
+		html()->th( esc_html__( 'API v3 Route', 'groundhogg' ) );
+		html()->td( html()->input( [
+				'class'    => 'code input regular-text',
+				'readonly' => true,
+				'value'    => rest_url( Base::NAME_SPACE ),
+				'onfocus'  => 'this.select()'
+			]
+		) );
+		html()->end_row();
+		html()->end_form_table();
+	}
+
+	/**
 	 * display the API keys table
 	 */
 	public function api_keys_table() {
 		$api_keys_table = new API_Keys_Table();
 		$api_keys_table->prepare_items();
 		?>
-        <h3><?php esc_html_e( 'API Keys', 'groundhogg' ); ?></h3>
+        <h3><?php esc_html_e( 'API Keys', 'groundhogg' ); ?>
+            <span class="pill red" style="vertical-align: middle; margin-left: 5px;"><?php esc_html_e( 'Deprecated', 'groundhogg' ); ?></span>
+        </h3>
+
+        <div class="notice notice-warning inline" style="max-width: 900px;">
+            <p><?php esc_html_e( 'API keys are deprecated. Existing keys continue to work, but new integrations should use an application password instead.', 'groundhogg' ); ?></p>
+        </div>
 
         <form id="api-key-generate-form" method="post"
               action="<?php echo esc_url( admin_url( 'admin.php?page=gh_settings&tab=api_tab' ) ); ?>">
@@ -196,34 +448,6 @@ class Settings_Page extends Admin_Page {
         <div style="max-width: 900px;"><?php
 		$api_keys_table->display();
 		?></div><?php
-
-		html()->start_form_table();
-		html()->start_row();
-		html()->th( esc_html__( 'API v4 Route', 'groundhogg' ) );
-		html()->td( [
-			html()->input( [
-					'class'    => 'code input regular-text',
-					'readonly' => true,
-					'value'    => rest_url( Base_Api::NAME_SPACE ),
-					'onfocus'  => 'this.select()'
-				]
-			),
-			html()->description( html()->e( 'a', [
-				'href' => admin_page_url( 'gh_tools', [ 'tab' => 'api' ] )
-			], esc_html__( 'Test out the API in the new Rest API Playground.', 'groundhogg' ) ) ),
-		] );
-		html()->end_row();
-		html()->start_row();
-		html()->th( esc_html__( 'API v3 Route', 'groundhogg' ) );
-		html()->td( html()->input( [
-				'class'    => 'code input regular-text',
-				'readonly' => true,
-				'value'    => rest_url( Base::NAME_SPACE ),
-				'onfocus'  => 'this.select()'
-			]
-		) );
-		html()->end_row();
-		html()->end_form_table();
 	}
 
 	public function view_extensions() {
@@ -1655,12 +1879,11 @@ class Settings_Page extends Admin_Page {
 				'section' => 'outgoing_email_config',
 				'label'   => _x( 'WordPress Email', 'settings', 'groundhogg' ),
 				'desc'    => _x( 'Choose which installed service should handle core WordPress email. This service will apply to <b>all WordPress email</b> and email from third party plugins like <b>WooCommerce</b>.</p><p class="description"><code>WordPress Default</code> is whichever email service WordPress is using at the moment. This could be your server\'s email or a third party SMTP plugin.', 'settings', 'groundhogg' ),
-				'type'    => 'dropdown',
+				'type'    => 'button_toggle',
 				'atts'    => [
-					'name'        => 'gh_wordpress_email_service',
-					'id'          => 'gh_wordpress_email_service',
-					'option_none' => false,
-					'options'     => Groundhogg_Email_Services::dropdown()
+					'name'    => 'gh_wordpress_email_service',
+					'id'      => 'gh_wordpress_email_service',
+					'options' => Groundhogg_Email_Services::dropdown()
 				],
 			],
 			'gh_transactional_email_service'         => [
@@ -1670,13 +1893,11 @@ class Settings_Page extends Admin_Page {
 				/* translators: %s: the plugin/brand name */
 				'desc' => sprintf( _x( 'Choose which installed service should handle transactional email from %1$s. This service will apply to %1$s emails which have their <code>message type</code> set to <b>Transactional</b>, admin notifications and other %1$s notifications.',
 					'settings', 'groundhogg' ), esc_html( white_labeled_name() ) ),
-				'type'    => 'dropdown',
+				'type'    => 'button_toggle',
 				'atts'    => [
-					'name'        => 'gh_transactional_email_service',
-					'id'          => 'gh_transactional_email_service',
-					'option_none' => false,
-					'options'     => Groundhogg_Email_Services::dropdown(),
-//                    'disabled'    => is_staging_environment() && ! is_option_enabled( 'gh_allow_email_in_staging' )
+					'name'    => 'gh_transactional_email_service',
+					'id'      => 'gh_transactional_email_service',
+					'options' => Groundhogg_Email_Services::dropdown(),
 				],
 			],
 			'gh_marketing_email_service'             => [
@@ -1685,13 +1906,11 @@ class Settings_Page extends Admin_Page {
 				'label'   => _x( 'Marketing Email', 'settings', 'groundhogg' ),
 				/* translators: %s: the plugin/brand name */
 				'desc'    => sprintf( _x( 'Choose which installed service should handle marketing email from %1$s. This service will only apply to %1$s emails which have their <code>message type</code> set to <b>Marketing</b>.', 'settings', 'groundhogg' ), white_labeled_name() ),
-				'type'    => 'dropdown',
+				'type'    => 'button_toggle',
 				'atts'    => [
-					'name'        => 'gh_marketing_email_service',
-					'id'          => 'gh_marketing_email_service',
-					'option_none' => false,
-					'options'     => Groundhogg_Email_Services::dropdown(),
-//					'disabled'    => is_staging_environment() && ! is_option_enabled( 'gh_allow_email_in_staging' )
+					'name'    => 'gh_marketing_email_service',
+					'id'      => 'gh_marketing_email_service',
+					'options' => Groundhogg_Email_Services::dropdown(),
 				],
 			],
             'gh_log_emails'                          => [
@@ -1978,6 +2197,127 @@ class Settings_Page extends Admin_Page {
 	}
 
 	/**
+	 * Whether a tab shows in the navigation for the current user
+	 *
+	 * @param array $tab
+	 *
+	 * @return bool
+	 */
+	private function tab_is_listed( $tab ) {
+
+		// Force API Tab & Licenses Tab
+		if ( ! $this->tab_has_settings( $tab['id'] ) && ! in_array( $tab['id'], [
+				'extensions',
+				'api_tab'
+			] ) ) {
+			return false;
+		}
+
+		// Check for cap restriction on the tab...
+		$cap = get_array_var( $tab, 'cap' );
+
+		// ignore if there is no cap, but if there is one check if the user has required privileges...
+		return ! $cap || current_user_can( $cap );
+	}
+
+	/**
+	 * The id of the anchor placed in front of a setting so it can be linked to
+	 *
+	 * @param string $id the setting ID
+	 *
+	 * @return string
+	 */
+	public static function setting_anchor( $id ) {
+		return 'setting-' . sanitize_key( $id );
+	}
+
+	/**
+	 * Add the settings to the command palette, so they can be found from anywhere in the admin
+	 *
+	 * @param array $commands
+	 *
+	 * @return array
+	 */
+	public function command_palette_commands( $commands ) {
+
+		// settings are not initialized yet, or the user can't use the settings page
+		if ( ! is_array( $this->tabs ) || ! current_user_can( $this->get_cap() ) ) {
+			return $commands;
+		}
+
+		$brand = white_labeled_name();
+
+		// Content that is not made of registered settings, so it can still be found by what is on it
+		$tab_keywords = [
+			'api_tab'    => [
+				__( 'Application Passwords', 'groundhogg' ),
+				__( 'API Keys', 'groundhogg' ),
+				__( 'REST API', 'groundhogg' ),
+				__( 'Authentication', 'groundhogg' ),
+			],
+			'extensions' => [
+				__( 'License', 'groundhogg' ),
+				__( 'Extensions', 'groundhogg' ),
+				__( 'Add-ons', 'groundhogg' ),
+			],
+		];
+
+		$tab_titles = [];
+
+		foreach ( $this->tabs as $tab ) {
+
+			if ( ! $this->tab_is_listed( $tab ) ) {
+				continue;
+			}
+
+			$tab_titles[ $tab['id'] ] = $tab['title'];
+
+			$section_titles = array_column( array_filter( $this->sections, function ( $section ) use ( $tab ) {
+				return $section['tab'] === $tab['id'];
+			} ), 'title' );
+
+			$commands[] = [
+				'name'     => 'groundhogg/settings/' . $tab['id'],
+				/* translators: 1: plugin name, 2: settings tab */
+				'label'    => sprintf( __( '%1$s Settings › %2$s', 'groundhogg' ), $brand, $tab['title'] ),
+				'keywords' => array_merge( $section_titles, get_array_var( $tab_keywords, $tab['id'], [] ) ),
+				'url'      => admin_page_url( $this->get_slug(), [ 'tab' => $tab['id'] ] ),
+			];
+		}
+
+		foreach ( $this->settings as $id => $setting ) {
+
+			$label   = wp_specialchars_decode( wp_strip_all_tags( get_array_var( $setting, 'label', '' ) ) );
+			$section = get_array_var( $this->sections, get_array_var( $setting, 'section' ) );
+
+			// hidden fields and buttons can't be found, and neither can anything that is not displayed
+			if ( ! $label || ! $section || ! isset( $tab_titles[ $section['tab'] ] ) || in_array( get_array_var( $setting, 'type' ), [
+					'hidden',
+					'submit'
+				] ) ) {
+				continue;
+			}
+
+			// defined in wp-config.php, so there is nothing to change
+			if ( maybe_get_option_from_constant( null, $id ) !== null && has_constant_support( $id ) ) {
+				continue;
+			}
+
+			$desc = wp_trim_words( wp_specialchars_decode( wp_strip_all_tags( get_array_var( $setting, 'desc', '' ) ) ), 25 );
+
+			$commands[] = [
+				'name'     => 'groundhogg/settings/' . $id,
+				/* translators: 1: plugin name, 2: settings tab, 3: setting name */
+				'label'    => sprintf( __( '%1$s Settings › %2$s › %3$s', 'groundhogg' ), $brand, $tab_titles[ $section['tab'] ], $label ),
+				'keywords' => array_merge( [ $section['title'], $desc ], (array) get_array_var( $setting, 'keywords', [] ) ),
+				'url'      => admin_page_url( $this->get_slug(), [ 'tab' => $section['tab'] ], self::setting_anchor( $id ) ),
+			];
+		}
+
+		return $commands;
+	}
+
+	/**
 	 * @param $tab
 	 *
 	 * @return bool
@@ -2007,19 +2347,7 @@ class Settings_Page extends Admin_Page {
         <h2 class="gh-nav nav-tab-wrapper">
 			<?php foreach ( $this->tabs as $id => $tab ):
 
-				// Force API Tab & Licenses Tab
-				if ( ! $this->tab_has_settings( $tab['id'] ) && ! in_array( $tab['id'], [
-						'extensions',
-						'api_tab'
-					] ) ) {
-					continue;
-				}
-
-				// Check for cap restriction on the tab...
-				$cap = get_array_var( $tab, 'cap' );
-
-				// ignore if there is no cap, but if there is one check if the user has required privileges...
-				if ( $cap && ! current_user_can( $cap ) ) {
+				if ( ! $this->tab_is_listed( $tab ) ) {
 					continue;
 				}
 
@@ -2070,6 +2398,27 @@ class Settings_Page extends Admin_Page {
             td .select2 {
                 max-width: 300px;
             }
+
+            /* Settings linked to from the command palette */
+            .gh-setting-anchor {
+                display: block;
+                height: 0;
+                scroll-margin-top: 120px;
+            }
+
+            tr:has(.gh-setting-anchor:target) > th,
+            tr:has(.gh-setting-anchor:target) > td {
+                animation: gh-setting-flash 2.4s ease-out;
+            }
+
+            @keyframes gh-setting-flash {
+                0%, 40% {
+                    background-color: rgba(255, 200, 0, .3);
+                }
+                100% {
+                    background-color: transparent;
+                }
+            }
         </style>
         <div class="wrap">
 			<?php
@@ -2105,6 +2454,9 @@ class Settings_Page extends Admin_Page {
 	}
 
 	public function settings_callback( $field ) {
+
+		// anchor so the setting can be linked to, for example from the command palette
+		printf( '<span id="%s" class="gh-setting-anchor"></span>', esc_attr( self::setting_anchor( $field['id'] ) ) );
 
 		$constant_value = maybe_get_option_from_constant( null, $field['id'] );
 
@@ -2151,6 +2503,7 @@ class Settings_Page extends Admin_Page {
 				break;
 			case 'dropdown':
 			case 'dropdown_owners':
+			case 'button_toggle':
 				$field['atts']['selected'] = $value;
 				break;
 			case 'checkbox':

@@ -3,9 +3,11 @@
 namespace Groundhogg\Admin\Guided_Setup;
 
 use Groundhogg\Admin\Admin_Page;
+use Groundhogg\Admin\User\Admin_User;
 use Groundhogg\Background\Sync_Users_Last_Id;
 use Groundhogg\Background_Tasks;
 use Groundhogg\Classes\Inbox_Client;
+use Groundhogg\Mcp\Connection;
 use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\License_Manager;
 use Groundhogg\Plugin;
@@ -538,6 +540,29 @@ class Guided_Setup extends Admin_Page {
 	}
 
 	/**
+	 * The interface themes to pick from and the one the current user has, for the theme step. Picking one is saved
+	 * by the same ajax action as the command palette's, which needs a user who can see contacts.
+	 *
+	 * @return array|false false when the user can't pick one
+	 */
+	protected function themes() {
+
+		if ( ! current_user_can( 'view_contacts' ) ) {
+			return false;
+		}
+
+		$themes  = Admin_User::get_themes();
+		$current = get_user_meta( get_current_user_id(), 'gh_admin_theme', true );
+
+		return [
+			'options'    => $themes,
+			'current'    => array_key_exists( $current, $themes ) ? $current : 'default',
+			'nonce'      => wp_create_nonce( 'gh_set_admin_theme' ),
+			'stylesheet' => add_query_arg( 'ver', GROUNDHOGG_VERSION, GROUNDHOGG_ASSETS_URL . 'css/admin/themes.css' ),
+		];
+	}
+
+	/**
 	 * Enqueue any scripts
 	 */
 	public function scripts() {
@@ -546,6 +571,7 @@ class Guided_Setup extends Admin_Page {
 		wp_enqueue_script( 'groundhogg-admin-guided-setup' );
 
 		$can_sync = current_user_can( 'edit_users' ) && current_user_can( 'add_contacts' );
+		$ai_in_admin = current_user_can( 'manage_options' ) && Connection::is_supported();
 
 		$setup = [
 			'site'       => [
@@ -560,6 +586,7 @@ class Guided_Setup extends Admin_Page {
 			'prefill'    => $this->prefill(),
 			// names, not codes, the business country is shown in the email footer as it's saved
 			'countries'  => array_values( utils()->location->get_countries_list() ),
+			'themes'     => $this->themes(),
 			'hasLicense' => (bool) Inbox_Client::license_key(),
 			'telemetry'  => Plugin::instance()->stats_collection->is_enabled(),
 			'email'      => wp_get_current_user()->user_email,
@@ -575,7 +602,9 @@ class Guided_Setup extends Admin_Page {
 				'settings'   => admin_page_url( 'gh_settings', [ 'tab' => 'email' ] ),
 				'pricing'    => 'https://groundhogg.io/pricing/?utm_source=plugin&utm_medium=link&utm_campaign=guided_setup&utm_content=license',
 				'licenses'   => 'https://groundhogg.io/account/licenses/',
-				'ai'         => 'https://groundhogg.io/doc/working-with-the-abilities-api-mcp/?utm_source=plugin&utm_medium=link&utm_campaign=guided_setup&utm_content=ai',
+				// the agent is set up in Tools for the people that can, everyone else gets the doc
+				'ai'         => $ai_in_admin ? Connection::page_url() : 'https://groundhogg.io/doc/working-with-the-abilities-api-mcp/?utm_source=plugin&utm_medium=link&utm_campaign=guided_setup&utm_content=ai',
+				'ai_in_admin' => $ai_in_admin,
 			],
 		];
 

@@ -3,6 +3,8 @@
 namespace Groundhogg\Admin\Welcome;
 
 use Groundhogg\Admin\Admin_Page;
+use Groundhogg\Mcp\Connection;
+use Groundhogg\Mobile\Promo;
 use Groundhogg_Email_Services;
 use function Groundhogg\admin_page_url;
 use function Groundhogg\db;
@@ -113,6 +115,13 @@ class Welcome_Page extends Admin_Page {
 				'cap'         => 'edit_emails'
 			],
 			[
+				'title'       => __( 'Get the mobile app', 'groundhogg' ),
+				'description' => __( 'Look up contacts, call, text and email them, and add notes and tasks from your phone.', 'groundhogg' ),
+				'completed'   => Promo::has_used(),
+				'fix'         => Promo::page_url(),
+				'cap'         => Promo::is_available_to() ? 'view_contacts' : 'do_not_allow',
+			],
+			[
 				'title'       => __( 'Create a flow', 'groundhogg' ),
 				'description' => __( "We're going to create a flow that will welcome new subscribers to the list. It will only take a few minutes.", 'groundhogg' ),
 				'completed'   => get_db( 'funnels' )->count( [ 'status' => 'active' ] ) > 0,
@@ -208,6 +217,13 @@ class Welcome_Page extends Admin_Page {
 				'completed'   => ! empty( $reports ),
 				'fix'         => admin_page_url( 'gh_campaigns' ),
 				'cap'         => 'manage_campaigns'
+			],
+			[
+				'title'       => __( 'Connect an AI agent', 'groundhogg' ),
+				'description' => __( 'Let an AI assistant such as ChatGPT, Claude or Gemini work with your contacts, emails and flows. We will set up the connection and walk you through adding it to your AI client.', 'groundhogg' ),
+				'completed'   => Connection::is_connected(),
+				'fix'         => Connection::page_url(),
+				'cap'         => Connection::is_supported() ? 'manage_options' : 'do_not_allow'
 			],
 			[
 				'title'       => __( 'Add your email signature', 'groundhogg' ),

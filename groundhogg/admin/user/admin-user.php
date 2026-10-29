@@ -10,6 +10,7 @@ use function Groundhogg\get_owners;
 use function Groundhogg\get_post_var;
 use function Groundhogg\get_team;
 use function Groundhogg\get_team_ids;
+use function Groundhogg\get_url_var;
 use function Groundhogg\get_valid_contact_tabs;
 use function Groundhogg\html;
 use function Groundhogg\kses_e;
@@ -27,6 +28,161 @@ class Admin_User {
 
 		add_action( 'edit_user_profile_update', [ $this, 'save_fields' ] );
 		add_action( 'personal_options_update', [ $this, 'save_fields' ] );
+
+		add_filter( 'admin_body_class', [ $this, 'theme_body_class' ], 20 );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_theme' ], 100 );
+
+		add_filter( 'groundhogg/command_palette/commands', [ $this, 'command_palette_commands' ] );
+		add_action( 'wp_ajax_gh_set_admin_theme', [ $this, 'ajax_set_theme' ] );
+	}
+
+	/**
+	 * Save the interface theme a user picked
+	 *
+	 * @param int    $user_id
+	 * @param string $theme the slug of the theme, anything unknown or the default removes it
+	 *
+	 * @return void
+	 */
+	protected function save_theme( $user_id, $theme ) {
+
+		$theme = sanitize_key( $theme );
+
+		if ( $theme && $theme !== 'default' && array_key_exists( $theme, self::get_themes() ) ) {
+			update_user_meta( $user_id, 'gh_admin_theme', $theme );
+		} else {
+			delete_user_meta( $user_id, 'gh_admin_theme' );
+		}
+	}
+
+	/**
+	 * Add changing the interface theme to the command palette
+	 *
+	 * @param array $commands
+	 *
+	 * @return array
+	 */
+	public function command_palette_commands( $commands ) {
+
+		if ( ! current_user_can( 'view_contacts' ) ) {
+			return $commands;
+		}
+
+		$nonce      = wp_create_nonce( 'gh_set_admin_theme' );
+		$stylesheet = add_query_arg( 'ver', GROUNDHOGG_VERSION, GROUNDHOGG_ASSETS_URL . 'css/admin/themes.css' );
+
+		foreach ( self::get_themes() as $slug => $label ) {
+			$commands[] = [
+				'name'     => 'groundhogg/theme/' . $slug,
+				/* translators: 1: plugin name, 2: name of the interface theme */
+				'label'    => sprintf( __( '%1$s Theme: %2$s', 'groundhogg' ), white_labeled_name(), $label ),
+				'keywords' => [
+					__( 'Interface', 'groundhogg' ),
+					__( 'Appearance', 'groundhogg' ),
+					__( 'Dark mode', 'groundhogg' ),
+					__( 'Light mode', 'groundhogg' ),
+				],
+				'category' => 'command',
+				'action'   => 'set_admin_theme',
+				'args'     => [
+					'theme'      => $slug,
+					'nonce'      => $nonce,
+					'stylesheet' => $stylesheet,
+				],
+			];
+		}
+
+		return $commands;
+	}
+
+	/**
+	 * Save the interface theme of the current user from the command palette
+	 */
+	public function ajax_set_theme() {
+
+		check_ajax_referer( 'gh_set_admin_theme' );
+
+		$theme = sanitize_key( get_post_var( 'theme' ) );
+
+		if ( ! current_user_can( 'view_contacts' ) || ! array_key_exists( $theme, self::get_themes() ) ) {
+			wp_send_json_error( null, 400 );
+		}
+
+		$this->save_theme( get_current_user_id(), $theme );
+
+		wp_send_json_success( [ 'theme' => $theme ] );
+	}
+
+	/**
+	 * The interface themes a user can choose from, slug => label
+	 *
+	 * @return string[]
+	 */
+	public static function get_themes() {
+		return apply_filters( 'groundhogg/admin/themes', [
+			'default'  => _x( 'Default', 'admin theme', 'groundhogg' ),
+			'light'    => _x( 'Light', 'admin theme', 'groundhogg' ),
+			'paper'    => _x( 'Paper', 'admin theme', 'groundhogg' ),
+			'slate'    => _x( 'Slate (dark)', 'admin theme', 'groundhogg' ),
+			'midnight' => _x( 'Midnight (dark)', 'admin theme', 'groundhogg' ),
+		] );
+	}
+
+	/**
+	 * The slug of the theme the current user picked, or empty for the default look
+	 *
+	 * @return string
+	 */
+	protected function get_current_theme() {
+
+		$theme = get_user_meta( get_current_user_id(), 'gh_admin_theme', true );
+
+		if ( ! $theme || $theme === 'default' || ! array_key_exists( $theme, self::get_themes() ) ) {
+			return '';
+		}
+
+		return $theme;
+	}
+
+	/**
+	 * Whether the current admin screen is a Groundhogg page
+	 *
+	 * @return bool
+	 */
+	protected function is_groundhogg_page() {
+		$page = get_url_var( 'page' );
+
+		return $page && ( $page === 'groundhogg' || str_starts_with( $page, 'gh_' ) );
+	}
+
+	/**
+	 * Add the theme class to the body of Groundhogg pages
+	 *
+	 * @param $class string
+	 *
+	 * @return string
+	 */
+	public function theme_body_class( $class ) {
+
+		$theme = $this->get_current_theme();
+
+		if ( $theme && $this->is_groundhogg_page() ) {
+			$class .= " gh-theme-$theme";
+		}
+
+		return $class;
+	}
+
+	/**
+	 * Load the theme stylesheet, which only overrides variables and colors
+	 */
+	public function enqueue_theme() {
+
+		if ( ! $this->get_current_theme() || ! $this->is_groundhogg_page() ) {
+			return;
+		}
+
+		wp_enqueue_style( 'groundhogg-admin-themes', GROUNDHOGG_ASSETS_URL . 'css/admin/themes.css', [ 'groundhogg-admin' ], GROUNDHOGG_VERSION );
 	}
 
 	/**
@@ -127,6 +283,24 @@ class Admin_User {
 	        <?php endif;
             endif; ?>
             <tr>
+                <th><?php esc_html_e( 'Interface Theme', 'groundhogg' ); ?></th>
+                <td>
+		            <?php
+		            $current_theme = get_user_meta( $profile_user->ID, 'gh_admin_theme', true ) ?: 'default';
+		            ?>
+                    <div class="gh-admin-theme-picker" role="radiogroup" aria-label="<?php esc_attr_e( 'Interface Theme', 'groundhogg' ); ?>">
+			            <?php foreach ( self::get_themes() as $slug => $label ): ?>
+                            <label class="gh-admin-theme-option">
+                                <input type="radio" name="gh_admin_theme" value="<?php echo esc_attr( $slug ); ?>" <?php checked( $current_theme, $slug ); ?>>
+                                <span class="gh-admin-theme-swatch" data-theme="<?php echo esc_attr( $slug ); ?>"></span>
+                                <span class="gh-admin-theme-name"><?php echo esc_html( $label ); ?></span>
+                            </label>
+			            <?php endforeach; ?>
+                    </div>
+                    <p class="description"><?php echo esc_html_x( 'Choose how Groundhogg looks for you. Does not change how it works.', 'settings', 'groundhogg' ); ?></p>
+                </td>
+            </tr>
+            <tr>
                 <th><?php esc_html_e( 'Default Contact Tab', 'groundhogg' ); ?></th>
                 <td>
 					<?php
@@ -191,6 +365,8 @@ class Admin_User {
 		update_user_meta( $user_id, 'gh_default_contact_tab', sanitize_text_field( get_post_var( 'gh_default_contact_tab' ) ) );
 		update_user_meta( $user_id, 'gh_from_name', sanitize_text_field( get_post_var( 'gh_from_name' ) ) );
 		update_user_meta( $user_id, 'gh_from_email', sanitize_email( get_post_var( 'gh_from_email' ) ) );
+
+		$this->save_theme( $user_id, get_post_var( 'gh_admin_theme' ) );
 
 		if ( user_can( $user_id, 'view_reports' ) ) {
 			update_user_meta( $user_id, 'gh_broadcast_results', boolval( get_post_var( 'gh_broadcast_results' ) ) );
