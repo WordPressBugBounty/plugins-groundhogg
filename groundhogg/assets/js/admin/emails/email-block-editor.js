@@ -763,11 +763,37 @@
   }
 
   /**
+   * The edit lock of the page, if it's this email's. In the flow editor it's the flow's.
+   *
+   * @return {object|null}
+   */
+  const emailLock = () => {
+    const lock = window.GhLockData
+    return lock && lock.type === 'email' && typeof lock.setVersion === 'function' && parseInt(lock.id) === parseInt(State.email.ID) ? lock : null
+  }
+
+  let isSavingEmail = false
+
+  /**
+   * Says that the email was changed after it was opened, like by an AI agent, so saving was refused
+   */
+  const ChangedSinceOpenedModal = () => dangerConfirmationModal({
+    alert      : `<p>${ __('This email was changed after you opened it, by someone else or an AI agent.', 'groundhogg') }</p><p>${ __('Reload the page to see their changes, which loses yours, or save anyway to replace theirs with yours.', 'groundhogg') }</p>`,
+    confirmText: __('Save anyway', 'groundhogg'),
+    closeText  : __('Keep editing', 'groundhogg'),
+    onConfirm  : () => {
+      saveEmail(true).finally(morphHeader)
+    },
+  })
+
+  /**
    * Saves the email
+   *
+   * @param force save even if the email was changed after it was opened
    *
    * @return {Promise<*>}
    */
-  const saveEmail = () => {
+  const saveEmail = (force = false) => {
 
     // Save editor settings
     saveEditorSettings()
@@ -809,16 +835,43 @@
 
     }
 
-    // so the edit lock's heartbeat doesn't take this save for someone else's change, while it's sent and after,
-    // see edit-lock.js
-    window.GhLockData?.resync?.()
+    const lock = emailLock()
 
-    return EmailsStore.patch(State.email.ID, State.changes).then(email => {
+    // the version of the email this page has, so the save is refused if something else changed it since, see
+    // Emails_Api::update_single()
+    const version = lock && !force ? lock.knownVersion() : ''
+
+    if (lock) {
+      // a heartbeat that comes back while this is sent has the new version, which isn't the page's until it replies
+      lock.isBusy = () => isSavingEmail
+    }
+    else {
+      // so the edit lock's heartbeat doesn't take this save for someone else's change, while it's sent and after,
+      // see edit-lock.js
+      window.GhLockData?.resync?.()
+    }
+
+    isSavingEmail = true
+
+    return patch(`${ EmailsStore.route }/${ State.email.ID }`, {
+      ...State.changes,
+      ...( version ? { version } : {} ),
+    }).then(r => {
+
+      const email = r.item
+
+      EmailsStore.itemsFetched([email])
+
       dialog({
         message: 'Email updated!',
       })
 
-      window.GhLockData?.resync?.()
+      if (lock) {
+        lock.setVersion(r.version)
+      }
+      else {
+        window.GhLockData?.resync?.()
+      }
 
       setState({
         email,
@@ -829,10 +882,22 @@
 
       onSave(email)
     }).catch(err => {
+
+      setState({
+        savingDraft: false,
+      })
+
+      if (err.code === 'groundhogg_email_changed') {
+        ChangedSinceOpenedModal()
+        return
+      }
+
       dialog({
         message: 'Oops, something went wrong. Try refreshing the page.',
         type   : 'error',
       })
+    }).finally(() => {
+      isSavingEmail = false
     })
   }
 
@@ -1992,13 +2057,14 @@
    * Extract style given CSS declaration
    *
    * @param style
+   * @param keepEmptyFont if the style has no font, leave it empty instead of normalizing it to Arial
    * @return {{fontFamily: string, color: string, lineHeight: string, fontSize: number, fontStyle: string, fontWeight:
    *   string, textTransform: string}}
    */
-  const parseFontStyle = style => ( {
+  const parseFontStyle = (style, { keepEmptyFont = false } = {}) => ( {
     color: style.getPropertyValue('color'),
 
-    fontFamily: normalizeFont(style.getPropertyValue('font-family')),
+    fontFamily: keepEmptyFont && !style.getPropertyValue('font-family') ? '' : normalizeFont(style.getPropertyValue('font-family')),
 
     lineHeight: style.getPropertyValue('line-height'),
 
@@ -4073,8 +4139,41 @@
           })
         },
       },
-      Div({ className: 'block-grid' },
-        Object.values(BlockRegistry.blocks).map(b => Block(b))))
+      Div({ className: 'block-grid' }, [
+        EditWithAI(),
+        ...Object.values(BlockRegistry.blocks).map(b => Block(b)),
+      ]))
+  }
+
+  /**
+   * "Edit with AI", first in the blocks panel, for people who haven't connected an assistant lately, see
+   * Build_With_AI::enqueue(). It looks like a block but isn't one, so it isn't draggable and opens the popup instead.
+   * Only on the email's own edit screen, the flow editor has a card of its own.
+   *
+   * @return {HTMLElement|null}
+   */
+  const EditWithAI = () => {
+
+    if (!Groundhogg.buildWithAI || Groundhogg.buildWithAI.type !== 'edit-email' || !isEmailEditorPage()) {
+      return null
+    }
+
+    return Div({
+      className: 'block-wrap build-with-ai-block',
+      title    : __('Describe the change you want and your AI assistant makes it to this email.', 'groundhogg'),
+      role     : 'button',
+      tabindex : 0,
+      onClick  : () => Groundhogg.buildWithAI.open(),
+      onKeydown: e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          Groundhogg.buildWithAI.open()
+        }
+      },
+    }, [
+      Div({ className: 'ai-block gh-panel' }, Div({ className: 'icon' }, Groundhogg.buildWithAI.icon)),
+      Div({ className: 'block-name' }, __('Edit with AI', 'groundhogg')),
+    ])
   }
 
   const AdvancedBlockControls = () => {
@@ -6482,7 +6581,11 @@
         id       : 'template-grid',
         className: 'display-grid gap-20',
       },
-      items)
+      [
+        // building it with an AI assistant, not when choosing an email for a step in the flow editor
+        Groundhogg.buildWithAI && isEmailEditorPage() ? Groundhogg.buildWithAI.Card('span-4') : null,
+        ...items,
+      ])
 
     let items
 
@@ -7763,7 +7866,7 @@
   })
 
   // cleverly get the style from the content
-  const parseFontStyleFromTag = (el,tag) => {
+  const parseFontStyleFromTag = (el, tag, options = {}) => {
 
     let styledEl = el.querySelector(tag)
     if ( ! styledEl ){
@@ -7772,7 +7875,7 @@
       })[tag]
     }
 
-    return parseFontStyle(styledEl.style)
+    return parseFontStyle(styledEl.style, options)
   }
 
   // Register new heading block
@@ -7936,7 +8039,8 @@
   registerBlock('text', 'Text', {
     attributes: {
       p: el  => parseFontStyleFromTag(el, 'p,li'),
-      a: el  => parseFontStyleFromTag(el, 'a'),
+      // links without a font of their own inherit the paragraph's
+      a: el  => parseFontStyleFromTag(el, 'a', { keepEmptyFont: true }),
       h1: el => parseFontStyleFromTag(el, 'h1'),
       h2: el => parseFontStyleFromTag(el, 'h2'),
       h3: el => parseFontStyleFromTag(el, 'h3'),
@@ -11534,6 +11638,10 @@
     const getAttributes = BlockType.attributes
     const el = tr.querySelector(`td#b-${ id }`)
 
+    // the full_width_contained template wraps top level blocks in a table, see BlockHTML()
+    // read the block's own content from inside it, or every save nests another wrapper
+    const contentEl = el.querySelector(`:scope > table td#b-${ id }-inner`) ?? el
+
     let block = {
       type,
       id, ...attributes,
@@ -11541,7 +11649,7 @@
 
     for (let getter in getAttributes) {
       try {
-        block[getter] = getAttributes[getter](el, block)
+        block[getter] = getAttributes[getter](contentEl, block)
       }
       catch (e) {
         block[getter] = BlockType.defaults[getter]

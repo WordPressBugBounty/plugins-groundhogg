@@ -3,10 +3,13 @@
 namespace Groundhogg\Admin\Welcome;
 
 use Groundhogg\Admin\Admin_Page;
+use Groundhogg\Mailhawk;
 use Groundhogg\Mcp\Connection;
 use Groundhogg\Mobile\Promo;
+use Groundhogg\Notifications\Subscriptions;
 use Groundhogg_Email_Services;
 use function Groundhogg\admin_page_url;
+use function Groundhogg\andList;
 use function Groundhogg\db;
 use function Groundhogg\files;
 use function Groundhogg\get_db;
@@ -130,7 +133,7 @@ class Welcome_Page extends Admin_Page {
 			],
 		];
 
-		apply_filters( 'groundhogg/admin/checklist_items', $checklist_items );
+		$checklist_items = apply_filters( 'groundhogg/admin/checklist_items', $checklist_items );
 
 		// set the ID as the query part of the fix
 		$checklist_items = array_map( function ( $item ) {
@@ -152,6 +155,38 @@ class Welcome_Page extends Admin_Page {
 		] );
 	}
 
+	/**
+	 * One recommendation for all the email summaries the current user can get, My day, the broadcast results and the
+	 * performance overviews among them, and any that an add-on registers. It is done once they have asked for every one.
+	 *
+	 * @return array
+	 */
+	public static function get_notifications_item() {
+
+		$user_id = get_current_user_id();
+
+		$available = array_filter( Subscriptions::types(), function ( $type ) {
+			return current_user_can( $type['cap'] );
+		} );
+
+		$pending = array_filter( array_keys( $available ), function ( $id ) use ( $user_id ) {
+			return ! Subscriptions::is_subscribed( $user_id, $id );
+		} );
+
+		$labels = array_map( function ( $id ) use ( $available ) {
+			return $available[ $id ]['label'];
+		}, $pending );
+
+		return [
+			'title'       => __( 'Get email summaries of what matters', 'groundhogg' ),
+			/* translators: %s: a list of the summaries, like "daily summaries of your day and next-day broadcast results" */
+			'description' => sprintf( __( 'Get %s sent to your inbox. You can turn each one on or off from the Notifications section of your profile.', 'groundhogg' ), andList( $labels ) ),
+			'completed'   => empty( $pending ),
+			'fix'         => admin_url( 'profile.php' ) . '#groundhogg-notifications',
+			'cap'         => empty( $available ) ? 'do_not_allow' : 'read'
+		];
+	}
+
 	public function ajax_get_recommendation_items() {
 
 		if ( ! verify_admin_ajax_nonce() ) {
@@ -161,19 +196,13 @@ class Welcome_Page extends Admin_Page {
 		$reports   = get_option( 'gh_custom_reports', [] );
 		$signature = get_user_meta( get_current_user_id(), 'signature', true );
 
-		// MailHawk is installed but not connected -> redirect to the mailhawk connect page
-		if ( function_exists( 'mailhawk_is_connected' ) && ! mailhawk_is_connected() ):
-			$smtp_fix_link = admin_page_url( 'mailhawk' );
-
-		// The number of registered services is > 1, means that an integration is installed.
-        elseif ( count( Groundhogg_Email_Services::get() ) > 1 ):
+		// MailHawk is installed but not connected -> its own page, where it's connected
+		if ( defined( 'MAILHAWK_VERSION' ) && ! Mailhawk::is_connected() ) {
+			$smtp_fix_link = Mailhawk::connect_url();
+		} else {
+			// the email settings, to pick a service or connect MailHawk
 			$smtp_fix_link = admin_page_url( 'gh_settings', [ 'tab' => 'email' ] );
-
-		// No other service is currently in use.
-		else:
-			$smtp_fix_link = admin_page_url( 'gh_settings', [ 'tab' => 'email' ] );
-
-		endif;
+		}
 
 		$checklist_items = [
 			[
@@ -193,7 +222,8 @@ class Welcome_Page extends Admin_Page {
 			[
 				'title'       => __( 'Integrate a verified SMTP service', 'groundhogg' ),
 				'description' => __( "You need a proper SMTP service to ensure your email reaches the inbox. We recommend <a href='https://mailhawk.io'>MailHawk!</a>", 'groundhogg' ),
-				'completed'   => Groundhogg_Email_Services::get_marketing_service() !== 'wp_mail' || function_exists( 'mailhawk_mail' ),
+				// MailHawk only sends once it's connected, being active isn't enough
+				'completed'   => Groundhogg_Email_Services::get_marketing_service() !== 'wp_mail' || Mailhawk::is_connected(),
 				'fix'         => $smtp_fix_link,
 				'cap'         => is_white_labeled() ? 'manage_gh_licenses' : 'install_plugins'
 			],
@@ -225,9 +255,10 @@ class Welcome_Page extends Admin_Page {
 				'fix'         => Connection::page_url(),
 				'cap'         => Connection::is_supported() ? 'manage_options' : 'do_not_allow'
 			],
+			self::get_notifications_item(),
 			[
 				'title'       => __( 'Add your email signature', 'groundhogg' ),
-				'description' => __( "Adding an email signature to your profile will make it easier for subscribers to know who your are.", 'groundhogg' ),
+				'description' => __( "Adding an email signature to your profile will make it easier for subscribers to know who you are.", 'groundhogg' ),
 				'completed'   => ! empty( $signature ),
 				'fix'         => admin_url( 'profile.php' ) . '#groundhogg-options',
 				'cap'         => 'send_emails'
@@ -269,7 +300,7 @@ class Welcome_Page extends Admin_Page {
 			}
 		}
 
-		apply_filters( 'groundhogg/admin/recommendation_items', $checklist_items );
+		$checklist_items = apply_filters( 'groundhogg/admin/recommendation_items', $checklist_items );
 
 		// set the ID as the query part of the fix
 		$checklist_items = array_map( function ( $item ) {

@@ -9,6 +9,7 @@ use Groundhogg\Admin\Admin_Menu;
 use Groundhogg\Form\Submission_Handler;
 use Groundhogg\Queue\Event_Queue;
 use Groundhogg\Reporting\Email_Reports;
+use Groundhogg\Reporting\My_Day;
 use Groundhogg\Steps\Manager as Step_Manager;
 use Groundhogg\Bulk_Jobs\Manager as Bulk_Job_Manager;
 
@@ -186,6 +187,11 @@ class Plugin {
 	public $imap_inbox;
 
 	/**
+	 * @var Site_Health
+	 */
+	public $site_health;
+
+	/**
 	 * @var Step_Manager
 	 */
 	public $step_manager;
@@ -298,6 +304,8 @@ class Plugin {
 		// Settings & DBS needs to go first...
 		$this->settings = new Settings();
 		$this->roles    = new Main_Roles();
+		new Pii_Rest();
+		new Pii_Admin();
 		$this->dbs      = new DB_Manager();
 
 		// Modules
@@ -359,7 +367,11 @@ class Plugin {
 		new Cleanup_Actions();
 		new Daily_Actions();
 		new Email_Reports();
+		new My_Day();
+		new Notifications\Actions();
 		new Abilities();
+		Mcp\Connection::init();
+		$this->site_health = new Site_Health();
 	}
 
 	/**

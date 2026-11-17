@@ -161,7 +161,7 @@ class Scripts {
 			'unnecessary_cookies_disabled' => is_option_enabled( 'gh_disable_unnecessary_cookies' ),
 			'has_accepted_cookies'         => has_accepted_cookies(),
 			// page tracking
-			'disable_page_tracking'        => is_option_enabled( 'gh_disable_open_tracking' ),
+			'disable_page_tracking'        => is_option_enabled( 'gh_disable_page_tracking' ),
 			//deprecated
 			'ajaxurl'                      => admin_url( 'admin-ajax.php' ),
 			'_wpnonce'                     => wp_create_nonce( 'wp_rest' ),
@@ -445,6 +445,15 @@ class Scripts {
 			'groundhogg-admin-modal'
 		], GROUNDHOGG_VERSION, true );
 
+		wp_register_script( 'groundhogg-admin-build-with-ai', GROUNDHOGG_ASSETS_URL . 'js/admin/build-with-ai' . $dot_min . '.js', [
+			'groundhogg-admin',
+			'groundhogg-admin-element', // the spinner
+			'groundhogg-make-el',
+			'wp-i18n',
+		], GROUNDHOGG_VERSION, true );
+
+		wp_set_script_translations( 'groundhogg-admin-build-with-ai', 'groundhogg', GROUNDHOGG_PATH . 'languages' );
+
 		wp_register_script( 'groundhogg-admin-email-log', GROUNDHOGG_ASSETS_URL . 'js/admin/email-log' . $dot_min . '.js', [
 			'groundhogg-admin-components',
 		], GROUNDHOGG_VERSION, true );
@@ -589,7 +598,7 @@ class Scripts {
 
 		wp_enqueue_script( 'groundhogg-admin-functions' );
 
-		if ( ! is_admin_groundhogg_page() && ! is_option_enabled( 'gh_disable_email_detection' ) && current_user_can( 'view_others_contacts' ) ){
+		if ( ! is_admin_groundhogg_page() && ! is_user_preference_enabled( 'gh_disable_email_detection' ) && current_user_can( 'view_others_contacts' ) ){
 			wp_enqueue_script( 'groundhogg-admin-email-detector' );
 		}
 

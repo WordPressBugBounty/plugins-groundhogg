@@ -4055,4 +4055,165 @@ div:has(> button.hide-panel) > button.hide-panel:hover {
   --swatch-accent: #5b8cff;
 }
 
+.gh-settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 960px;
+  margin: 16px 0 24px;
+}
+.gh-settings-sections .gh-settings-section-intro {
+  padding: 16px 20px;
+}
+.gh-settings-sections .gh-settings-section-intro:has(> .gh-settings-row:first-child), .gh-settings-sections .gh-settings-section-intro:has(> :only-child:empty) {
+  padding: 0;
+}
+.gh-settings-sections .gh-settings-section-intro:has(> .gh-panel.outlined:only-child) {
+  padding: 0;
+}
+.gh-settings-sections .gh-settings-section-intro:has(> .gh-panel.outlined:only-child) > .gh-panel.outlined {
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+}
+.gh-settings-sections .gh-settings-section-intro + .gh-settings-row {
+  border-top: 1px solid var(--gh-panel-gray);
+}
+.gh-settings-sections .gh-settings-section-header {
+  padding: 14px 20px;
+  border-radius: calc(var(--gh-panel-border-radius) - 1px) calc(var(--gh-panel-border-radius) - 1px) 0 0;
+}
+.gh-settings-sections .gh-settings-section-header h2 {
+  padding: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.gh-settings-sections .gh-settings-section-header .description {
+  margin: 4px 0 0;
+}
+.gh-settings-sections .gh-settings-section.danger {
+  border-color: rgba(233, 31, 79, 0.5);
+}
+.gh-settings-sections .gh-settings-section.danger .gh-settings-section-header {
+  background: rgba(233, 31, 79, 0.1);
+  border-bottom-color: rgba(233, 31, 79, 0.25);
+}
+.gh-settings-sections .gh-settings-section.danger .gh-settings-section-header h2 {
+  color: rgb(233, 31, 79);
+}
+.gh-settings-sections .gh-settings-section.danger .gh-settings-row ~ .gh-settings-row,
+.gh-settings-sections .gh-settings-section.danger .gh-settings-section-intro + .gh-settings-row {
+  border-top-color: rgba(233, 31, 79, 0.1);
+}
+.gh-settings-sections .gh-settings-row {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 8px 24px;
+  padding: 16px 20px;
+}
+.gh-settings-sections .gh-settings-row ~ .gh-settings-row {
+  border-top: 1px solid var(--gh-panel-gray);
+}
+.gh-settings-sections .gh-settings-row .gh-settings-row-label {
+  padding-top: 5px;
+  font-weight: 600;
+}
+.gh-settings-sections .gh-settings-row .gh-settings-row-control {
+  min-width: 0;
+}
+.gh-settings-sections .gh-settings-row .gh-settings-row-control input[type=text],
+.gh-settings-sections .gh-settings-row .gh-settings-row-control input[type=email] {
+  width: 100%;
+  max-width: 400px;
+}
+.gh-settings-sections .gh-settings-row .gh-settings-row-control .description {
+  margin: 8px 0 0;
+  max-width: 640px;
+}
+.gh-settings-sections .gh-settings-row.wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+.gh-settings-sections .gh-settings-row.wide .gh-settings-row-label {
+  padding-top: 0;
+}
+.gh-settings-sections .gh-settings-row.wide .gh-settings-row-control {
+  max-width: 800px;
+}
+@media (max-width: 782px) {
+  .gh-settings-sections .gh-settings-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gh-settings-sections .gh-settings-row .gh-settings-row-label {
+    padding-top: 0;
+  }
+}
+.gh-settings-sections .gh-settings-section {
+  scroll-margin-top: 80px;
+}
+
+.gh-settings-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  container-type: inline-size;
+}
+.gh-settings-layout > .gh-settings-sections {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gh-settings-toc {
+  position: sticky;
+  top: 112px;
+  flex: 0 0 200px;
+  margin: 16px 0 24px;
+  max-height: calc(100vh - 136px);
+  overflow-y: auto;
+}
+.gh-settings-toc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--gh-dark-10);
+}
+.gh-settings-toc li {
+  margin: 0;
+}
+.gh-settings-toc a {
+  display: block;
+  margin-left: -2px;
+  padding: 6px 12px;
+  border-left: 2px solid transparent;
+  color: var(--gh-dark);
+  font-size: 13px;
+  line-height: 1.4;
+  text-decoration: none;
+}
+.gh-settings-toc a:hover {
+  color: var(--gh-primary);
+}
+.gh-settings-toc a.danger {
+  color: var(--gh-error-red);
+}
+.gh-settings-toc a.active {
+  border-left-color: var(--gh-primary);
+  color: var(--gh-primary);
+  font-weight: 600;
+}
+.gh-settings-toc a.active.danger {
+  border-left-color: var(--gh-error-red);
+  color: var(--gh-error-red);
+}
+@container (max-width: 900px) {
+  .gh-settings-toc {
+    display: none;
+  }
+}
+
+.property-field .gh-rows-and-columns > .gh-row .description {
+  max-width: 0;
+  min-width: 100%;
+}
+
 /*# sourceMappingURL=elements.css.map */

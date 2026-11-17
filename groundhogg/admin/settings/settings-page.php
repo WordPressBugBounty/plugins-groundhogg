@@ -3,6 +3,8 @@
 namespace Groundhogg\Admin\Settings;
 
 use Groundhogg\Admin\Admin_Page;
+use Groundhogg\Admin\Card_Sections;
+use Groundhogg\Admin\User\Admin_User;
 use Groundhogg\Api\V3\Base;
 use Groundhogg\Api\V4\Base_Api;
 use Groundhogg\Extension;
@@ -56,9 +58,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Settings_Page extends Admin_Page {
 
-	// UNUSED FUNCTIONS
 	protected function add_ajax_actions() {
+		// installs MailHawk from the email settings
+		Mailhawk::instance();
 	}
+
+	// UNUSED FUNCTIONS
 
 	public function help() {
 	}
@@ -96,6 +101,8 @@ class Settings_Page extends Admin_Page {
 		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, 'application_passwords' ], 5 );
 		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, 'api_routes' ], 10 );
 		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, 'api_keys_table' ], 15 );
+		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, "api_sections_open" ], 1 );
+		add_action( "groundhogg/admin/settings/api_tab/after_form", [ $this, "api_sections_close" ], 99 );
 		add_filter( 'groundhogg/command_palette/commands', [ $this, 'command_palette_commands' ] );
 
 		Incoming_Messages::init();
@@ -114,8 +121,38 @@ class Settings_Page extends Admin_Page {
 		return sprintf( esc_html__( "%s Settings", 'groundhogg' ), esc_html( white_labeled_name() ) );
 	}
 
+	/**
+	 * The page is open to anyone who can use Groundhogg, for the Me tab, every other tab needs a cap of its own
+	 *
+	 * @see Settings_Page::tab_cap()
+	 *
+	 * @return string
+	 */
 	public function get_cap() {
-		return 'manage_options';
+		return 'view_contacts';
+	}
+
+	/**
+	 * The capability needed to see a tab, tabs that don't name one are for administrators
+	 *
+	 * @param array|null $tab
+	 *
+	 * @return string
+	 */
+	private function tab_cap( $tab ) {
+		return get_array_var( $tab, 'cap' ) ?: 'manage_options';
+	}
+
+	/**
+	 * Anyone else than an administrator can only save their own settings from this page
+	 */
+	public function process_action() {
+
+		if ( ! current_user_can( 'manage_options' ) && $this->get_current_action() !== 'save_me' ) {
+			return;
+		}
+
+		parent::process_action();
 	}
 
 	public function get_item_type() {
@@ -198,12 +235,12 @@ class Settings_Page extends Admin_Page {
 		$base_url = rest_url( Base_Api::NAME_SPACE );
 
 		?>
-        <h3><?php esc_html_e( 'Application Passwords', 'groundhogg' ); ?>
-            <span class="pill green" style="vertical-align: middle; margin-left: 5px;"><?php esc_html_e( 'Recommended', 'groundhogg' ); ?></span>
-        </h3>
-        <p class="description" style="max-width: 900px;">
-			<?php esc_html_e( 'Application passwords are the best way to connect external applications to the REST API. They use standard Basic authentication, can be revoked individually, and never expose your real WordPress password.', 'groundhogg' ); ?>
-        </p>
+		<?php Card_Sections::section_start(
+			__( 'Application Passwords', 'groundhogg' ),
+			__( 'Application passwords are the best way to connect external applications to the REST API. They use standard Basic authentication, can be revoked individually, and never expose your real WordPress password.', 'groundhogg' ),
+			'<span class="pill green">' . esc_html__( 'Recommended', 'groundhogg' ) . '</span>'
+		); ?>
+        <div class="gh-settings-section-intro">
 		<?php
 
 		if ( ! wp_is_application_passwords_available() ) {
@@ -212,6 +249,9 @@ class Settings_Page extends Admin_Page {
                 <p><?php esc_html_e( 'Application passwords are not available on this site. WordPress requires a secure (HTTPS) connection to use them, and they may have been disabled by another plugin.', 'groundhogg' ); ?></p>
             </div>
 			<?php
+			echo '</div>';
+			Card_Sections::section_end();
+
 			return;
 		}
 
@@ -320,7 +360,10 @@ class Settings_Page extends Admin_Page {
 				'<a href="' . esc_url( admin_url( 'profile.php#application-passwords-section' ) ) . '">' . esc_html__( 'application passwords section of your profile', 'groundhogg' ) . '</a>'
 			); ?>
         </p>
+        </div>
 		<?php
+
+		Card_Sections::section_end();
 	}
 
 	/**
@@ -371,42 +414,52 @@ class Settings_Page extends Admin_Page {
 			'token'    => self::basic_auth_token( $user->user_login, $password ),
 		];
 
-		$this->add_notice( 'success', 'Application password created!' );
+		$this->add_notice( 'success', __( 'Application password created!', 'groundhogg' ) );
 
 		return true;
+	}
+
+	/**
+	 * The cards of the API tab share a container, so they are spaced like the cards of the other tabs
+	 */
+	public function api_sections_open() {
+		echo '<div class="gh-settings-sections">';
+	}
+
+	public function api_sections_close() {
+		echo '</div>';
 	}
 
 	/**
 	 * Display the API routes
 	 */
 	public function api_routes() {
-		html()->start_form_table();
-		html()->start_row();
-		html()->th( esc_html__( 'API v4 Route', 'groundhogg' ) );
-		html()->td( [
-			html()->input( [
-					'class'    => 'code input regular-text',
-					'readonly' => true,
-					'value'    => rest_url( Base_Api::NAME_SPACE ),
-					'onfocus'  => 'this.select()'
-				]
-			),
-			html()->description( html()->e( 'a', [
-				'href' => admin_page_url( 'gh_tools', [ 'tab' => 'api' ] )
-			], esc_html__( 'Test out the API in the new REST API Playground.', 'groundhogg' ) ) ),
-		] );
-		html()->end_row();
-		html()->start_row();
-		html()->th( esc_html__( 'API v3 Route', 'groundhogg' ) );
-		html()->td( html()->input( [
+
+		Card_Sections::section_start( __( 'REST API', 'groundhogg' ) );
+
+		Card_Sections::row( __( 'API v4 Route', 'groundhogg' ), '', function () {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+			echo html()->input( [
+				'class'    => 'code input regular-text',
+				'readonly' => true,
+				'value'    => rest_url( Base_Api::NAME_SPACE ),
+				'onfocus'  => 'this.select()'
+			] );
+		}, html()->e( 'a', [
+			'href' => admin_page_url( 'gh_tools', [ 'tab' => 'api' ] )
+		], esc_html__( 'Test out the API in the new REST API Playground.', 'groundhogg' ) ) );
+
+		Card_Sections::row( __( 'API v3 Route', 'groundhogg' ), '', function () {
+			// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- generated HTML
+			echo html()->input( [
 				'class'    => 'code input regular-text',
 				'readonly' => true,
 				'value'    => rest_url( Base::NAME_SPACE ),
 				'onfocus'  => 'this.select()'
-			]
-		) );
-		html()->end_row();
-		html()->end_form_table();
+			] );
+		} );
+
+		Card_Sections::section_end();
 	}
 
 	/**
@@ -415,39 +468,47 @@ class Settings_Page extends Admin_Page {
 	public function api_keys_table() {
 		$api_keys_table = new API_Keys_Table();
 		$api_keys_table->prepare_items();
+
+		Card_Sections::section_start(
+			__( 'API Keys', 'groundhogg' ),
+			'',
+			'<span class="pill red">' . esc_html__( 'Deprecated', 'groundhogg' ) . '</span>'
+		);
+
 		?>
-        <h3><?php esc_html_e( 'API Keys', 'groundhogg' ); ?>
-            <span class="pill red" style="vertical-align: middle; margin-left: 5px;"><?php esc_html_e( 'Deprecated', 'groundhogg' ); ?></span>
-        </h3>
-
-        <div class="notice notice-warning inline" style="max-width: 900px;">
-            <p><?php esc_html_e( 'API keys are deprecated. Existing keys continue to work, but new integrations should use an application password instead.', 'groundhogg' ); ?></p>
-        </div>
-
-        <form id="api-key-generate-form" method="post"
-              action="<?php echo esc_url( admin_url( 'admin.php?page=gh_settings&tab=api_tab' ) ); ?>">
-			<?php action_input( 'create_api_key', true, true ); ?>
-            <div class="gh-input-group">
-	            <?php html( [
-		            html()->dropdown_owners( [
-			            'option_none' => esc_html__( 'Select a user', 'groundhogg' ),
-			            'name'        => 'user_id',
-			            'id'          => 'user_id'
-		            ] ),
-		            html()->button( [
-			            'class' => 'gh-button primary',
-			            'text'  => esc_html__( 'Generate new API key', 'groundhogg' ),
-			            'type'  => 'submit',
-		            ] )
-	            ] );
-
-				?>
+        <div class="gh-settings-section-intro">
+            <div class="notice notice-warning inline" style="max-width: 900px; margin-top: 0;">
+                <p><?php esc_html_e( 'API keys are deprecated. Existing keys continue to work, but new integrations should use an application password instead.', 'groundhogg' ); ?></p>
             </div>
-        </form>
 
-        <div style="max-width: 900px;"><?php
-		$api_keys_table->display();
-		?></div><?php
+            <form id="api-key-generate-form" method="post"
+                  action="<?php echo esc_url( admin_url( 'admin.php?page=gh_settings&tab=api_tab' ) ); ?>">
+				<?php action_input( 'create_api_key', true, true ); ?>
+                <div class="gh-input-group">
+					<?php html( [
+						html()->dropdown_owners( [
+							'option_none' => esc_html__( 'Select a user', 'groundhogg' ),
+							'name'        => 'user_id',
+							'id'          => 'user_id'
+						] ),
+						html()->button( [
+							'class' => 'gh-button primary',
+							'text'  => esc_html__( 'Generate new API key', 'groundhogg' ),
+							'type'  => 'submit',
+						] )
+					] );
+
+					?>
+                </div>
+            </form>
+
+            <div style="max-width: 900px;"><?php
+				$api_keys_table->display();
+				?></div>
+        </div>
+		<?php
+
+		Card_Sections::section_end();
 	}
 
 	public function view_extensions() {
@@ -459,6 +520,46 @@ class Settings_Page extends Admin_Page {
 		License_Manager::add_license_form();
 
         License_Manager::manage_licenses();
+	}
+
+	/**
+	 * The profile settings of the current user, the same ones as on their WordPress profile
+	 */
+	public function view_me() {
+
+		$user = wp_get_current_user();
+
+		?>
+        <form method="POST" enctype="multipart/form-data"
+              action="<?php echo esc_url( admin_page_url( $this->get_slug(), [ 'tab' => 'me' ] ) ); ?>">
+			<?php action_input( 'save_me', true, true ); ?>
+			<?php Admin_User::instance()->fields_table( $user ); ?>
+			<?php html( 'p', [], html()->button( [
+				'text'  => esc_html__( 'Save Changes', 'groundhogg' ),
+				'class' => 'gh-button primary',
+				'type'  => 'submit',
+				'id'    => 'primary-submit'
+			] ) ); ?>
+        </form>
+		<?php
+	}
+
+	/**
+	 * Save the profile settings of the current user
+	 *
+	 * @return true
+	 */
+	public function process_save_me() {
+
+		if ( ! current_user_can( 'view_contacts' ) ) {
+			$this->wp_die_no_access();
+		}
+
+		Admin_User::instance()->save_fields( get_current_user_id() );
+
+		$this->add_notice( 'success', esc_html__( 'Your settings have been saved.', 'groundhogg' ) );
+
+		return true;
 	}
 
 	/**
@@ -602,6 +703,11 @@ class Settings_Page extends Admin_Page {
 				'id'    => 'misc',
 				'title' => _x( 'Misc', 'settings_tabs', 'groundhogg' )
 			),
+			'me'           => array(
+				'id'    => 'me',
+				'title' => _x( 'Me', 'settings_tabs', 'groundhogg' ),
+				'cap'   => 'view_contacts'
+			),
 		];
 
 		if ( ! is_white_labeled() || ! is_multisite() || is_main_site() ) {
@@ -694,9 +800,10 @@ class Settings_Page extends Admin_Page {
 				'tab'   => 'misc'
 			],
 			'danger_zone'           => [
-				'id'    => 'danger_zone',
-				'title' => _x( 'Danger Zone', 'settings_sections', 'groundhogg' ),
-				'tab'   => 'misc'
+				'id'     => 'danger_zone',
+				'title'  => _x( 'Danger Zone', 'settings_sections', 'groundhogg' ),
+				'tab'    => 'misc',
+				'danger' => true,
 			],
 			'double_optin'          => [
 				'id'    => 'double_optin',
@@ -729,6 +836,13 @@ class Settings_Page extends Admin_Page {
 //				'tab'      => 'email',
 //				'callback' => [ SendWp::instance(), 'settings_connect_ui' ],
 //			],
+			'mailhawk'              => [
+				'id'       => 'mailhawk',
+				'title'    => _x( 'Send Email with MailHawk', 'settings_sections', 'groundhogg' ),
+				'tab'      => 'email',
+				'badge'    => Mailhawk::is_connected() ? '' : '<span class="pill green">' . esc_html__( 'Recommended', 'groundhogg' ) . '</span>',
+				'callback' => [ Mailhawk::instance(), 'settings_connect_ui' ],
+			],
 			'outgoing_email_config' => [
 				'id'    => 'outgoing_email_config',
 				'title' => _x( 'Outgoing Email', 'settings_sections', 'groundhogg' ),
@@ -746,12 +860,6 @@ class Settings_Page extends Admin_Page {
 					}
 				},
 			],
-//			'mailhawk'              => [
-//				'id'       => 'mailhawk',
-//				'title'    => _x( 'MailHawk', 'settings_sections', 'groundhogg' ),
-//				'tab'      => 'email',
-//				'callback' => [ Mailhawk::instance(), 'settings_connect_ui' ],
-//			],
 			'overrides'             => [
 				'id'    => 'overrides',
 				'title' => _x( 'Sender Profiles', 'settings_sections', 'groundhogg' ),
@@ -808,46 +916,33 @@ class Settings_Page extends Admin_Page {
 				'tab'      => 'email',
 				'callback' => function () {
 
-					?>
-                    <table class="form-table">
-                        <tbody>
-                        <tr>
-                            <th><?php esc_html_e( 'Personal Details Form', 'groundhogg' ); ?></th>
-                            <td>
-                                <div style="max-width: 400px">
-                                    <div id="gh_custom_profile_fields"></div>
-                                </div>
-                                <p class="description" style="margin-top: 20px">
-	                                <?php printf(
-	                                /* translators: 1: open <a>, 2: closing </a> */
-		                                esc_html__( 'Show additional profile fields in the %1$spreferences center%2$s. Delete all fields to show the default form.', 'groundhogg' ),
-		                                '<a href="' . esc_url( managed_page_url( '/preferences/profile/' ) ) . '">',
-		                                '</a>'
-	                                ) ?>
-                                </p>
-                            </td>
-                        </tr>
-						<?php if ( defined( 'GROUNDHOGG_ADVANCED_PREFERENCES_VERSION' ) ): ?>
-                            <tr>
-                                <th><?php esc_html_e( 'Preferences Form', 'groundhogg' ); ?></th>
-                                <td>
-                                    <div style="max-width: 400px">
-                                        <div id="gh_custom_preference_fields"></div>
-                                    </div>
-                                    <p class="description" style="margin-top: 20px">
-	                                    <?php printf(
-	                                    /* translators: 1: open <a>, 2: closing </a> */
-		                                    esc_html__( 'Show additional fields on the %1$semail preferences screen%2$s.', 'groundhogg' ),
-		                                    '<a href="' . esc_url( managed_page_url( '/preferences/manage/' ) ) . '" target="_blank">',
-		                                    '</a>'
-	                                    ) ?>
-                                    </p>
-                                </td>
-                            </tr>
-						<?php endif; ?>
-                        </tbody>
-                    </table>
-					<?php
+					Card_Sections::row( __( 'Personal Details Form', 'groundhogg' ), '', function () {
+						?>
+                        <div style="max-width: 400px">
+                            <div id="gh_custom_profile_fields"></div>
+                        </div>
+						<?php
+					}, sprintf(
+					/* translators: 1: open <a>, 2: closing </a> */
+						esc_html__( 'Show additional profile fields in the %1$spreferences center%2$s. Delete all fields to show the default form.', 'groundhogg' ),
+						'<a href="' . esc_url( managed_page_url( '/preferences/profile/' ) ) . '">',
+						'</a>'
+					) );
+
+					if ( defined( 'GROUNDHOGG_ADVANCED_PREFERENCES_VERSION' ) ) {
+						Card_Sections::row( __( 'Preferences Form', 'groundhogg' ), '', function () {
+							?>
+                            <div style="max-width: 400px">
+                                <div id="gh_custom_preference_fields"></div>
+                            </div>
+							<?php
+						}, sprintf(
+						/* translators: 1: open <a>, 2: closing </a> */
+							esc_html__( 'Show additional fields on the %1$semail preferences screen%2$s.', 'groundhogg' ),
+							'<a href="' . esc_url( managed_page_url( '/preferences/manage/' ) ) . '" target="_blank">',
+							'</a>'
+						) );
+					}
 
 				}
 			],
@@ -885,6 +980,10 @@ class Settings_Page extends Admin_Page {
 
 		if ( is_white_labeled() ) {
 			unset( $sections['affiliate'] );
+		}
+
+		if ( Mailhawk::is_disabled() ) {
+			unset( $sections['mailhawk'] );
 		}
 
 		return apply_filters( 'groundhogg/admin/settings/sections', $sections );
@@ -1046,8 +1145,12 @@ class Settings_Page extends Admin_Page {
 				'id'      => 'gh_opted_in_stats_collection',
 				'section' => 'danger_zone',
 				'label'   => _x( 'Share usage data', 'settings', 'groundhogg' ),
-				/* translators: %1$s: the plugin/brand name */
-				'desc'    => sprintf( _x( 'Help us make %1$s better. Once a week, sends the number of active flows, new contacts and broadcasts, which add-ons are installed, and the versions of %1$s, WordPress and PHP, along with your email address. Never your contacts or what\'s in your emails.', 'settings', 'groundhogg' ), white_labeled_name() ),
+				// what's sent depends on whether schema 2 telemetry is on, see Telemetry::is_v2()
+				'desc'    => \Groundhogg\Telemetry::is_v2()
+					/* translators: %1$s: the plugin/brand name */
+					? sprintf( _x( 'Help us make %1$s better. Once a week, sends counts of your contacts, emails and automation, which features, flow steps and plugins you use, whether email and cron are working, and the versions of %1$s, WordPress and PHP, plus when you first reach each step of getting started, like your first flow or email. Your email address is sent once, when you turn this on. Never your contacts, what\'s in your emails, or your site\'s address.', 'settings', 'groundhogg' ), white_labeled_name() )
+					/* translators: %1$s: the plugin/brand name */
+					: sprintf( _x( 'Help us make %1$s better. Once a week, sends the number of active flows, new contacts and broadcasts, which add-ons are installed, and the versions of %1$s, WordPress and PHP, along with your email address. Never your contacts or what\'s in your emails.', 'settings', 'groundhogg' ), white_labeled_name() ),
 				'type'    => 'checkbox',
 				'atts'    => [
 					'label' => __( 'Enable' , 'groundhogg' ),
@@ -1218,60 +1321,7 @@ class Settings_Page extends Admin_Page {
 					'value' => 'on',
 				],
 			],
-			'gh_hide_tooltips'                       => [
-				'id'      => 'gh_hide_tooltips',
-				'section' => 'interface',
-				'label'   => _x( 'Hide Tooltips', 'settings', 'groundhogg' ),
-				'desc'    => _x( 'This will hides the tooltips user see in new installations.', 'settings', 'groundhogg' ),
-				'type'    => 'checkbox',
-				'atts'    => [
-					'label' => __( 'Hide', 'groundhogg' ),
-					'name'  => 'gh_hide_tooltips',
-					'id'    => 'gh_hide_tooltips',
-					'value' => 'on',
-				],
-			],
-			'gh_is_admin_bar_widget_disabled'        => [
-				'id'      => 'gh_is_admin_bar_widget_disabled',
-				'section' => 'interface',
-				'label'   => _x( 'Hide Admin Toolbar Widget', 'settings', 'groundhogg' ),
-				'desc'    => _x( 'Hide the Admin Toolbar Widget.', 'settings', 'groundhogg' ),
-				'type'    => 'checkbox',
-				'atts'    => [
-					'label' => __( 'Hide', 'groundhogg' ),
-					'name'  => 'gh_is_admin_bar_widget_disabled',
-					'id'    => 'gh_is_admin_bar_widget_disabled',
-					'value' => 'on',
-				],
-			],
-			'gh_disable_email_detection'        => [
-				'id'      => 'gh_disable_email_detection',
-				'section' => 'interface',
-				'label'   => _x( 'Disable Admin Contact Peek Feature', 'settings', 'groundhogg' ),
-                /* translators: white label name of the plugin, usually Groundhogg */
-				'desc'    => sprintf( _x( 'Disable the appearance of the Contact Peek feature in non-%s admin screens.', 'settings', 'groundhogg' ), white_labeled_name() ),
-				'type'    => 'checkbox',
-				'atts'    => [
-					'label' => __( 'Disable', 'groundhogg' ),
-					'name'  => 'gh_disable_email_detection',
-					'id'    => 'gh_disable_email_detection',
-					'value' => 'on',
-				],
-			],
-			'gh_default_contact_tab'                 => [
-				'id'      => 'gh_default_contact_tab',
-				'section' => 'interface',
-				'label'   => _x( 'Default Contact Tab', 'settings', 'groundhogg' ),
-				'desc'    => _x( 'Which tab should be selected by default when opening a contact record.', 'settings', 'groundhogg' ),
-				'type'    => 'dropdown',
-				'atts'    => [
-					'name'        => 'gh_default_contact_tab',
-					'id'          => 'gh_default_contact_tab',
-					'options'     => get_valid_contact_tabs(),
-					'option_none' => false
-				],
-			],
-			'gh_show_legacy_steps'                   => [
+			'gh_show_legacy_steps'                  => [
 				'id'      => 'gh_show_legacy_steps',
 				'section' => 'interface',
 				'label'   => _x( 'Enable Legacy Flow Steps', 'settings', 'groundhogg' ),
@@ -2149,7 +2199,8 @@ class Settings_Page extends Admin_Page {
 	 * @return string
 	 */
 	private function active_tab() {
-		return sanitize_key( get_request_var( 'tab', 'general' ) );
+		// someone who can't manage the settings only has the Me tab
+		return sanitize_key( get_request_var( 'tab', current_user_can( 'manage_options' ) ? 'general' : 'me' ) );
 	}
 
 	/**
@@ -2183,17 +2234,7 @@ class Settings_Page extends Admin_Page {
 			$tab = $this->active_tab();
 		}
 
-		$tab = get_array_var( $this->tabs, $tab );
-
-		// Check for cap restriction on the tab...
-		$cap = get_array_var( $tab, 'cap' );
-
-		// ignore if there is no cap, but if there is one check if the user has require privileges...
-		if ( $cap && ! current_user_can( $cap ) ) {
-			return false;
-		}
-
-		return true;
+		return current_user_can( $this->tab_cap( get_array_var( $this->tabs, $tab ) ) );
 	}
 
 	/**
@@ -2205,19 +2246,16 @@ class Settings_Page extends Admin_Page {
 	 */
 	private function tab_is_listed( $tab ) {
 
-		// Force API Tab & Licenses Tab
+		// Force API Tab, Licenses Tab & Me Tab
 		if ( ! $this->tab_has_settings( $tab['id'] ) && ! in_array( $tab['id'], [
 				'extensions',
-				'api_tab'
+				'api_tab',
+				'me'
 			] ) ) {
 			return false;
 		}
 
-		// Check for cap restriction on the tab...
-		$cap = get_array_var( $tab, 'cap' );
-
-		// ignore if there is no cap, but if there is one check if the user has required privileges...
-		return ! $cap || current_user_can( $cap );
+		return current_user_can( $this->tab_cap( $tab ) );
 	}
 
 	/**
@@ -2254,6 +2292,12 @@ class Settings_Page extends Admin_Page {
 				__( 'API Keys', 'groundhogg' ),
 				__( 'REST API', 'groundhogg' ),
 				__( 'Authentication', 'groundhogg' ),
+			],
+			'me'         => [
+				__( 'Profile', 'groundhogg' ),
+				__( 'Email Signature', 'groundhogg' ),
+				__( 'Interface Theme', 'groundhogg' ),
+				__( 'Sender From Name', 'groundhogg' ),
 			],
 			'extensions' => [
 				__( 'License', 'groundhogg' ),
@@ -2395,7 +2439,8 @@ class Settings_Page extends Admin_Page {
 
 		?>
         <style>
-            td .select2 {
+            td .select2,
+            .gh-settings-row-control .select2 {
                 max-width: 300px;
             }
 
@@ -2407,7 +2452,8 @@ class Settings_Page extends Admin_Page {
             }
 
             tr:has(.gh-setting-anchor:target) > th,
-            tr:has(.gh-setting-anchor:target) > td {
+            tr:has(.gh-setting-anchor:target) > td,
+            .gh-settings-row:has(.gh-setting-anchor:target) {
                 animation: gh-setting-flash 2.4s ease-out;
             }
 
@@ -2432,7 +2478,7 @@ class Settings_Page extends Admin_Page {
 				if ( $this->tab_has_settings() && $this->user_can_access_tab() ) {
 
 					settings_fields( 'gh_' . $this->active_tab() );
-					do_settings_sections( 'gh_' . $this->active_tab() );
+					$this->do_sections( 'gh_' . $this->active_tab() );
 					do_action( "groundhogg/admin/settings/{$this->active_tab()}/after_settings" );
 
 					html( 'p', [], html()->button( [
@@ -2451,6 +2497,225 @@ class Settings_Page extends Admin_Page {
 			<?php do_action( "groundhogg/admin/settings/{$this->active_tab()}/after_form" ); ?>
         </div>
         <?php
+	}
+
+	/**
+	 * Print the sections of a tab as cards, in place of do_settings_sections() which prints a table for each section
+	 *
+	 * @param string $page the settings page the sections were registered for
+	 */
+	private function do_sections( $page ) {
+
+		global $wp_settings_sections, $wp_settings_fields;
+
+		if ( empty( $wp_settings_sections[ $page ] ) ) {
+			return;
+		}
+
+		// the cards of sections that destroy data go last, whatever the order they were registered in
+		$cards  = [];
+		$danger = [];
+
+		foreach ( (array) $wp_settings_sections[ $page ] as $section ) {
+
+			// whatever the section prints itself, like a notice or a component of its own
+			$intro = '';
+
+			if ( $section['callback'] ) {
+				ob_start();
+				call_user_func( $section['callback'], $section );
+				$intro = trim( ob_get_clean() );
+			}
+
+			// scripts have nothing to show, they don't make the section have an intro
+			$scripts = '';
+
+			if ( preg_match_all( '#<(script|style)\b.*?</\1>#is', $intro, $found ) ) {
+				$scripts = implode( '', $found[0] );
+				$intro   = trim( str_replace( $found[0], '', $intro ) );
+			}
+
+			ob_start();
+
+			foreach ( (array) ( $wp_settings_fields[ $page ][ $section['id'] ] ?? [] ) as $field ) {
+				Card_Sections::row( $field['title'], '', function () use ( $field ) {
+					call_user_func( $field['callback'], $field['args'] );
+				} );
+			}
+
+			$rows = trim( ob_get_clean() );
+
+			if ( $intro === '' && $rows === '' ) {
+				continue;
+			}
+
+			// add_settings_section() drops the keys it doesn't know, so look the section up by the id it was registered with
+			$registered = get_array_var( $this->sections, substr( $section['id'], 3 ), [] );
+			$is_danger  = (bool) get_array_var( $registered, 'danger' );
+
+			// so the table of contents can link to the card
+			$card_id = 'section-' . sanitize_html_class( substr( $section['id'], 3 ) );
+
+			ob_start();
+
+			// a badge is HTML next to the title, like a pill
+			Card_Sections::section_start( $section['title'], '', get_array_var( $registered, 'badge', '' ), $is_danger ? 'danger' : '', $card_id );
+
+			if ( $intro !== '' ) {
+				Card_Sections::intro( $intro );
+			}
+
+			echo $scripts; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- printed by the section
+			echo $rows; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- printed by the fields
+
+			Card_Sections::section_end();
+
+			$card = [
+				'id'     => $card_id,
+				'title'  => $section['title'],
+				'danger' => $is_danger,
+				'html'   => ob_get_clean(),
+			];
+
+			if ( $is_danger ) {
+				$danger[] = $card;
+			} else {
+				$cards[] = $card;
+			}
+		}
+
+		$cards = array_merge( $cards, $danger );
+
+		if ( ! $cards ) {
+			return;
+		}
+
+		// a single card has nothing to jump between, more get a table of contents next to the cards
+		$has_toc = count( $cards ) > 1;
+
+		if ( $has_toc ) {
+			echo '<div class="gh-settings-layout">';
+		}
+
+		echo '<div class="gh-settings-sections">';
+		echo implode( '', wp_list_pluck( $cards, 'html' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the cards printed above
+		echo '</div>';
+
+		if ( $has_toc ) {
+			$this->sections_toc( $cards );
+			echo '</div>';
+		}
+	}
+
+	/**
+	 * A sticky list of the cards of a tab that jumps to the card that is clicked, and highlights the card being looked at
+	 *
+	 * @param array $cards the id, title, and whether it's a danger card, of each card in the order they are printed
+	 */
+	private function sections_toc( $cards ) {
+		?>
+        <nav class="gh-settings-toc" aria-label="<?php esc_attr_e( 'Settings sections', 'groundhogg' ); ?>">
+            <ul>
+				<?php foreach ( $cards as $card ): ?>
+                    <li><a href="#<?php echo esc_attr( $card['id'] ); ?>" class="<?php echo $card['danger'] ? 'danger' : ''; ?>"><?php echo esc_html( $card['title'] ); ?></a></li>
+				<?php endforeach; ?>
+            </ul>
+        </nav>
+        <script>
+          ( () => {
+            const toc = document.currentScript.previousElementSibling
+            const links = [...toc.querySelectorAll('a')]
+            const cards = links.map(link => document.getElementById(link.hash.slice(1)))
+
+            // while the page scrolls to a clicked card, that card stays highlighted, even if it can't reach the top
+            let clicked = null
+            let ticking = false
+
+            const highlight = index => {
+
+              links.forEach((link, i) => {
+                link.classList.toggle('active', i === index)
+
+                if (i === index) {
+                  link.setAttribute('aria-current', 'true')
+                } else {
+                  link.removeAttribute('aria-current')
+                }
+              })
+
+              // a long list scrolls on its own, keep the highlighted link in it
+              const link = links[index]
+
+              if (toc.scrollHeight > toc.clientHeight) {
+                if (link.offsetTop < toc.scrollTop) {
+                  toc.scrollTop = link.offsetTop
+                } else if (link.offsetTop + link.offsetHeight > toc.scrollTop + toc.clientHeight) {
+                  toc.scrollTop = link.offsetTop + link.offsetHeight - toc.clientHeight
+                }
+              }
+            }
+
+            const update = () => {
+              ticking = false
+
+              if (clicked !== null) {
+                return
+              }
+
+              // the card being looked at is the last one whose top has gone up to where the list sticks, below the header
+              const line = parseFloat(getComputedStyle(toc).top) + 30
+              let index = 0
+
+              cards.forEach((card, i) => {
+                if (card.getBoundingClientRect().top <= line) {
+                  index = i
+                }
+              })
+
+              // the last cards may be too short to reach the line, at the bottom of the page the last one is it
+              if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+                index = cards.length - 1
+              }
+
+              highlight(index)
+            }
+
+            const onScroll = () => {
+              if (!ticking) {
+                ticking = true
+                requestAnimationFrame(update)
+              }
+            }
+
+            // the page arriving at the card, or the user scrolling again, ends the highlight of the clicked card
+            const release = () => {
+              clicked = null
+            }
+
+            links.forEach((link, i) => {
+              link.addEventListener('click', e => {
+                e.preventDefault()
+
+                clicked = i
+                highlight(i)
+
+                const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                cards[i].scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+                history.replaceState(null, '', link.hash)
+              })
+            })
+
+            window.addEventListener('scroll', onScroll, { passive: true })
+            window.addEventListener('resize', onScroll)
+            window.addEventListener('scrollend', release)
+            window.addEventListener('wheel', release, { passive: true })
+            window.addEventListener('touchstart', release, { passive: true })
+            window.addEventListener('keydown', release)
+
+            update()
+          } )()
+        </script>
+		<?php
 	}
 
 	public function settings_callback( $field ) {
@@ -2474,7 +2739,7 @@ class Settings_Page extends Admin_Page {
 					)
 				);
 
-				return;
+			return;
 			}
 
 			printf( '<p class="description">%s</p>', sprintf(

@@ -7,7 +7,8 @@ use Groundhogg\Abilities\Schemas\Email_Schema;
 use Groundhogg\Campaign;
 use Groundhogg\Email;
 use WP_Error;
-use function Groundhogg\email_kses;
+use function Groundhogg\check_lock;
+use function Groundhogg\get_edit_version;
 use function Groundhogg\get_object_ids;
 use function Groundhogg\get_sender_profiles;
 
@@ -43,7 +44,7 @@ class Update_Email_Template extends Ability {
 
 		return [
 			'label'       => __( 'Update Email Template', 'groundhogg' ),
-			'description' => __( 'Update an existing saved Groundhogg email. Every field is optional - only fields actually provided are changed. Find the id with groundhogg/list-email-templates. See groundhogg/create-email-template\'s description for a link to block-editor authoring guidance.', 'groundhogg' ),
+			'description' => __( 'Update an existing saved Groundhogg email. Every field is optional - only fields actually provided are changed. Find the id with groundhogg/list-email-templates. `blocks` or `content` replaces the whole body: to change part of an email built with the block editor, use groundhogg/edit-email instead, which only needs the blocks that change. See groundhogg/create-email-template\'s description for block specs.', 'groundhogg' ),
 
 			'input_schema' => [
 				'type'                 => 'object',
@@ -55,6 +56,10 @@ class Update_Email_Template extends Ability {
 						'minimum'     => 1,
 						'description' => __( 'The email to update.', 'groundhogg' ),
 					],
+					'expected_version' => [
+						'type'        => 'string',
+						'description' => __( 'The version groundhogg/get-email-template returned. If the email was changed since, nothing is changed and an error is returned, so read it again and retry.', 'groundhogg' ),
+					],
 					'subject' => [
 						'type'        => 'string',
 						'description' => __( 'The subject line. May contain merge tags like {first_name}, resolved per-recipient at send time. See groundhogg/list-replacement-codes for every code available on this site.', 'groundhogg' ),
@@ -63,9 +68,10 @@ class Update_Email_Template extends Ability {
 						'type'        => 'string',
 						'description' => __( 'The internal admin title, shown in the emails list.', 'groundhogg' ),
 					],
+					'blocks' => Create_Email_Template::blocks_input(),
 					'content' => [
 						'type'        => 'string',
-						'description' => __( 'The email body. Sanitized with the same allowed-HTML rules as the email editor. Shape depends on `editor`: plain HTML for "html", or the block editor\'s comment-annotated HTML for "blocks" - see groundhogg/create-email-template\'s description for the exact format. Required if `editor` is given (and vice versa) - changing one without the other would leave the content and the editor-type flag out of sync.', 'groundhogg' ),
+						'description' => __( 'The email body as HTML, instead of `blocks`. Sanitized with the same allowed-HTML rules as the email editor. Shape depends on `editor`: plain HTML for "html", or the block editor\'s comment-annotated HTML for "blocks" - see groundhogg/create-email-template\'s description for the exact format. Required if `editor` is given (and vice versa) - changing one without the other would leave the content and the editor-type flag out of sync.', 'groundhogg' ),
 					],
 					'editor' => [
 						'type'        => 'string',
@@ -74,7 +80,7 @@ class Update_Email_Template extends Ability {
 					],
 					'plain_text' => [
 						'type'        => 'string',
-						'description' => __( 'Plain-text alternative body.', 'groundhogg' ),
+						'description' => __( 'Plain-text alternative body. When `content` changes and this is left out, it\'s made from the new content, like the email editor does.', 'groundhogg' ),
 					],
 					'pre_header' => [
 						'type'        => 'string',
@@ -123,7 +129,7 @@ class Update_Email_Template extends Ability {
 				],
 			],
 
-			'output_schema' => Email_Schema::get_schema(),
+			'output_schema' => Create_Email_Template::output_schema(),
 		];
 	}
 
@@ -135,22 +141,60 @@ class Update_Email_Template extends Ability {
 			return new WP_Error( 'groundhogg_email_not_found', __( 'Email not found.', 'groundhogg' ) );
 		}
 
-		if ( isset( $input['content'] ) !== isset( $input['editor'] ) ) {
+		$locked_by = check_lock( $email );
+
+		if ( $locked_by ) {
+			return new WP_Error( 'groundhogg_email_locked', sprintf(
+			/* translators: %s: the name of the user editing the email */
+				__( '%s is editing this email in the email editor, so it can\'t be changed until they\'re done.', 'groundhogg' ),
+				get_userdata( $locked_by )->display_name
+			) );
+		}
+
+		if ( ! empty( $input['expected_version'] ) && get_edit_version( $email ) !== $input['expected_version'] ) {
+			return new WP_Error( 'groundhogg_email_changed', __( 'The email was changed since it was read. Read it again with groundhogg/get-email-template and retry.', 'groundhogg' ) );
+		}
+
+		if ( ! isset( $input['blocks'] ) && isset( $input['content'] ) !== isset( $input['editor'] ) ) {
 			return new WP_Error(
 				'groundhogg_content_editor_mismatch',
 				__( '`content` and `editor` must be given together, so the content and the editor-type flag stay in sync.', 'groundhogg' )
 			);
 		}
 
+		$new_editor = Create_Email_Template::editor_from_input( $input );
+
+		if ( is_wp_error( $new_editor ) ) {
+			return $new_editor;
+		}
+
 		// Checked before anything is written. The editor type is the one this call sets, or the email's current one.
-		$editor_type = isset( $input['editor'] )
-			? ( $input['editor'] === 'blocks' ? 'blocks' : 'html' )
-			: $email->get_editor_type();
+		$editor_type = $new_editor ?: $email->get_editor_type();
 
 		$extra_meta = Create_Email_Template::extra_meta_from_input( $input, $editor_type );
 
 		if ( is_wp_error( $extra_meta ) ) {
 			return $extra_meta;
+		}
+
+		$body = null;
+
+		if ( $new_editor ) {
+
+			$template_settings = (array) ( $input['template_settings'] ?? [] );
+
+			// the whole body is replaced, so the email's own block ids can be used again
+			$renderer = new Email_Block_Renderer( array_merge( Email_Block_Renderer::context_of( $email ), array_filter( [
+				'template'     => $template_settings['layout'] ?? null,
+				'width'        => $template_settings['width'] ?? null,
+				'message_type' => $input['message_type'] ?? null,
+			] ) ) );
+
+			$body = Create_Email_Template::prepare_body( $input, $editor_type, $renderer );
+
+			if ( is_wp_error( $body ) ) {
+				return $body;
+			}
 		}
 
 		if ( isset( $input['from_profile'] ) ) {
@@ -200,18 +244,22 @@ class Update_Email_Template extends Ability {
 			$data['from_profile'] = sanitize_text_field( $input['from_profile'] );
 		}
 
-		if ( isset( $input['content'] ) ) {
+		if ( $body ) {
 
-			$editor = $input['editor'] === 'blocks' ? 'blocks' : 'html';
+			$editor = $editor_type;
 
-			$data['content'] = $editor === 'blocks'
-				? Create_Email_Template::kses_preserving_block_comments( $input['content'] )
-				: email_kses( $input['content'] );
+			$data['content'] = $body['content'];
+
+			// Rebuilt from the new content unless given, so it can't be left describing the old one. Empty for HTML
+			// content, which makes it from the content when it's sent.
+			if ( ! isset( $input['plain_text'] ) ) {
+				$data['plain_text'] = $body['plain_text'];
+			}
 
 			// Same meta flags groundhogg/create-email-template writes - see that
 			// class's docblock for why these specific keys.
 			$meta_updates = $editor === 'blocks'
-				? [ 'type' => 'blocks', 'blocks' => true ]
+				? [ 'type' => 'blocks', 'blocks' => true, 'css' => $body['css'] ]
 				: [ 'type' => 'html', 'blocks' => false ];
 		}
 
@@ -288,6 +336,6 @@ class Update_Email_Template extends Ability {
 		// the REST update path also fires here.
 		do_action( 'groundhogg/api/email/updated', $email );
 
-		return Email_Schema::transform( $email, [ 'content', 'plain_text', 'css' ] );
+		return Create_Email_Template::output( $email, $body );
 	}
 }

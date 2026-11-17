@@ -378,7 +378,76 @@ class Main_Updater extends Old_Updater {
 					Background_Tasks::add( new Migrate_Composed_Emails() );
 				},
 			],
+			'4.11' => [
+				'automatic'   => true,
+				'description' => __( 'Add the <code>view_contact_pii</code> capability to every role that can view contacts, so that access to contact personal information can be taken away from a role or user. Copy the interface settings of the site, now chosen by each user on their profile, to every user who can view contacts.', 'groundhogg' ),
+				'callback'    => function () {
+
+					self::move_interface_settings_to_users();
+
+					$roles = wp_roles();
+
+					foreach ( array_keys( $roles->roles ) as $role_name ) {
+
+						$role = $roles->get_role( $role_name );
+
+						if ( $role && $role->has_cap( 'view_contacts' ) && ! array_key_exists( Pii::CAP, $role->capabilities ) ) {
+							$roles->add_cap( $role_name, Pii::CAP );
+						}
+					}
+				},
+			],
 		];
+	}
+
+	/**
+	 * The interface settings of the whole site became preferences of the user. Copy what the site had chosen to every
+	 * user who can view contacts, unless they have chosen already, so nobody notices the move.
+	 *
+	 * The site options are left alone, they remain the default of any user who hasn't chosen, like a user added later.
+	 *
+	 * @return void
+	 */
+	public static function move_interface_settings_to_users() {
+
+		$roles = [];
+
+		foreach ( wp_roles()->role_objects as $role_name => $role ) {
+			if ( $role->has_cap( 'view_contacts' ) ) {
+				$roles[] = $role_name;
+			}
+		}
+
+		if ( empty( $roles ) ) {
+			return;
+		}
+
+		$user_ids = get_users( [ 'role__in' => $roles, 'fields' => 'ID' ] );
+
+		foreach ( [ 'gh_hide_tooltips', 'gh_is_admin_bar_widget_disabled', 'gh_disable_email_detection' ] as $key ) {
+
+			if ( ! is_option_enabled( $key ) ) {
+				continue;
+			}
+
+			foreach ( $user_ids as $user_id ) {
+				if ( metadata_exists( 'user', $user_id, $key ) ) {
+					continue;
+				}
+
+				update_user_meta( $user_id, $key, 'on' );
+			}
+		}
+
+		$tab = get_option( 'gh_default_contact_tab' );
+
+		if ( $tab ) {
+			foreach ( $user_ids as $user_id ) {
+				if ( ! get_user_meta( $user_id, 'gh_default_contact_tab', true ) ) {
+					update_user_meta( $user_id, 'gh_default_contact_tab', $tab );
+				}
+			}
+		}
 	}
 
 	/**

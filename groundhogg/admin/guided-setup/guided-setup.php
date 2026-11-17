@@ -7,6 +7,7 @@ use Groundhogg\Admin\User\Admin_User;
 use Groundhogg\Background\Sync_Users_Last_Id;
 use Groundhogg\Background_Tasks;
 use Groundhogg\Classes\Inbox_Client;
+use Groundhogg\Mcp\Build_With_AI;
 use Groundhogg\Mcp\Connection;
 use Groundhogg\DB\Query\Table_Query;
 use Groundhogg\License_Manager;
@@ -567,6 +568,11 @@ class Guided_Setup extends Admin_Page {
 	 */
 	public function scripts() {
 
+		// before the wizard, which draws its card on the first step. The setup abilities need manage_options.
+		if ( current_user_can( 'manage_options' ) ) {
+			Build_With_AI::enqueue( 'setup' );
+		}
+
 		wp_enqueue_style( 'groundhogg-admin-guided-setup' );
 		wp_enqueue_script( 'groundhogg-admin-guided-setup' );
 
@@ -589,6 +595,8 @@ class Guided_Setup extends Admin_Page {
 			'themes'     => $this->themes(),
 			'hasLicense' => (bool) Inbox_Client::license_key(),
 			'telemetry'  => Plugin::instance()->stats_collection->is_enabled(),
+			// what sharing usage data sends, see Telemetry::is_v2()
+			'telemetryV2' => \Groundhogg\Telemetry::is_v2(),
 			'email'      => wp_get_current_user()->user_email,
 			'unsynced'   => $can_sync ? $this->count_unsynced_users() : 0,
 			'team'       => $this->can_manage_team() ? [

@@ -320,6 +320,64 @@ work wherever they were called, but the schema `extend()` methods have no orderi
 
 ---
 
+## Personal information
+
+A user without the `view_contact_pii` capability is restricted, `Groundhogg\Pii::is_restricted()`. They can work with
+contacts by ID, tags, activity, opt-in status, segments and broadcasts, but not see or search by who the contact is.
+Abilities run as a WordPress user, so a connection that runs as a restricted user is limited automatically.
+
+If an ability returns contact data or accepts a contact filter, it has to respect that:
+
+- **Output:** build contacts with `Contact_Schema::transform()`, it redacts `email`, `first_name` and `last_name` and
+  removes meta that is PII or unknown (`Pii::filter_meta()`). If you return contact data another way, redact with
+  `Pii::REDACTED`.
+- **Input:** anything built on `Segment_Schema` is checked for you, on the finished query, so an add-on's own filters
+  are covered. Looking a contact up by email or searching by name is a search by PII: refuse it with
+  `Pii::restricted_error()`, a count or a match is an answer.
+- **Raw access:** an ability that can't redact, like `groundhogg/query-table`, refuses restricted users outright.
+- **Extending it:** add to what counts as PII with `groundhogg/pii/contact_fields`, `groundhogg/pii/meta_keys`,
+  `groundhogg/pii/safe_meta_keys` and `groundhogg/pii/filter_types`. A custom field is PII when its definition has
+  `pii` set.
+
+Free text that can name the contact, like a note or a task, is run through `Pii::scrub_text( $text, $contact )`. It redacts
+the contact's own details as written (name, email, phones, address, alternate addresses, fields flagged PII), whole words
+only and ignoring case, and finds a phone number however it is punctuated. It is best effort, it can't know a nickname or
+someone else's details. Add what else is personal, like an add-on's data or a company name, with the
+`groundhogg/pii/scrub_text_pairs` filter: it gets `search => replacement` pairs and the contact, an empty replacement is
+the redacted marker, and what a filter adds is not held to the minimum length of 3 that the contact's own values are.
+
+The REST API is covered the same way by `Groundhogg\Pii_Rest`. Contacts, messages, email log entries, submissions, page
+visits and activity are redacted on their `groundhogg/{object_type}/get_as_array` filters, so any route that embeds one is
+covered. Requests that search by PII are refused on `rest_pre_dispatch`, and so are the routes that are personal by nature
+(a contact's files and mailbox, exports). If you add a REST route that returns contact data in some other shape, redact it
+with `Pii::is_restricted()` and `Pii::REDACTED`, and add the route to `Pii_Rest::BLOCKED_ROUTES` if it can't be redacted.
+
+The server rendered admin UI is covered by `Groundhogg\Pii_Admin` and by the templates themselves, which call
+`Pii::display( $value )` (the value, or `[redacted]` for a restricted user), `Pii::contact_label( $id )` ("Contact #12"),
+`Pii::contact_name( $contact )` (the name for a title, or the label) and `Pii::blank_picture()` where they print a
+contact's details. So far that is the contacts table, its rows and its `/contacts/table/row` route, and the contact
+record page: a restricted user's search or sort by PII is refused with a message in the empty table, the quick search box
+is not offered, the picture, which is a hash of the email address, is blank, and the record's titles, details card,
+editor, WordPress user card and page visits show the label or `[redacted]` instead. The editor's PII inputs are disabled
+for a restricted user, so they are not submitted, and saving the record leaves a restricted user's PII alone. The
+contact model never stores the marker either: `Contact::update()`, `create()`, `add_meta()` and `update_meta()` drop a PII
+value that is `[redacted]` (`Pii::is_marker()`, `Pii::without_marker()`), so a client that hands back what it was shown
+can't overwrite the real value. The JS quick edit disables the fields it was given redacted. A restricted user adding a
+contact in the admin isn't told that an address is taken. The email log and the events table
+redact the same way: recipients show as the contact's label (or `[redacted]` when the address is not a contact), the subject,
+sender and error messages are `[redacted]`, and the generic admin `Table` refuses a search or sort on the columns in
+`Pii::table_columns()` (`Pii::check_table_query()`), which REST uses too. Add a table or columns to it with the
+`groundhogg/pii/table_columns` filter. Email previews and test sends use the current user's own details, not a contact's, so
+there is nothing in them to redact. A restricted user doesn't have the capabilities that take PII out as a file, or that find out
+what's on the list by putting it in: `export_contacts`, `view_previous_exports`, `import_contacts` and
+`download_contact_files` are removed from them on `user_has_cap` (`Pii_Admin::CAPS`), and `download_file` for exports,
+imports and contact files also needs `view_contact_pii` for super admins. A flow simulation trace is scrubbed of the contact's details for a restricted user. The admin reports are aggregates and have nothing to redact. The admin JS shows a contact as "Contact #N" (`Groundhogg.functions.contactLabel`) in pickers, the events filter, and record-page headings when it was given redacted details. A checkbox on the user profile (Pii_Admin::set_user_access()) grants or revokes the cap for one user, and only a user who has it can change it. A column or card an add-on adds is the add-on's to redact.
+
+Redact where data is output, never in the `Contact` model, or sending would break. Cron, background tasks and WP-CLI have
+no user and are never restricted.
+
+---
+
 ## Checklist
 
 - [ ] Each registration is inside a callback on the matching action, not at file load or on a guessed `init` priority.
@@ -331,3 +389,4 @@ work wherever they were called, but the schema `extend()` methods have no orderi
 - [ ] Abilities: untyped constants, `groundhogg/<verb>-<noun>` name, capability matches wp-admin, accurate schemas.
 - [ ] The add-on's test bootstrap calls `Abilities::register_schemas()` if tests read the schemas directly.
 - [ ] Verified once on a real site through the abilities MCP.
+- [ ] Anything that returns contact data redacts for `Pii::is_restricted()`, and anything that searches by PII refuses it.

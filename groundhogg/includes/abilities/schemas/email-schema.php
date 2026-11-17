@@ -3,6 +3,7 @@
 namespace Groundhogg\Abilities\Schemas;
 
 use Groundhogg\Email;
+use function Groundhogg\get_edit_version;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -93,6 +94,10 @@ class Email_Schema extends Schema {
 					'type'        => 'string',
 					'description' => __( 'Y-m-d H:i:s in the site timezone.', 'groundhogg' ),
 				],
+				'preview_url' => [
+					'type'        => 'string',
+					'description' => __( 'A signed link (valid about a week) that renders this email in the browser, no login required. Use groundhogg/send-test-email to mail a test instead.', 'groundhogg' ),
+				],
 				'content' => [
 					'type'        => 'string',
 					'description' => __( 'Only present when "content" is passed in expand. The full email body as HTML - can be large.', 'groundhogg' ),
@@ -104,6 +109,10 @@ class Email_Schema extends Schema {
 				'css' => [
 					'type'        => 'string',
 					'description' => __( 'Only present when "css" is passed in expand. The custom CSS added to the email (its template CSS). The block editor\'s own generated block CSS is not included.', 'groundhogg' ),
+				],
+				'version' => [
+					'type'        => 'string',
+					'description' => __( 'Changes whenever the email changes. Give it to groundhogg/edit-email or groundhogg/update-email-template as expected_version, so a change made since it was read isn\'t overwritten.', 'groundhogg' ),
 				],
 			],
 		];
@@ -237,7 +246,7 @@ class Email_Schema extends Schema {
 	 * or raw DB row).
 	 *
 	 * @param Email|int|object $object
-	 * @param array            $include Optional sections to include: 'content', 'plain_text', 'css'.
+	 * @param array            $include Optional sections to include: 'content', 'plain_text', 'css', 'version'.
 	 *
 	 * @return array
 	 */
@@ -285,6 +294,7 @@ class Email_Schema extends Schema {
 			],
 			'date_created'      => (string) $object->get_date_created(),
 			'last_updated'      => (string) $object->get_last_updated(),
+			'preview_url'       => $object->get_preview_url(),
 		];
 
 		if ( in_array( 'content', $include, true ) ) {
@@ -297,6 +307,10 @@ class Email_Schema extends Schema {
 
 		if ( in_array( 'css', $include, true ) ) {
 			$data['css'] = (string) $object->get_meta( 'template_css' );
+		}
+
+		if ( in_array( 'version', $include, true ) ) {
+			$data['version'] = get_edit_version( $object );
 		}
 
 		return $data;

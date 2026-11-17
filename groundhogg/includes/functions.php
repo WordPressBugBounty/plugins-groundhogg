@@ -389,6 +389,27 @@ function is_option_enabled( $option = '' ) {
 }
 
 /**
+ * The preferences of a user that replaced a setting of the whole site. The user's own choice, saved on their profile,
+ * wins. If they haven't made one the site setting is the default, so a site that set it before keeps its behavior.
+ *
+ * @param string $key     the name of the user meta and of the site option it replaced
+ * @param int    $user_id defaults to the current user
+ *
+ * @return bool
+ */
+function is_user_preference_enabled( $key, $user_id = 0 ) {
+
+	$user_id = $user_id ?: get_current_user_id();
+	$saved   = $user_id ? get_user_meta( $user_id, $key, true ) : '';
+
+	if ( $saved === 'on' || $saved === 'off' ) {
+		return $saved === 'on';
+	}
+
+	return is_option_enabled( $key );
+}
+
+/**
  * Shorthand;
  * When using as the wrapper for HTML::e() echo defaults to true
  *
@@ -1755,10 +1776,11 @@ function get_form_list() {
  * @param int|Email          $email_id            the ID of the email to send
  * @param int|string|Contact $contact_id_or_email the ID of the contact to send to
  * @param int                $time                time time to send at, defaults to time()
+ * @param array              $args                event args, made available to replacement codes via get_event_arg() while the event runs
  *
  * @return bool whether the scheduling was successful.
  */
-function send_email_notification( $email_id, $contact_id_or_email, $time = 0 ) {
+function send_email_notification( $email_id, $contact_id_or_email, $time = 0, array $args = [] ) {
 
 	$contact = is_a_contact( $contact_id_or_email ) ? $contact_id_or_email : get_contactdata( $contact_id_or_email );
 	$email   = is_numeric( $email_id ) ? new Email( $email_id ) : $email_id;
@@ -1779,6 +1801,10 @@ function send_email_notification( $email_id, $contact_id_or_email, $time = 0 ) {
 		'priority'   => 5,
 		'status'     => Event::WAITING,
 	];
+
+	if ( ! empty( $args ) ) {
+		$event['args'] = $args;
+	}
 
 	if ( enqueue_event( $event ) ) {
 		return true;
@@ -2038,9 +2064,10 @@ function split_name( $name ) {
 		$name = implode( ' ', $name );
 	}
 
-	$name       = trim( $name );
-	$last_name  = ( strpos( $name, ' ' ) === false ) ? '' : preg_replace( '#.*\s([\w-]*)$#', '$1', $name );
-	$first_name = trim( preg_replace( '#' . $last_name . '#', '', $name ) );
+	// the last word is the last name, everything before it is the first name
+	$parts      = preg_split( '/\s+/', trim( (string) $name ), - 1, PREG_SPLIT_NO_EMPTY );
+	$last_name  = count( $parts ) > 1 ? array_pop( $parts ) : '';
+	$first_name = implode( ' ', $parts );
 
 	return array( $first_name, $last_name );
 }
@@ -6700,6 +6727,8 @@ function uninstall_groundhogg() {
 	wp_clear_scheduled_hook( 'groundhogg/aws/remove_old_logs' );
 	wp_clear_scheduled_hook( 'groundhogg/birthday' );
 	wp_clear_scheduled_hook( 'groundhogg/telemetry' );
+	wp_clear_scheduled_hook( 'groundhogg/telemetry/snapshot_soon' );
+	wp_clear_scheduled_hook( 'groundhogg/telemetry/milestones' );
 	wp_clear_scheduled_hook( 'groundhogg/check_bounces' );
 	wp_clear_scheduled_hook( 'groundhogg/purge_expired_permissions_keys' );
 	wp_clear_scheduled_hook( 'groundhogg/cleanup' );
@@ -7117,6 +7146,33 @@ function enqueue_broadcast_calendar_assets() {
 }
 
 /**
+ * What the email editor's footer block shows: the business name and address, the phone, privacy policy and terms
+ * links, and the unsubscribe line. Also used to write footer blocks without the editor, see Email_Block_Renderer.
+ *
+ * @return array business_name, address, links (tel, privacy, terms: HTML or false), unsubscribe
+ */
+function get_email_editor_footer() {
+
+	$tel            = get_option( 'gh_phone' );
+	$terms          = get_option( 'gh_terms' );
+	$privacy_policy = get_option( 'gh_privacy_policy' ) ?: get_privacy_policy_url();
+
+	return [
+		'business_name' => get_option( 'gh_business_name', get_bloginfo() ),
+		'address'       => do_replacements( '{business_address}' ),
+		'links'         => [
+			'tel'     => $tel ? html()->e( 'a', [ 'href' => 'tel:' . $tel ], $tel ) : false,
+			'privacy' => $privacy_policy ? html()->e( 'a', [ 'href' => $privacy_policy ], esc_html__( 'Privacy Policy', 'groundhogg' ) ) : false,
+			'terms'   => $terms ? html()->e( 'a', [ 'href' => $terms ], __( 'Terms', 'groundhogg' ) ) : false,
+		],
+		/* translators: %s: the unsubscribe link */
+		'unsubscribe'   => sprintf( __( 'Don\'t want these emails? %s.', 'groundhogg' ), html()->e( 'a', [
+			'href' => '#unsubscribe_link#'
+		], __( 'Unsubscribe', 'groundhogg' ) ) ),
+	];
+}
+
+/**
  * Enqueue the new block editor
  */
 function enqueue_email_block_editor_assets( $extra = [] ) {
@@ -7134,21 +7190,6 @@ function enqueue_email_block_editor_assets( $extra = [] ) {
 
 	wp_enqueue_script( 'htmlhint' );
 	wp_enqueue_script( 'csslint' );
-
-	$business_name  = get_option( 'gh_business_name', get_bloginfo() );
-	$address        = do_replacements( '{business_address}' );
-	$tel            = get_option( 'gh_phone' );
-	$terms          = get_option( 'gh_terms' );
-	$privacy_policy = get_option( 'gh_privacy_policy' ) ?: get_privacy_policy_url();
-	$links          = [
-		'tel'     => $tel ? html()->e( 'a', [ 'href' => 'tel:' . $tel ], $tel ) : false,
-		'privacy' => $privacy_policy ? html()->e( 'a', [ 'href' => $privacy_policy ], esc_html__( 'Privacy Policy', 'groundhogg' ) ) : false,
-		'terms'   => $terms ? html()->e( 'a', [ 'href' => $terms ], __( 'Terms', 'groundhogg' ) ) : false,
-	];
-	/* translators: %s: the unsubscribe link */
-	$unsubscribe    = sprintf( __( 'Don\'t want these emails? %s.', 'groundhogg' ), html()->e( 'a', [
-		'href' => '#unsubscribe_link#'
-	], __( 'Unsubscribe', 'groundhogg' ) ) );
 
 	$post_types = array_map( function ( $post_type ) {
 
@@ -7185,7 +7226,7 @@ function enqueue_email_block_editor_assets( $extra = [] ) {
 	}
 
 	$localized = array_merge( [
-		'footer'        => compact( 'business_name', 'address', 'links', 'unsubscribe' ),
+		'footer'        => get_email_editor_footer(),
 		'colorPalette'  => get_option( 'gh_email_editor_color_palette', [] ),
 		'globalFonts'   => get_option( 'gh_email_editor_global_fonts', [] ),
 		'globalSocials' => get_option( 'gh_email_editor_global_social_accounts', [] ),
@@ -7541,7 +7582,7 @@ function get_filters_from_old_query_vars( $query = [] ) {
  * @return mixed|void
  */
 function is_admin_bar_widget_disabled() {
-	return apply_filters( 'groundhogg/is_admin_bar_widget_disabled', is_option_enabled( 'gh_is_admin_bar_widget_disabled' ) );
+	return apply_filters( 'groundhogg/is_admin_bar_widget_disabled', is_user_preference_enabled( 'gh_is_admin_bar_widget_disabled' ) );
 }
 
 /**
@@ -8193,6 +8234,10 @@ function andList( $array ) {
 	if ( empty( $array ) ) {
 		return '';
 	}
+
+	// a list that was filtered has gaps in its keys, and the first and last item are what's wanted
+	$array = array_values( $array );
+
 	if ( count( $array ) === 1 ) {
 		return $array[0];
 	}
@@ -8593,6 +8638,7 @@ function get_valid_contact_tabs() {
 		'notes'    => __( 'Notes', 'groundhogg' ),
 		'tasks'    => __( 'Tasks', 'groundhogg' ),
 		'files'    => __( 'Files', 'groundhogg' ),
+		'messages' => __( 'Messages', 'groundhogg' ),
 	] );
 }
 
@@ -9855,6 +9901,107 @@ function is_staging_environment() {
 	}
 
 	return false;
+}
+
+/**
+ * Whether this is a demo or a throwaway test site: one of our own demo sites, or a sandbox service like InstaWP,
+ * TasteWP or WordPress Playground. Telemetry reports these as their own environment, apart from production and staging.
+ *
+ * Goes by the site's own address, not the request's, so it also works in cron.
+ *
+ * @return bool
+ */
+function is_demo_environment() {
+
+	// --- 0. Manual override (always respect this) ---
+	if ( defined( 'GROUNDHOGG_IS_DEMO' ) ) {
+		return (bool) GROUNDHOGG_IS_DEMO;
+	}
+
+	// --- 1. WordPress Playground runs PHP compiled to WebAssembly, in the browser ---
+	if ( ( $_SERVER['SERVER_SOFTWARE'] ?? '' ) === 'PHP.wasm' ) { // phpcs:ignore WordPress.Security -- compared, not saved or shown
+		return true;
+	}
+
+	// --- 2. Known demo and sandbox hosts ---
+	$host = strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+
+	/**
+	 * Filter the hosts of demo and sandbox sites. A site whose address ends with one of these is a demo.
+	 *
+	 * @param string[] $suffixes
+	 */
+	$suffixes = apply_filters( 'groundhogg/demo_host_suffixes', [
+		'.groundhogg-demo.com',      // our own demo sites
+		'.instawp.xyz',              // InstaWP, and the other suffixes it offers
+		'.instawp.link',
+		'.instawp.co',
+		'tastewp.com',               // TasteWP, e.g. name.s2-tastewp.com
+		'playground.wordpress.net',  // WordPress Playground
+	] );
+
+	foreach ( (array) $suffixes as $suffix ) {
+		if ( $host && is_string( $suffix ) && $suffix !== '' && str_ends_with( $host, strtolower( $suffix ) ) ) {
+			return true;
+		}
+	}
+
+	// --- 3. InstaWP on a domain of its own, like our demo sites, found by the must-use plugins it installs ---
+	return is_instawp_site();
+}
+
+/**
+ * Whether the site is on InstaWP, whatever its address: InstaWP installs must-use plugins named 0-iwp-*.php, with
+ * InstaWP as the author.
+ *
+ * @return bool
+ */
+function is_instawp_site() {
+
+	if ( ! defined( 'WPMU_PLUGIN_DIR' ) || ! is_dir( WPMU_PLUGIN_DIR ) ) {
+		return false;
+	}
+
+	if ( ! empty( glob( trailingslashit( WPMU_PLUGIN_DIR ) . '0-iwp-*.php' ) ) ) {
+		return true;
+	}
+
+	// renamed, so go by the author in their headers
+	if ( ! function_exists( 'get_mu_plugins' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+	}
+
+	foreach ( get_mu_plugins() as $plugin ) {
+		if ( strcasecmp( trim( $plugin['Author'] ?? '' ), 'InstaWP' ) === 0 ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Run something as a user, and put the current user back afterwards, even if it throws.
+ *
+ * What a user is allowed to see is decided by the current user, including what is redacted for a user who can't see the
+ * personal information of contacts, so anything built for a user in the background, like an email, has to be built as them.
+ *
+ * @param int      $user_id
+ * @param callable $callback
+ *
+ * @return mixed whatever the callback returns
+ */
+function run_as_user( int $user_id, callable $callback ) {
+
+	$previous = get_current_user_id();
+
+	wp_set_current_user( $user_id );
+
+	try {
+		return call_user_func( $callback );
+	} finally {
+		wp_set_current_user( $previous );
+	}
 }
 
 /**

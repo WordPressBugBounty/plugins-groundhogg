@@ -69,6 +69,11 @@ class Send_Email_Template extends Ability {
 						'type'        => 'string',
 						'description' => __( 'When to send. Omit (or give a past/now value) to send immediately; a future value schedules the send via the event queue. Any PHP strtotime()-compatible string in the site\'s server timezone - an ISO 8601 timestamp ("2026-09-17T09:00:00-04:00"), a plain datetime ("2026-09-17 09:00:00"), or a relative expression ("+1 week", "tomorrow 9am", "next monday").', 'groundhogg' ),
 					],
+					'event_args' => [
+						'type'                 => 'object',
+						'additionalProperties' => true,
+						'description'          => __( 'Arbitrary key/value data stored on the send event for every recipient, available to replacement codes while the email is sent/processed via get_event_arg() (e.g. submission_id for a form-related merge tag).', 'groundhogg' ),
+					],
 				],
 			],
 
@@ -80,6 +85,10 @@ class Send_Email_Template extends Ability {
 					],
 					'email_title' => [
 						'type' => 'string',
+					],
+					'preview_url' => [
+						'type'        => 'string',
+						'description' => __( 'A signed link (valid about a week) that renders this email in the browser, no login required.', 'groundhogg' ),
 					],
 					'scheduled' => [
 						'type'        => 'boolean',
@@ -162,6 +171,8 @@ class Send_Email_Template extends Ability {
 
 		$future = $when_ts && $when_ts > time();
 
+		$event_args = is_array( $input['event_args'] ?? null ) ? $input['event_args'] : [];
+
 		$recipients = [];
 
 		foreach ( $to as $value ) {
@@ -191,7 +202,7 @@ class Send_Email_Template extends Ability {
 				continue;
 			}
 
-			$enqueued = (bool) send_email_notification( $email, $contact, $when_ts );
+			$enqueued = (bool) send_email_notification( $email, $contact, $when_ts, $event_args );
 
 			if ( ! $enqueued ) {
 				$recipients[] = [
@@ -235,6 +246,7 @@ class Send_Email_Template extends Ability {
 		return [
 			'email_id'      => $email->get_id(),
 			'email_title'   => $email->get_title(),
+			'preview_url'   => $email->get_preview_url(),
 			'scheduled'     => (bool) $future,
 			'scheduled_for' => $future ? gmdate( 'Y-m-d\TH:i:s\Z', $when_ts ) : null,
 			'recipients'    => $recipients,

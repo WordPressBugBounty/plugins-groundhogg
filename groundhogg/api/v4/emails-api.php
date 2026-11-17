@@ -24,6 +24,7 @@ use function Groundhogg\enqueue_event;
 use function Groundhogg\get_contactdata;
 use function Groundhogg\get_default_from_email;
 use function Groundhogg\get_default_from_name;
+use function Groundhogg\get_edit_version;
 use function Groundhogg\get_sender_profiles;
 use function Groundhogg\get_object_ids;
 use function Groundhogg\is_sending;
@@ -166,7 +167,33 @@ class Emails_Api extends Base_Object_Api {
 	}
 
 	/**
+	 * Nothing else maintains last_updated, and a change to only the meta or campaigns still changes the email, so every
+	 * way an email is updated sets it, the editor's save and a bulk update alike
+	 *
+	 * @param array|null $data
+	 * @param array|null $meta
+	 * @param bool       $campaigns whether the campaigns are being changed
+	 *
+	 * @return array
+	 */
+	protected function prepare_update_data( $data, $meta, $campaigns = false ) {
+
+		if ( empty( $data ) && empty( $meta ) && ! $campaigns ) {
+			return (array) $data;
+		}
+
+		$data                 = is_array( $data ) ? $data : [];
+		$data['last_updated'] = current_time( 'mysql' );
+
+		return $data;
+	}
+
+	/**
 	 * Handle campaigns
+	 *
+	 * With `version`, the version of the email that the caller has (see get_edit_version()), the update is refused if
+	 * the email was changed since, so a save from the editor doesn't replace what something else changed while it was
+	 * open, like an AI agent. The response has the email's new version.
 	 *
 	 * @param WP_REST_Request $request
 	 *
@@ -181,10 +208,25 @@ class Emails_Api extends Base_Object_Api {
 			return $this->ERROR_RESOURCE_NOT_FOUND();
 		}
 
+		$version = $request->get_param( 'version' );
+
+		if ( is_string( $version ) && $version !== '' ) {
+
+			$current = get_edit_version( $object );
+
+			if ( ! hash_equals( $current, $version ) ) {
+				return self::ERROR_409(
+					'groundhogg_email_changed',
+					__( 'This email was changed after the version you have. Get it again to see the changes, or update it without a version to replace them.', 'groundhogg' ),
+					[ 'version' => $current ]
+				);
+			}
+		}
+
 		$data = $request->get_param( 'data' );
 		$meta = $request->get_param( 'meta' );
 
-		$object->update( $data );
+		$object->update( $this->prepare_update_data( $data, $meta, $request->has_param( 'campaigns' ) ) );
 
 		// If the current object supports meta data...
 		if ( method_exists( $object, 'update_meta' ) ) {
@@ -213,7 +255,10 @@ class Emails_Api extends Base_Object_Api {
 
 		$this->do_object_updated_action( $object );
 
-		return self::SUCCESS_RESPONSE( [ 'item' => $object ] );
+		return self::SUCCESS_RESPONSE( [
+			'item'    => $object,
+			'version' => get_edit_version( $object ),
+		] );
 	}
 
 	/**

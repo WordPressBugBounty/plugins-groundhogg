@@ -1701,4 +1701,152 @@ body.gh-full-screen #wpadminbar {
   border-radius: var(--gh-border-radius);
 }
 
+/* Build with AI: the card among the templates on the email and flow add screens, and the popup it opens */
+/* .gh-panel twice, to beat its own border in elements.css, which loads after this */
+.gh-panel.build-with-ai-card.gh-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 260px;
+  padding: 30px;
+  text-align: center;
+  cursor: pointer;
+  border: 2px dashed var(--gh-primary);
+  box-sizing: border-box;
+  /* a span, not a button, since the whole card is the button. elements.css only styles a and button */
+}
+.gh-panel.build-with-ai-card.gh-panel .gh-button {
+  display: inline-block;
+  white-space: nowrap;
+  color: #FFFFFF;
+  border-radius: var(--gh-border-radius);
+  padding: 0 calc(var(--gh-item-padding) * 3);
+  line-height: var(--gh-button-line-height);
+  font-size: 16px;
+}
+.gh-panel.build-with-ai-card.gh-panel h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.gh-panel.build-with-ai-card.gh-panel p {
+  margin: 0;
+  max-width: 340px;
+  font-size: 14px;
+}
+.gh-panel.build-with-ai-card.gh-panel .build-with-ai-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--gh-primary);
+}
+.gh-panel.build-with-ai-card.gh-panel:hover, .gh-panel.build-with-ai-card.gh-panel:focus-visible {
+  border-style: solid;
+  box-shadow: 5px 5px 30px 0 rgba(24, 45, 70, 0.1);
+  outline: none;
+}
+
+/* the admin themes color every panel's border, so use the theme's accent instead */
+body.groundhogg-admin-page[class*=gh-theme-] .gh-panel.build-with-ai-card {
+  border-color: var(--ght-accent);
+}
+body.groundhogg-admin-page[class*=gh-theme-] .gh-panel.build-with-ai-card .build-with-ai-icon {
+  color: var(--ght-accent);
+}
+
+.build-with-ai-modal {
+  /* before there's an assistant to copy a prompt into, connecting one is the only thing to do */
+}
+.build-with-ai-modal .build-with-ai label {
+  font-weight: 500;
+}
+.build-with-ai-modal .build-with-ai-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.build-with-ai-modal .build-with-ai-examples-label {
+  opacity: 0.75;
+  margin-right: 4px;
+}
+.build-with-ai-modal textarea.code {
+  font-family: monospace;
+  font-size: 12px;
+}
+.build-with-ai-modal .build-with-ai-connect {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 10px 10px;
+  text-align: center;
+  /* the AI agent tab's steps, see loadWizard() in build-with-ai.js */
+}
+.build-with-ai-modal .build-with-ai-connect > h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.build-with-ai-modal .build-with-ai-connect > p {
+  margin: 0;
+  max-width: 440px;
+}
+.build-with-ai-modal .build-with-ai-connect a.gh-button.primary {
+  font-size: 16px;
+  padding: 4px 20px;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-wizard {
+  align-self: stretch;
+  text-align: left;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-wizard > .gh-spinner-wrap {
+  padding: 10px;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-wizard > .gh-spinner-wrap object.gh-spinner {
+  width: 80px;
+  height: 80px;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-wizard .gh-mcp {
+  max-width: none;
+  padding: 0;
+  /* the popup has its own heading and introduction */
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-wizard .gh-mcp > h2,
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-wizard .gh-mcp > h2 + p {
+  display: none;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-wizard .gh-mcp-steps {
+  margin-top: 4px;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.75;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-waiting[hidden] {
+  display: none;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-waiting .gh-spinner-wrap {
+  padding: 0;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-waiting .gh-spinner-wrap object.gh-spinner {
+  width: 22px;
+  height: 22px;
+}
+.build-with-ai-modal .build-with-ai-connect .build-with-ai-next {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  align-self: stretch;
+  max-width: none;
+  opacity: 0.75;
+}
+.build-with-ai-modal .build-with-ai-connected {
+  padding: 10px 15px;
+  border-left: 4px solid #00a32a;
+  background: #edfaef;
+  color: #1d2327;
+}
+
 /*# sourceMappingURL=admin.css.map */

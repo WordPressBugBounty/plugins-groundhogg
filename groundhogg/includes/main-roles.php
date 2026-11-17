@@ -192,6 +192,18 @@ class Main_Roles extends Roles {
 			'delete_messages'         => [ 'delete_contacts' ],
 			'add_messages'            => [ 'do_not_allow' ],
 			'edit_messages'           => [ 'do_not_allow' ],
+			// A step is a part of its flow, so it follows the flow caps. The steps routes themselves ask for edit_funnels.
+			'add_steps'               => [ 'add_funnels' ],
+			'view_step'               => [ 'view_funnels' ],
+			'edit_step'               => [ 'edit_funnels' ],
+			'delete_step'             => [ 'delete_funnels' ],
+			// Submissions are only ever created by a form being submitted, so no one edits one. Viewing one is governed
+			// by the contact, see view_submission below.
+			'edit_submission'         => [ 'do_not_allow' ],
+			'delete_submission'       => [ 'delete_logs' ],
+			// Page visits are tracking data, the routes that write them are for administrators only.
+			'edit_page_visit'         => [ 'administrator' ],
+			'delete_page_visit'       => [ 'administrator' ],
 		];
 
 		if ( key_exists( $cap, $primitive_cap_map ) ) {
@@ -333,6 +345,37 @@ class Main_Roles extends Roles {
 				}
 
 				break;
+			case 'view_submission':
+			case 'view_page_visit':
+
+				$object_type = substr( $cap, strlen( 'view_' ) );
+				$object      = $args[0] ?? null;
+
+				// didn't pass the full object
+				if ( ! is_object( $object ) || ! method_exists( $object, 'get_id' ) ) {
+					$object = create_object_from_type( $object, $object_type );
+				}
+
+				// Not a real object
+				if ( ! $object || ! $object->exists() ) {
+					$caps = [ 'do_not_allow' ];
+					break;
+				}
+
+				$caps    = [ 'view_contacts' ];
+				$contact = absint( $object->contact_id ) ? get_contactdata( absint( $object->contact_id ) ) : false;
+
+				if ( is_a_contact( $contact ) ) {
+					// it is only as visible as the contact it is about
+					if ( ! user_can( $user_id, 'view_contact', $contact ) ) {
+						$caps[] = 'do_not_allow';
+					}
+				} else {
+					// Not about a contact we know, so it isn't anyone's, and is seen by those that see everyone's
+					$caps[] = 'view_others_contacts';
+				}
+
+				break;
 			case 'view_message':
 			case 'edit_message':
 			case 'delete_message':
@@ -386,16 +429,23 @@ class Main_Roles extends Roles {
 					break;
 				}
 
+				$file_path = wp_normalize_path( $file_path );
+
+				$path = explode( '/', $file_path );
+
 				if ( is_super_admin( $user_id ) ) {
 					$caps = [ 'download_files' ];
+
+					// exports, imports and a contact's files are contact data, which a super admin can't take out without
+					// the capability to view it either
+					if ( in_array( $path[0], [ 'exports', 'imports', 'uploads' ], true ) ) {
+						$caps[] = Pii::CAP;
+					}
+
 					break;
 				}
 
 				$caps = [];
-
-				$file_path = wp_normalize_path( $file_path );
-
-				$path = explode( '/', $file_path );
 
 				switch ( $path[0] ) {
 					case 'uploads':
@@ -539,6 +589,7 @@ class Main_Roles extends Roles {
 			'edit_contacts',
 			'edit_others_contacts',
 			'view_contacts',
+			'view_contact_pii',
 			'view_others_contacts',
 			'import_contacts',
 			'export_contacts',
@@ -586,6 +637,7 @@ class Main_Roles extends Roles {
 			'edit_contacts',
 			'add_contacts',
 			'view_contacts',
+			'view_contact_pii',
 			'import_contacts',
 			'export_contacts',
 			// email
@@ -638,6 +690,7 @@ class Main_Roles extends Roles {
 			'edit_contacts',
 			'edit_others_contacts',
 			'view_contacts',
+			'view_contact_pii',
 			'view_others_contacts',
 			'delete_contacts',
 			'delete_others_contacts',
