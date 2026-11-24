@@ -160,6 +160,11 @@ class Scripts {
 			// Cookies can be disabled form via the settings
 			'unnecessary_cookies_disabled' => is_option_enabled( 'gh_disable_unnecessary_cookies' ),
 			'has_accepted_cookies'         => has_accepted_cookies(),
+			// When a consent plugin reports through the WP Consent API the browser asks it directly, so a cached page can't carry one visitor's answer to another
+			'consent_api'                  => [
+				'active'   => Plugin::$instance->preferences->is_gdpr_enabled() && is_wp_consent_api_active(),
+				'category' => get_wp_consent_api_category(),
+			],
 			// page tracking
 			'disable_page_tracking'        => is_option_enabled( 'gh_disable_page_tracking' ),
 			//deprecated
@@ -484,6 +489,7 @@ class Scripts {
 		], GROUNDHOGG_VERSION, true );
 
 		wp_register_script( 'groundhogg-troubleshooter', GROUNDHOGG_ASSETS_URL . 'js/admin/features/troubleshooter' . $dot_min . '.js', [
+			'groundhogg-make-el',
 			'groundhogg-admin-element',
 			'groundhogg-admin-data',
 		], GROUNDHOGG_VERSION, true );
@@ -597,6 +603,17 @@ class Scripts {
 		], GROUNDHOGG_VERSION, true );
 
 		wp_enqueue_script( 'groundhogg-admin-functions' );
+
+		// UTM tags on links to groundhogg.io, see docs/utm-links.md
+		$utm_params = utm_params( [], 'https://groundhogg.io/' );
+
+		if ( ! empty( $utm_params ) ) {
+			wp_register_script( 'groundhogg-utm-links', GROUNDHOGG_ASSETS_URL . 'js/admin/utm-links' . $dot_min . '.js', [], GROUNDHOGG_VERSION, true );
+			wp_localize_script( 'groundhogg-utm-links', 'GroundhoggUTM', [
+				'params' => $utm_params,
+			] );
+			wp_enqueue_script( 'groundhogg-utm-links' );
+		}
 
 		if ( ! is_admin_groundhogg_page() && ! is_user_preference_enabled( 'gh_disable_email_detection' ) && current_user_can( 'view_others_contacts' ) ){
 			wp_enqueue_script( 'groundhogg-admin-email-detector' );

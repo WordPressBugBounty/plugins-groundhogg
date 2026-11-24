@@ -221,6 +221,181 @@ function admin_page_url( $page, $args = [], $fragment = '' ) {
 	return $url;
 }
 
+/**
+ * utm_source values from our older schemes, still in add-on plugin headers (Plugin URI, Author URI).
+ * A link with one of these is re-tagged. Mirrors LEGACY_SOURCES in assets/js/admin/utm-links.js.
+ */
+const UTM_LEGACY_SOURCES = [ 'wp-plugins', 'plugin', 'admin-menu' ];
+
+/**
+ * Whether a URL points at groundhogg.io or one of its subdomains.
+ *
+ * @param string $url
+ *
+ * @return bool
+ */
+function is_groundhogg_io_url( $url ) {
+	$host = strtolower( (string) wp_parse_url( (string) $url, PHP_URL_HOST ) );
+
+	return $host === 'groundhogg.io' || str_ends_with( $host, '.groundhogg.io' );
+}
+
+/**
+ * Lower case, hyphenated value for a UTM parameter.
+ *
+ * @param string $value
+ *
+ * @return string
+ */
+function utm_slug( $value ) {
+	return substr( trim( preg_replace( '/[^a-z0-9]+/', '-', strtolower( (string) $value ) ), '-' ), 0, 60 );
+}
+
+/**
+ * The utm_campaign for links on the current admin screen.
+ *
+ * Groundhogg pages are named from page, tab and action (gh_funnels&action=edit → funnels-edit).
+ * Other plugins' pages are never named, so their slugs don't reach groundhogg.io.
+ * Mirrors screenCampaign() in assets/js/admin/utm-links.js, see docs/utm-links.md.
+ *
+ * @return string
+ */
+function utm_campaign_for_screen() {
+
+	if ( ! is_admin() ) {
+		return '';
+	}
+
+	if ( is_admin_groundhogg_page() ) {
+		$page  = get_url_var( 'page' );
+		$parts = [ $page === 'groundhogg' ? 'dashboard' : preg_replace( '/^gh_/', '', $page ) ];
+
+		foreach ( [ 'tab', 'action' ] as $var ) {
+			$value = get_url_var( $var );
+			if ( $value && is_string( $value ) ) {
+				$parts[] = $value;
+			}
+		}
+
+		return utm_slug( implode( '-', $parts ) );
+	}
+
+	global $pagenow;
+
+	$core_screens = [
+		'plugins.php'        => 'plugins',
+		'plugin-install.php' => 'plugin-install',
+		'update-core.php'    => 'update-core',
+		'index.php'          => 'wp-dashboard',
+		'profile.php'        => 'profile',
+		'users.php'          => 'users',
+	];
+
+	return $core_screens[ $pagenow ] ?? 'other-screen';
+}
+
+/**
+ * The base UTM parameters, filtered.
+ *
+ * @param array  $params utm_* => value
+ * @param string $url    the URL being tagged
+ *
+ * @return array
+ */
+function utm_params( $params, $url ) {
+
+	$params = wp_parse_args( array_filter( $params ), [
+		'utm_source' => 'groundhogg-plugin',
+		'utm_medium' => 'wp-admin',
+	] );
+
+	/**
+	 * Filter the UTM parameters added to links to groundhogg.io. Return an empty array to leave links untagged.
+	 *
+	 * @param array  $params utm_* => value
+	 * @param string $url    the URL being tagged
+	 */
+	return (array) apply_filters( 'groundhogg/utm_params', $params, $url );
+}
+
+/**
+ * Add UTM parameters to a link to groundhogg.io, see docs/utm-links.md.
+ *
+ * Other hosts are returned unchanged, as are URLs that already carry someone else's utm_source.
+ * Parameters already in the URL are kept, except an older scheme of ours, which is replaced.
+ *
+ * @param string $url
+ * @param string $content  the placement, e.g. 'upgrade-button'
+ * @param string $campaign the screen or feature, defaults to the current admin screen
+ * @param string $medium   'wp-admin', 'email' or 'ai'
+ *
+ * @return string
+ */
+function utm_url( $url, $content = '', $campaign = '', $medium = 'wp-admin' ) {
+
+	if ( ! is_groundhogg_io_url( $url ) ) {
+		return $url;
+	}
+
+	wp_parse_str( (string) wp_parse_url( $url, PHP_URL_QUERY ), $existing );
+
+	$source = $existing['utm_source'] ?? '';
+
+	if ( in_array( $source, UTM_LEGACY_SOURCES, true ) ) {
+		// the old campaign named the placement, e.g. the plugin-uri of an add-on's header
+		$content  = $content ?: (string) ( $existing['utm_campaign'] ?? '' );
+		$old_keys = preg_grep( '/^utm_/', array_keys( $existing ) );
+		$url      = remove_query_arg( $old_keys, $url );
+		$existing = array_diff_key( $existing, array_flip( $old_keys ) );
+	} else if ( $source && $source !== 'groundhogg-plugin' ) {
+		return $url;
+	}
+
+	$params = utm_params( [
+		'utm_medium'   => utm_slug( $medium ),
+		'utm_campaign' => utm_slug( $campaign ?: utm_campaign_for_screen() ),
+		'utm_content'  => utm_slug( $content ),
+	], $url );
+
+	$params = array_diff_key( array_filter( $params ), $existing );
+
+	if ( empty( $params ) ) {
+		return $url;
+	}
+
+	return add_query_arg( urlencode_deep( $params ), $url );
+}
+
+/**
+ * Add UTM parameters to the links to groundhogg.io in some HTML, see utm_url().
+ * Only href attributes are changed, so images from groundhogg.io keep their src.
+ *
+ * @param string $html
+ * @param string $content  the placement
+ * @param string $campaign the screen or feature, defaults to the current admin screen
+ * @param string $medium   'wp-admin', 'email' or 'ai'
+ *
+ * @return string
+ */
+function utm_links_in_html( $html, $content = '', $campaign = '', $medium = 'wp-admin' ) {
+
+	if ( ! is_string( $html ) || strpos( $html, 'groundhogg.io' ) === false ) {
+		return $html;
+	}
+
+	return preg_replace_callback( '/(<a\s[^>]*?\bhref\s*=\s*)(["\'])(.*?)\2/i', function ( $matches ) use ( $content, $campaign, $medium ) {
+
+		$url    = html_entity_decode( $matches[3], ENT_QUOTES );
+		$tagged = utm_url( $url, $content, $campaign, $medium );
+
+		if ( $tagged === $url ) {
+			return $matches[0];
+		}
+
+		return $matches[1] . $matches[2] . esc_url( $tagged ) . $matches[2];
+	}, $html );
+}
+
 function report_link( $content, $params ) {
 
 	return html()->e( 'a', [
@@ -1561,12 +1736,58 @@ function create_contact_from_user( $user = false, $sync_meta = false ) {
 
 	$contact = get_contactdata( $user->ID, true );
 
+	// a contact that was already the user's, as opposed to one that only has the same email address
+	$adopted = false;
+
 	// If not available by user ID try by email
 	if ( ! is_a_contact( $contact ) ) {
+
 		$contact = get_contactdata( $user->user_email );
+
+		/**
+		 * Whether a contact that already has the new user's email address becomes that user's contact.
+		 *
+		 * WordPress doesn't know the email address of a user is theirs, since a registration can set the password
+		 * without confirming it, and a user can change their own address through the REST API. A site like that can
+		 * return false so that a visitor can't take over the record of whoever has the address they typed.
+		 *
+		 * @param bool     $adopt
+		 * @param \WP_User $user
+		 * @param Contact  $contact
+		 */
+		if ( is_a_contact( $contact ) ) {
+
+			// no contact for this user, and nothing is done to one that isn't theirs
+			if ( ! apply_filters( 'groundhogg/create_contact_from_user/adopt_existing_contact', true, $user, $contact ) ) {
+				return false;
+			}
+
+			// it is another user's, who still exists
+			if ( $contact->get_user_id() && $contact->get_user_id() !== $user->ID && get_userdata( $contact->get_user_id() ) ) {
+				return false;
+			}
+
+			$adopted = true;
+		}
 	}
 
-	if ( is_a_contact( $contact ) ) {
+	if ( is_a_contact( $contact ) && $adopted ) {
+
+		// The contact has a history that the user didn't write, so it keeps what it says about the person. What the user
+		// has is filled in where the contact has nothing.
+		$args = [ 'user_id' => $user->ID ];
+
+		if ( ! $contact->get_first_name() ) {
+			$args['first_name'] = $user->first_name ?: $user->display_name;
+		}
+
+		if ( ! $contact->get_last_name() ) {
+			$args['last_name'] = $user->last_name;
+		}
+
+		$contact->update( $args );
+
+	} else if ( is_a_contact( $contact ) ) {
 
 		/**
 		 * Setup the initial args..
@@ -1625,13 +1846,20 @@ function create_contact_from_user( $user = false, $sync_meta = false ) {
 				continue;
 			}
 
+			// a contact that was adopted keeps what it already has
+			if ( $adopted && $contact->get_meta( $key ) ) {
+				continue;
+			}
+
 			$contact->update_meta( $key, array_shift( $values ) );
 		}
 
 	}
 
-	// Update the locale of the contact
-	$contact->set_locale( $user->locale );
+	// Update the locale of the contact, unless an adopted contact already has one
+	if ( ! $adopted || ! $contact->get_meta( 'locale' ) ) {
+		$contact->set_locale( $user->locale );
+	}
 
 	/**
 	 * Runs after the contact is created from the create user function
@@ -1676,7 +1904,8 @@ function create_user_from_contact( $contact, $role = 'subscriber', $notification
 	// May need this action, restore it.
 	add_action( 'user_register', __NAMESPACE__ . '\convert_user_to_contact_when_user_registered' );
 
-	if ( ! $user_id ) {
+	// an existing user with the same email or login makes it an error, which is no user to link the contact to
+	if ( ! $user_id || is_wp_error( $user_id ) ) {
 		return false;
 	}
 
@@ -2182,6 +2411,11 @@ function get_csv_delimiter( $file_path ) {
 	foreach ( $delimiters as $d ) {
 		$data_1 = fgetcsv( $handle, 4096, $d );
 
+		// an empty file
+		if ( ! is_array( $data_1 ) ) {
+			break;
+		}
+
 		if ( count( $data_1 ) > count( $data_2 ) ) {
 			$delimiter = $d;
 			$data_2    = $data_1;
@@ -2209,20 +2443,54 @@ function count_csv_rows( $file_path ) {
 		return 0;
 	}
 
-	$file = new \SplFileObject( $file_path, 'r' );
+	$delimiter = get_csv_delimiter( $file_path ) ?: ',';
+	$file      = new \SplFileObject( $file_path, 'r' );
 
 	$rows = 0;
 
+	// Count records, not lines: a quoted cell can hold line breaks
 	while ( ! $file->eof() ) {
-		$line = $file->fgets();
-		if ( ! empty( $line ) ) {
+		if ( ! is_blank_csv_row( $file->fgetcsv( $delimiter ) ) ) {
 			$rows ++;
 		}
 	}
 
 	$file = null;
 
-	return $rows - 1; // -1 to account for the header row
+	return max( 0, $rows - 1 ); // -1 to account for the header row
+}
+
+/**
+ * Whether a row read by fgetcsv() is empty, i.e. a blank line or the end of the file
+ *
+ * @param mixed $row
+ *
+ * @return bool
+ */
+function is_blank_csv_row( $row ) {
+	return ! is_array( $row ) || $row === [ null ] || $row === [ '' ];
+}
+
+/**
+ * Tidy a CSV's header row: drop the byte order mark Excel puts at the start of a "CSV UTF-8" file and trim each label
+ *
+ * @param mixed $headers the first row, from fgetcsv()
+ *
+ * @return array
+ */
+function clean_csv_headers( $headers ) {
+
+	if ( ! is_array( $headers ) ) {
+		return [];
+	}
+
+	if ( isset( $headers[0] ) && is_string( $headers[0] ) && strpos( $headers[0], "\xEF\xBB\xBF" ) === 0 ) {
+		$headers[0] = substr( $headers[0], 3 );
+	}
+
+	return array_map( function ( $header ) {
+		return trim( (string) $header );
+	}, $headers );
 }
 
 /**
@@ -2252,18 +2520,21 @@ function get_items_from_csv( string $file_path = '', int $rows = 0, int $offset 
 	$file = new \SplFileObject( $file_path, 'r' );
 
 	// Headers are always the first row
-	$header       = $file->fgetcsv( $delimiter );
+	$header       = clean_csv_headers( $file->fgetcsv( $delimiter ) );
 	$header_count = count( $header );
+
+	if ( ! $header_count ) {
+		return [];
+	}
 
 	// Get all rows
 	if ( ! $rows ) {
 		$rows = 999999999;
 	}
 
-	// Advance the file pointer
-	if ( $offset > 0 ) {
-		while ( ! $file->eof() && $offset > 0 ) {
-			$file->fgets();
+	// Advance the file pointer a record at a time, a quoted cell can hold line breaks
+	while ( ! $file->eof() && $offset > 0 ) {
+		if ( ! is_blank_csv_row( $file->fgetcsv( $delimiter ) ) ) {
 			$offset --;
 		}
 	}
@@ -2271,6 +2542,10 @@ function get_items_from_csv( string $file_path = '', int $rows = 0, int $offset 
 	while ( ! $file->eof() && count( $data ) < $rows ) {
 
 		$row = $file->fgetcsv( $delimiter );
+
+		if ( is_blank_csv_row( $row ) ) {
+			continue;
+		}
 
 		if ( $associative ) {
 			if ( count( $row ) > $header_count ) {
@@ -2681,7 +2956,7 @@ function maybe_string_to_bool( $bool_or_string ) {
  *
  * @return false|Contact
  */
-function update_contact_with_map( mixed $contact, array $fields, array $map = [], array $submission = [] ) {
+function update_contact_with_map( $contact, array $fields, array $map = [], array $submission = [] ) {
 	return generate_contact_with_map( $fields, $map, $submission, $contact );
 }
 
@@ -2697,7 +2972,7 @@ function update_contact_with_map( mixed $contact, array $fields, array $map = []
  *
  * @return Contact|false
  */
-function generate_contact_with_map( array $fields, array $map = [], array $submission = [], mixed $contact = null ) {
+function generate_contact_with_map( array $fields, array $map = [], array $submission = [], $contact = null ) {
 
 	if ( empty( $map ) ) {
 		$keys = array_keys( $fields );
@@ -7681,6 +7956,35 @@ function collapse_string( $str, $size = 30 ) {
 }
 
 /**
+ * Is a consent plugin that supports the WP Consent API managing consent on this site?
+ *
+ * The API says everything is allowed when nothing is managing consent, so this is only true when the API is installed
+ * and a consent plugin has declared a consent type, otherwise the consent cookie setting still decides.
+ *
+ * @return bool
+ */
+function is_wp_consent_api_active() {
+	return function_exists( 'wp_has_consent' )
+	       && function_exists( 'wp_get_consent_type' )
+	       && wp_get_consent_type() !== false;
+}
+
+/**
+ * The WP Consent API category that tracking cookies are checked against
+ *
+ * @return string
+ */
+function get_wp_consent_api_category() {
+
+	/**
+	 * Filter the WP Consent API category visitors must allow before tracking cookies are set.
+	 *
+	 * @param string $category functional, preferences, statistics, statistics-anonymous or marketing
+	 */
+	return apply_filters( 'groundhogg/consent_category', 'marketing' );
+}
+
+/**
  * Has the current visitor accepted cookies
  *
  * @return bool|mixed|void
@@ -7690,6 +7994,11 @@ function has_accepted_cookies() {
 	// GDPR features are not enabled, so consent is implicit
 	if ( ! Plugin::$instance->preferences->is_gdpr_enabled() ) {
 		return apply_filters( 'groundhogg/has_accepted_cookies', true );
+	}
+
+	// A consent plugin is reporting consent through the WP Consent API
+	if ( is_wp_consent_api_active() ) {
+		return apply_filters( 'groundhogg/has_accepted_cookies', (bool) wp_has_consent( get_wp_consent_api_category() ) );
 	}
 
 	$cookie_name  = get_option( 'gh_consent_cookie_name' );

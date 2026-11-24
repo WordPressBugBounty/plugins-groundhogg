@@ -1,11 +1,11 @@
 <?php
 /*
  * Plugin Name: Groundhogg
- * Plugin URI: https://groundhogg.io/?utm_source=wp-plugins&utm_campaign=plugin-uri&utm_medium=wp-dash
+ * Plugin URI: https://groundhogg.io/?utm_source=groundhogg-plugin&utm_medium=wp-admin&utm_campaign=plugins&utm_content=plugin-uri
  * Description: CRM and marketing automation for WordPress
- * Version: 4.11
+ * Version: 4.12
  * Author: Groundhogg Inc.
- * Author URI: https://groundhogg.io/?utm_source=wp-plugins&utm_campaign=author-uri&utm_medium=wp-dash
+ * Author URI: https://groundhogg.io/?utm_source=groundhogg-plugin&utm_medium=wp-admin&utm_campaign=plugins&utm_content=author-uri
  * Text Domain: groundhogg
  * Domain Path: /languages
  * Requires at least: 6.9
@@ -26,8 +26,8 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 
-define( 'GROUNDHOGG_VERSION', '4.11' );
-define( 'GROUNDHOGG_PREVIOUS_STABLE_VERSION', '4.9.1' );
+define( 'GROUNDHOGG_VERSION', '4.12' );
+define( 'GROUNDHOGG_PREVIOUS_STABLE_VERSION', '4.11' );
 
 define( 'GROUNDHOGG__FILE__', __FILE__ );
 define( 'GROUNDHOGG_PLUGIN_BASE', plugin_basename( GROUNDHOGG__FILE__ ) );

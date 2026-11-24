@@ -576,7 +576,14 @@
     Object.keys(params).forEach((k3) => add(k3, params[k3]));
     return parts.join("&");
   }
+  function isSafePath(path) {
+    const segments = String(path).replace(/^\/+/, "").split("/");
+    return segments.every((s3) => /^[A-Za-z0-9_.~-]+$/.test(s3) && s3 !== "." && s3 !== "..");
+  }
   function buildUrl(root, path, query) {
+    if (!isSafePath(path)) {
+      throw new ApiError("That request is not allowed.", { code: "invalid_path" });
+    }
     const url = root.replace(/\/+$/, "") + "/" + String(path).replace(/^\/+/, "");
     const qs = buildQuery(query);
     if (!qs) {
@@ -619,9 +626,10 @@
           init.body = JSON.stringify(body);
         }
       }
+      const url = buildUrl(root, path, query);
       let res;
       try {
-        res = await fetchFn(buildUrl(root, path, query), init);
+        res = await fetchFn(url, init);
       } catch (e3) {
         throw new ApiError("Could not reach the server.", { code: "network" });
       }
@@ -693,9 +701,17 @@
         continue;
       }
       const params = {};
-      keys.forEach((key, i3) => {
-        params[key] = decodeURIComponent(m3[i3 + 1]);
+      const ok = keys.every((key, i3) => {
+        try {
+          params[key] = decodeURIComponent(m3[i3 + 1]);
+        } catch (e3) {
+          return false;
+        }
+        return !params[key].includes("/");
       });
+      if (!ok) {
+        continue;
+      }
       matches.push({ route, params, score: keys.length });
     }
     matches.sort((a3, b3) => a3.score - b3.score);
@@ -1077,7 +1093,10 @@
     ] });
   };
   var SheetFooter = ({ children, ...props }) => /* @__PURE__ */ u3("div", { class: "ghm-sheet-footer", ...props, children });
-  var Toast = ({ message, type }) => message ? /* @__PURE__ */ u3("div", { class: `ghm-toast ${type || ""}`, role: "status", children: message }) : null;
+  var Toast = ({ message, type, action }) => message ? /* @__PURE__ */ u3("div", { class: `ghm-toast ${type || ""}`, role: "status", children: [
+    /* @__PURE__ */ u3("span", { children: message }),
+    action ? /* @__PURE__ */ u3("button", { type: "button", class: "ghm-toast-action", onClick: action.onClick, children: action.label }) : null
+  ] }) : null;
 
   // src/runtime.jsx
   var RuntimeContext = K(null);
@@ -1136,7 +1155,7 @@
           navigate: (path, query) => {
             window.location.hash = toHash(path, query);
           },
-          toast: (message, type) => shell.toast && shell.toast(message, type),
+          toast: (message, type, action) => shell.toast && shell.toast(message, type, action),
           sheet: (Component, props) => shell.sheet && shell.sheet(Component, props),
           confirm: (message) => Promise.resolve(window.confirm(message))
         };
@@ -1647,7 +1666,13 @@
       ] }) : null
     ] });
   }
-  function ContactView({ ctx, params }) {
+  function ContactView(props) {
+    if (!/^[1-9]\d{0,19}$/.test(String(props.params.id))) {
+      return /* @__PURE__ */ u3(ErrorMessage, { error: { message: props.ctx.i18n.__("Contact not found.") } });
+    }
+    return /* @__PURE__ */ u3(ContactScreen, { ...props });
+  }
+  function ContactScreen({ ctx, params }) {
     const { __, _x } = ctx.i18n;
     const { registry } = useRuntime();
     const { data, error, loading } = useFetch(() => ctx.api.get(`contacts/${params.id}`), [params.id]);
@@ -1737,6 +1762,23 @@
     ] });
   }
 
+  // src/core/text.js
+  function escapeHtml(text) {
+    return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+  function splitSummary(text) {
+    const lines = String(text || "").replace(/\r\n?/g, "\n").trim().split("\n");
+    const first = lines[0].trim();
+    if (first.length > SUMMARY_MAX) {
+      return { summary: first.slice(0, SUMMARY_MAX - 1).trim() + "\u2026", content: lines.join("\n").trim() };
+    }
+    return { summary: first, content: lines.slice(1).join("\n").trim() };
+  }
+  var SUMMARY_MAX = 120;
+  function plainToHtml(text) {
+    return String(text || "").replace(/\r\n?/g, "\n").trim().split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("\n");
+  }
+
   // src/views/tasks.jsx
   function DuePill({ task, ctx }) {
     const { __, sprintf: sprintf2 } = ctx.i18n;
@@ -1770,10 +1812,13 @@
   function useTaskList(ctx, query, deps) {
     const { data, error, loading, reload } = useFetch(() => ctx.api.get("tasks", query), deps);
     const [done, setDone] = d2({});
+    A2(() => ctx.on("task:created", reload), [reload]);
     const complete = (task) => {
       setDone((d3) => ({ ...d3, [task.ID]: true }));
+      const { __ } = ctx.i18n;
       ctx.api.patch(`tasks/${task.ID}/complete`).then(
-        () => ctx.toast(ctx.i18n.__("Task completed")),
+        // completing is one tap, as it was, and how it went is there for whoever wants to say, which is what the desktop asks
+        () => ctx.toast(__("Task completed"), "", { label: __("Add note"), onClick: () => ctx.sheet(TaskOutcomeSheet, { title: __("How did it go?"), task }) }),
         (e3) => {
           setDone((d3) => ({ ...d3, [task.ID]: false }));
           ctx.toast(e3.message, "error");
@@ -1805,10 +1850,83 @@
       groups.map(([title, items]) => /* @__PURE__ */ u3(Card, { title, children: /* @__PURE__ */ u3(List, { children: items.map((t3) => /* @__PURE__ */ u3(TaskRow, { task: t3, ctx, onComplete: complete, showContact: true }, t3.ID)) }) }, title))
     ] });
   }
-  function NewTaskSheet({ ctx, close, contact, onCreated }) {
+  function ContactField({ ctx, value, onChange }) {
     const { __ } = ctx.i18n;
+    const [query, setQuery] = d2("");
+    const search = useDebounced(query.trim());
+    const recent = useRecentContacts(ctx, 5);
+    const { data, loading } = useFetch(() => search ? ctx.api.get("contacts", { search, limit: 6 }) : Promise.resolve({ items: [] }), [search]);
+    if (value) {
+      return /* @__PURE__ */ u3("div", { class: "ghm-field", children: [
+        /* @__PURE__ */ u3("span", { children: __("Contact") }),
+        /* @__PURE__ */ u3(Chip, { onRemove: () => onChange(null), removeLabel: __("Remove"), children: contactName(value) })
+      ] });
+    }
+    const options = search ? data && data.items || [] : recent.contacts;
+    return /* @__PURE__ */ u3("div", { class: "ghm-field", children: [
+      /* @__PURE__ */ u3("span", { children: __("Contact (optional)") }),
+      /* @__PURE__ */ u3(Input, { type: "search", placeholder: __("Search contacts"), value: query, onInput: (e3) => setQuery(e3.currentTarget.value), onKeyDown: (e3) => e3.key === "Enter" && e3.preventDefault(), enterkeyhint: "search" }),
+      options.length ? /* @__PURE__ */ u3(List, { children: options.map((c3) => /* @__PURE__ */ u3(
+        ListItem,
+        {
+          leading: /* @__PURE__ */ u3(Avatar, { name: contactName(c3), src: avatarUrl(c3) }),
+          title: contactName(c3),
+          subtitle: c3.data.email && c3.data.email !== contactName(c3) ? c3.data.email : "",
+          onClick: () => {
+            onChange(c3);
+            setQuery("");
+          }
+        },
+        c3.ID
+      )) }) : null,
+      search && !loading && !options.length ? /* @__PURE__ */ u3(Empty, { children: __("No contacts found.") }) : null
+    ] });
+  }
+  function TaskOutcomeSheet({ ctx, close, task }) {
+    const { __ } = ctx.i18n;
+    const [outcome, setOutcome] = d2("");
+    const [note, setNote] = d2("");
+    const [saving, setSaving] = d2(false);
+    const { data } = useFetch(() => ctx.api.get("tasks/outcomes").catch(() => ({ outcomes: [] })), []);
+    const outcomes = data && data.outcomes || [];
+    const save2 = async (e3) => {
+      e3.preventDefault();
+      if (!outcome && !note.trim()) {
+        close();
+        return;
+      }
+      setSaving(true);
+      try {
+        await ctx.api.patch(`tasks/${task.ID}`, { data: { activity: 1, type: "task_complete", outcome, note: note.trim() ? plainToHtml(note) : "" } });
+        ctx.toast(__("Note added"));
+        close();
+      } catch (err) {
+        setSaving(false);
+        ctx.toast(err.message, "error");
+      }
+    };
+    return /* @__PURE__ */ u3("form", { onSubmit: save2, children: [
+      outcomes.length ? /* @__PURE__ */ u3(Field, { label: __("What happened?"), children: /* @__PURE__ */ u3(Select, { value: outcome, onChange: (e3) => setOutcome(e3.currentTarget.value), placeholder: __("Select an outcome"), options: outcomes.map((o4) => ({ value: o4, label: o4 })) }) }) : null,
+      /* @__PURE__ */ u3(Field, { label: __("Any more to add?"), children: /* @__PURE__ */ u3(Textarea, { value: note, onInput: (e3) => setNote(e3.currentTarget.value), autofocus: true }) }),
+      /* @__PURE__ */ u3(SheetFooter, { children: /* @__PURE__ */ u3(Button, { variant: "primary", block: true, type: "submit", disabled: saving, children: __("Save") }) })
+    ] });
+  }
+  function AssignTo({ ctx, value, onChange }) {
+    const { __ } = ctx.i18n;
+    const { data } = useFetch(() => ctx.api.get("mobile/task-assignees"), []);
+    const people = data && data.items || [];
+    if (people.length < 2) {
+      return null;
+    }
+    return /* @__PURE__ */ u3(Field, { label: __("Assign to"), children: /* @__PURE__ */ u3(Select, { value: String(value), onChange: (e3) => onChange(Number(e3.currentTarget.value)), options: people.map((p3) => ({ value: String(p3.id), label: p3.id === ctx.user.id ? __("Me") : p3.name })) }) });
+  }
+  function NewTaskSheet({ ctx, close, contact: given, onCreated }) {
+    const { __ } = ctx.i18n;
+    const [chosen, setChosen] = d2(null);
+    const contact = given || chosen;
     const [content, setContent] = d2("");
     const [due, setDue] = d2(tomorrowMorning());
+    const [assignee, setAssignee] = d2(ctx.user.id);
     const [saving, setSaving] = d2(false);
     const save2 = async (e3) => {
       e3.preventDefault();
@@ -1816,10 +1934,13 @@
         return;
       }
       setSaving(true);
+      const { summary, content: details } = splitSummary(content);
       const data = {
-        content: content.trim(),
+        summary,
+        // tasks are HTML, the desktop writes them in the editor, so the line breaks have to be markup
+        content: plainToHtml(details),
         type: "task",
-        user_id: ctx.user.id,
+        user_id: assignee,
         due_date: toApiDate(due)
       };
       if (contact) {
@@ -1829,6 +1950,7 @@
       try {
         await ctx.api.post("tasks", { data });
         ctx.toast(__("Task added"));
+        ctx.emit("task:created", { contact: contact ? contact.ID : 0 });
         onCreated && onCreated();
         close();
       } catch (err) {
@@ -1839,6 +1961,8 @@
     return /* @__PURE__ */ u3("form", { onSubmit: save2, children: [
       /* @__PURE__ */ u3(Field, { label: __("What needs doing?"), children: /* @__PURE__ */ u3(Textarea, { value: content, onInput: (e3) => setContent(e3.currentTarget.value), required: true, autofocus: true }) }),
       /* @__PURE__ */ u3(Field, { label: __("Due"), children: /* @__PURE__ */ u3(Input, { type: "datetime-local", value: due, onInput: (e3) => setDue(e3.currentTarget.value) }) }),
+      ctx.can("edit_others_tasks") ? /* @__PURE__ */ u3(AssignTo, { ctx, value: assignee, onChange: setAssignee }) : null,
+      given ? null : /* @__PURE__ */ u3(ContactField, { ctx, value: chosen, onChange: setChosen }),
       /* @__PURE__ */ u3(SheetFooter, { children: /* @__PURE__ */ u3(Button, { variant: "primary", block: true, type: "submit", disabled: saving, children: __("Add task") }) })
     ] });
   }
@@ -1877,7 +2001,7 @@
 
   // src/views/panels.jsx
   function NotesPanel({ ctx, contact }) {
-    const { __ } = ctx.i18n;
+    const { __, sprintf: sprintf2 } = ctx.i18n;
     const [text, setText] = d2("");
     const [saving, setSaving] = d2(false);
     const { data, error, loading, reload } = useFetch(() => ctx.api.get("notes", {
@@ -1895,7 +2019,7 @@
       }
       setSaving(true);
       try {
-        await ctx.api.post("notes", { data: { object_id: contact.ID, object_type: "contact", content: text.trim(), type: "note", context: "user" } });
+        await ctx.api.post("notes", { data: { object_id: contact.ID, object_type: "contact", content: plainToHtml(text), type: "note", context: "user" } });
         setText("");
         ctx.toast(__("Note added"));
         await reload();
@@ -1914,11 +2038,7 @@
       !loading && !error && !notes.length ? /* @__PURE__ */ u3(Empty, { children: __("No notes yet.") }) : null,
       notes.map((n2) => /* @__PURE__ */ u3("div", { class: "ghm-note", children: [
         /* @__PURE__ */ u3("p", { children: plainText(n2.data.content) }),
-        /* @__PURE__ */ u3("small", { children: [
-          n2.i18n.time_diff,
-          " ",
-          __("ago")
-        ] })
+        /* @__PURE__ */ u3("small", { children: sprintf2(__("%s ago"), n2.i18n.time_diff) })
       ] }, n2.ID))
     ] });
   }
@@ -1935,7 +2055,8 @@
     const loadMore = async () => {
       setMore((m3) => ({ ...m3, busy: true }));
       try {
-        const page = await ctx.api.get(path, { limit: PAGE, before: cursor.next_before });
+        const have = items.filter((i3) => i3.time === cursor.next_before).map((i3) => i3.id);
+        const page = await ctx.api.get(path, { limit: PAGE, before: cursor.next_before, exclude: have.join(",") });
         setMore((m3) => ({ items: [...m3.items, ...page.items], cursor: { has_more: page.has_more, next_before: page.next_before }, busy: false }));
       } catch (err) {
         setMore((m3) => ({ ...m3, busy: false }));
@@ -1961,7 +2082,7 @@
   }
   function ContactTasksPanel({ ctx, contact }) {
     const { __ } = ctx.i18n;
-    const { tasks, error, loading, reload, complete } = useTaskList(ctx, {
+    const { tasks, error, loading, complete } = useTaskList(ctx, {
       object_id: contact.ID,
       object_type: "contact",
       incomplete: true,
@@ -1974,7 +2095,7 @@
       loading && !tasks.length ? /* @__PURE__ */ u3(SkeletonList, { variant: "check", rows: 2 }) : null,
       !loading && !error && !tasks.length ? /* @__PURE__ */ u3(Empty, { children: __("No open tasks.") }) : null,
       tasks.length ? /* @__PURE__ */ u3(List, { children: tasks.map((t3) => /* @__PURE__ */ u3(TaskRow, { task: t3, ctx, onComplete: complete }, t3.ID)) }) : null,
-      ctx.can("add_tasks") ? /* @__PURE__ */ u3("div", { style: "padding:12px 16px", children: /* @__PURE__ */ u3(Button, { block: true, icon: "plus", onClick: () => ctx.sheet(NewTaskSheet, { title: __("New task"), contact, onCreated: reload }), children: __("Add a task") }) }) : null
+      ctx.can("add_tasks") ? /* @__PURE__ */ u3("div", { style: "padding:12px 16px", children: /* @__PURE__ */ u3(Button, { block: true, icon: "plus", onClick: () => ctx.sheet(NewTaskSheet, { title: __("New task"), contact }), children: __("Add a task") }) }) : null
     ] });
   }
   function NewContactSheet({ ctx, close }) {
@@ -2008,14 +2129,6 @@
       /* @__PURE__ */ u3(Field, { label: __("Mobile phone"), children: /* @__PURE__ */ u3(Input, { type: "tel", value: f3.mobile_phone, onInput: set("mobile_phone"), autocomplete: "off" }) }),
       /* @__PURE__ */ u3(SheetFooter, { children: /* @__PURE__ */ u3(Button, { variant: "primary", block: true, type: "submit", disabled: saving, children: __("Add contact") }) })
     ] });
-  }
-
-  // src/core/text.js
-  function escapeHtml(text) {
-    return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-  }
-  function plainToHtml(text) {
-    return String(text || "").replace(/\r\n?/g, "\n").trim().split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("\n");
   }
 
   // src/views/email.jsx
@@ -2658,13 +2771,21 @@
     A2(() => registry.subscribe(bump), [registry]);
     const [sheet, setSheet] = d2(null);
     const [toast, setToast] = d2(null);
-    const [failed, setFailed] = d2({});
+    const [settled, setSettled] = d2({});
     A2(() => {
       let timer;
-      runtime.shell.toast = (message, type) => {
-        setToast({ message, type });
+      runtime.shell.toast = (message, type, action) => {
+        const dismiss = () => setToast(null);
+        setToast({
+          message,
+          type,
+          action: action ? { label: action.label, onClick: () => {
+            dismiss();
+            action.onClick();
+          } } : null
+        });
         clearTimeout(timer);
-        timer = setTimeout(() => setToast(null), 2800);
+        timer = setTimeout(dismiss, action ? 6e3 : 2800);
       };
       runtime.shell.sheet = (Component, props) => setSheet({ Component, props });
       return () => clearTimeout(timer);
@@ -2676,8 +2797,8 @@
     const match = matchRoute(registry.routes(), route.path);
     const owner = match ? null : registry.featureForPath(route.path);
     A2(() => {
-      if (!match && owner && !failed[owner]) {
-        loader.ensure(owner).then((ok) => ok || setFailed((f3) => ({ ...f3, [owner]: true })));
+      if (!match && owner && !settled[owner]) {
+        loader.ensure(owner).then(() => setSettled((s3) => ({ ...s3, [owner]: true })));
       }
     }, [route.path, owner, !!match]);
     const atRoot = nav.some((i3) => normalizePath(i3.route) === route.path) || route.path === "/more";
@@ -2700,7 +2821,7 @@
       content = /* @__PURE__ */ u3(ErrorBoundary, { label: title, children: /* @__PURE__ */ u3(Page, { ctx: ctxFor(match.route.feature), params: match.params, query: route.query }) }, route.path);
     } else if (route.path === "/more") {
       content = /* @__PURE__ */ u3(MoreView, { moreItems: more });
-    } else if (owner && !failed[owner]) {
+    } else if (owner && !settled[owner]) {
       content = /* @__PURE__ */ u3(Card, { children: /* @__PURE__ */ u3(SkeletonList, { rows: 4 }) });
     } else {
       content = /* @__PURE__ */ u3(Empty, { children: [
